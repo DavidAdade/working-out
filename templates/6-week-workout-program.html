@@ -1,0 +1,1677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>6-Week Transformation Program</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: #333;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            padding: 30px;
+            background: #f8f9fa;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .stat-card h3 {
+            color: #667eea;
+            font-size: 1.1em;
+            margin-bottom: 10px;
+        }
+
+        .stat-card p {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .nav-tabs {
+            display: flex;
+            background: #f8f9fa;
+            padding: 0 30px;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .tab-button {
+            background: transparent;
+            border: none;
+            padding: 15px 25px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 600;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .tab-button:hover {
+            color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        .tab-button.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+
+        .content {
+            padding: 40px;
+        }
+
+        .week-section {
+            display: none;
+        }
+
+        .week-section.active {
+            display: block;
+        }
+
+        .phase-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+
+        .phase-header h2 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .workout-day {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 30px;
+            margin-bottom: 25px;
+            border-left: 5px solid #667eea;
+        }
+
+        .workout-day h3 {
+            color: #667eea;
+            font-size: 1.8em;
+            margin-bottom: 15px;
+        }
+
+        .warmup {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 4px solid #ffc107;
+        }
+
+        .warmup h4 {
+            color: #856404;
+            margin-bottom: 8px;
+        }
+
+        .superset {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .superset h4 {
+            color: #764ba2;
+            font-size: 1.3em;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .superset-badge {
+            background: #764ba2;
+            color: white;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+        }
+
+        .exercise {
+            padding: 12px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .exercise:last-child {
+            border-bottom: none;
+        }
+
+        .exercise a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1.1em;
+            transition: color 0.3s;
+        }
+
+        .exercise a:hover {
+            color: #764ba2;
+            text-decoration: underline;
+        }
+
+        .exercise-details {
+            color: #666;
+            margin-top: 5px;
+            font-size: 0.95em;
+        }
+
+        .cardio {
+            background: #d4edda;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            border-left: 4px solid #28a745;
+        }
+
+        .cardio h4 {
+            color: #155724;
+            margin-bottom: 8px;
+        }
+
+        .rest-day {
+            background: linear-gradient(135deg, #56ab2f 0%, #a8e063 100%);
+            color: white;
+            text-align: center;
+            padding: 40px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+        }
+
+        .rest-day h3 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .notes {
+            background: #e7f3ff;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 30px;
+            border-left: 4px solid #2196F3;
+        }
+
+        .notes h4 {
+            color: #0d47a1;
+            margin-bottom: 10px;
+        }
+
+        .notes ul {
+            margin-left: 20px;
+        }
+
+        .notes li {
+            margin-bottom: 8px;
+            color: #1565c0;
+        }
+
+        .progress-section {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            margin-bottom: 25px;
+        }
+
+        .progress-section h3 {
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+
+        .progress-input {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .input-group label {
+            font-weight: 600;
+            margin-bottom: 5px;
+            color: #666;
+        }
+
+        .input-group input {
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 1em;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .save-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .save-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .print-button {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            margin-left: 10px;
+            transition: transform 0.2s;
+        }
+
+        .print-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(40, 167, 69, 0.4);
+        }
+
+        @media print {
+            body {
+                background: white;
+            }
+            .nav-tabs, .save-button, .print-button {
+                display: none;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .header h1 {
+                font-size: 1.8em;
+            }
+            
+            .content {
+                padding: 20px;
+            }
+            
+            .workout-day {
+                padding: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏋️ 6-Week Transformation Program</h1>
+            <p>Dumbbell-Focused Superset Training</p>
+        </div>
+
+        <div class="stats">
+            <div class="stat-card">
+                <h3>Current Stats</h3>
+                <p>6'1" | 230 lbs | 25% BF</p>
+            </div>
+            <div class="stat-card">
+                <h3>Target Goal</h3>
+                <p>220 lbs | 15% BF</p>
+            </div>
+            <div class="stat-card">
+                <h3>Training Days</h3>
+                <p>5 Days/Week</p>
+            </div>
+            <div class="stat-card">
+                <h3>Workout Duration</h3>
+                <p>45-75 Minutes</p>
+            </div>
+        </div>
+
+        <div class="nav-tabs">
+            <button class="tab-button active" onclick="showWeek('weeks1-2')">Weeks 1-2</button>
+            <button class="tab-button" onclick="showWeek('weeks3-4')">Weeks 3-4</button>
+            <button class="tab-button" onclick="showWeek('weeks5-6')">Weeks 5-6</button>
+            <button class="tab-button" onclick="showWeek('progress')">Progress Tracker</button>
+            <button class="tab-button" onclick="showWeek('notes')">Program Notes</button>
+        </div>
+
+        <div class="content">
+            <!-- WEEKS 1-2 -->
+            <div id="weeks1-2" class="week-section active">
+                <div class="phase-header">
+                    <h2>Weeks 1-2: Foundation Phase</h2>
+                    <p>Building the base with moderate weights and focusing on form. 10-12 reps for main lifts, 60-90 second rest between supersets.</p>
+                </div>
+
+                <!-- Monday -->
+                <div class="workout-day">
+                    <h3>Monday - Upper Push/Pull</h3>
+                    
+                    <div class="warmup">
+                        <h4>Warmup</h4>
+                        <p>5 minutes of dynamic stretches (arm circles, band pull-aparts, torso twists)</p>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 1</span> 4 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+bench+press+form" target="_blank">Dumbbell Bench Press</a>
+                            <div class="exercise-details">10-12 reps | Rest: 60-90 sec after superset</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+bent+over+row+form" target="_blank">Dumbbell Bent-Over Rows</a>
+                            <div class="exercise-details">10-12 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 2</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+shoulder+press+form" target="_blank">Dumbbell Shoulder Press</a>
+                            <div class="exercise-details">10-12 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=lat+pulldown+machine+form" target="_blank">Chest Pull Machine</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 3</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+incline+press+form" target="_blank">Dumbbell Incline Press</a>
+                            <div class="exercise-details">10-12 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+single+arm+row+form" target="_blank">Dumbbell Single-Arm Rows</a>
+                            <div class="exercise-details">10-12 reps each arm</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 4</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+lateral+raise+form" target="_blank">Dumbbell Lateral Raises</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+bicep+curl+form" target="_blank">Dumbbell Bicep Curls</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 5 - ABS</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=cable+crunch+form" target="_blank">Cable Crunches (or Weighted Crunches)</a>
+                            <div class="exercise-details">15 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=russian+twist+dumbbell+form" target="_blank">Russian Twists with Dumbbell</a>
+                            <div class="exercise-details">20 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="cardio">
+                        <h4>Cardio Finisher</h4>
+                        <p>15 minutes incline walk or row machine (moderate intensity)</p>
+                    </div>
+                </div>
+
+                <!-- Tuesday -->
+                <div class="workout-day">
+                    <h3>Tuesday - Lower Body</h3>
+                    
+                    <div class="warmup">
+                        <h4>Warmup</h4>
+                        <p>5 minutes bike + leg swings (forward/backward, side-to-side)</p>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 1</span> 4 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=leg+press+machine+form" target="_blank">Leg Press Machine</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+romanian+deadlift+form" target="_blank">Dumbbell Romanian Deadlifts</a>
+                            <div class="exercise-details">10-12 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 2</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+goblet+squat+form" target="_blank">Dumbbell Goblet Squats</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+walking+lunge+form" target="_blank">Dumbbell Walking Lunges</a>
+                            <div class="exercise-details">10 reps each leg</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 3</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+bulgarian+split+squat+form" target="_blank">Dumbbell Bulgarian Split Squats</a>
+                            <div class="exercise-details">10 reps each leg</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+stiff+leg+deadlift+form" target="_blank">Dumbbell Stiff-Leg Deadlifts</a>
+                            <div class="exercise-details">10-12 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 4</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=single+leg+press+form" target="_blank">Leg Press (Single Leg)</a>
+                            <div class="exercise-details">12 reps each leg</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+calf+raise+form" target="_blank">Dumbbell Calf Raises</a>
+                            <div class="exercise-details">15-20 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="cardio">
+                        <h4>Cardio Finisher</h4>
+                        <p>12 minutes bike or stair climber (moderate-high intensity)</p>
+                    </div>
+                </div>
+
+                <!-- Wednesday -->
+                <div class="rest-day">
+                    <h3>Wednesday - REST DAY</h3>
+                    <p>Optional: 20-30 minute walk, yoga, or light stretching</p>
+                </div>
+
+                <!-- Thursday -->
+                <div class="workout-day">
+                    <h3>Thursday - Upper Push/Pull (Volume)</h3>
+                    
+                    <div class="warmup">
+                        <h4>Warmup</h4>
+                        <p>5 minutes arm circles and band work</p>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 1</span> 4 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+chest+fly+form" target="_blank">Dumbbell Chest Flies</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=back+lat+machine+form" target="_blank">Back Lat Machine</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 2</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+arnold+press+form" target="_blank">Dumbbell Arnold Press</a>
+                            <div class="exercise-details">10-12 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+reverse+fly+form" target="_blank">Dumbbell Reverse Flies</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 3</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=shoulder+press+machine+form" target="_blank">Shoulder Press Machine (or Dumbbells)</a>
+                            <div class="exercise-details">10-12 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+pullover+form" target="_blank">Dumbbell Pullover</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 4</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+skull+crusher+form" target="_blank">Dumbbell Skull Crushers</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+hammer+curl+form" target="_blank">Dumbbell Hammer Curls</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 5 - ABS</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=leg+raise+form" target="_blank">Hanging or Lying Leg Raises</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=mountain+climber+form" target="_blank">Mountain Climbers</a>
+                            <div class="exercise-details">30 seconds</div>
+                        </div>
+                    </div>
+
+                    <div class="cardio">
+                        <h4>Cardio Finisher</h4>
+                        <p>15 minutes row machine or assault bike intervals (30 sec hard / 30 sec easy)</p>
+                    </div>
+                </div>
+
+                <!-- Friday -->
+                <div class="workout-day">
+                    <h3>Friday - Lower Body (Posterior Focus)</h3>
+                    
+                    <div class="warmup">
+                        <h4>Warmup</h4>
+                        <p>5 minutes elliptical + hip openers</p>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 1</span> 4 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+romanian+deadlift+form" target="_blank">Dumbbell Romanian Deadlifts</a>
+                            <div class="exercise-details">10-12 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=leg+press+feet+high+form" target="_blank">Leg Press (Feet High and Wide)</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 2</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+step+up+form" target="_blank">Dumbbell Step-Ups</a>
+                            <div class="exercise-details">10 reps each leg</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+sumo+squat+form" target="_blank">Dumbbell Sumo Squats</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 3</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+single+leg+deadlift+form" target="_blank">Dumbbell Single-Leg Deadlifts</a>
+                            <div class="exercise-details">10 reps each leg</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=goblet+squat+pulse+form" target="_blank">Dumbbell Goblet Squat Pulses</a>
+                            <div class="exercise-details">15-20 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 4</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+curtsy+lunge+form" target="_blank">Dumbbell Curtsy Lunges</a>
+                            <div class="exercise-details">10 reps each leg</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+seated+calf+raise+form" target="_blank">Dumbbell Seated Calf Raises</a>
+                            <div class="exercise-details">15-20 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="cardio">
+                        <h4>Cardio Finisher</h4>
+                        <p>12 minutes stair climber or incline walk (high intensity)</p>
+                    </div>
+                </div>
+
+                <!-- Saturday -->
+                <div class="workout-day">
+                    <h3>Saturday - Cardio/Core/Class Day</h3>
+                    
+                    <div class="warmup">
+                        <h4>Option 1: Lifetime Class</h4>
+                        <p>45-60 minutes spin, HIIT, boxing, or other class</p>
+                    </div>
+
+                    <div class="superset">
+                        <h4>Option 2: DIY Workout</h4>
+                        <div class="exercise">
+                            <strong>Cardio (30-40 minutes):</strong>
+                            <div class="exercise-details">Treadmill intervals: 2 min jog / 1 min sprint × 10 rounds<br>
+                            OR Row machine: 5 min warmup, 20 min steady state, 5 min cooldown</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4>Core Circuit - 4 Rounds</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=plank+form" target="_blank">Plank</a>
+                            <div class="exercise-details">45-60 seconds</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=russian+twist+dumbbell+form" target="_blank">Russian Twists with Dumbbell</a>
+                            <div class="exercise-details">20 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=bicycle+crunch+form" target="_blank">Bicycle Crunches</a>
+                            <div class="exercise-details">20 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=mountain+climber+form" target="_blank">Mountain Climbers</a>
+                            <div class="exercise-details">30 seconds</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dead+bug+exercise+form" target="_blank">Dead Bugs</a>
+                            <div class="exercise-details">15 reps each side</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Sunday -->
+                <div class="rest-day">
+                    <h3>Sunday - REST DAY</h3>
+                    <p>Full recovery day. Focus on meal prep, stretching, and sleep.</p>
+                </div>
+            </div>
+
+            <!-- WEEKS 3-4 -->
+            <div id="weeks3-4" class="week-section">
+                <div class="phase-header">
+                    <h2>Weeks 3-4: Strength Phase</h2>
+                    <p>Week 3: Muscle-specific focus days. Week 4: Same as Week 1-2 structure with heavier weights (5-10% increase), 8-10 reps for main lifts, 5 sets for Superset 1.</p>
+                </div>
+
+                <div class="notes">
+                    <h4>Week 3 - Muscle-Specific Focus (New Structure Below)</h4>
+                    <ul>
+                        <li>Monday: Chest & Triceps + Abs</li>
+                        <li>Tuesday: Legs & Glutes</li>
+                        <li>Wednesday: REST</li>
+                        <li>Thursday: Back & Biceps + Abs</li>
+                        <li>Friday: Shoulders & Legs</li>
+                        <li>Saturday: Cardio/Core/Class</li>
+                        <li>Sunday: REST</li>
+                    </ul>
+                <div class="notes">
+                    <h4>Week 4 - Follow Week 1-2 Structure With These Changes:</h4>
+                    <ul>
+                        <li>Increase all weights by 5-10% from Week 1-2</li>
+                        <li>Superset 1: 8-10 reps, 5 sets</li>
+                        <li>Supersets 2-4: 10-12 reps, same sets as Week 1-2</li>
+                        <li>Superset 5 (Abs): Same as Week 1-2</li>
+                        <li>Rest: 90 seconds between supersets</li>
+                        <li>Cardio: 17-20 minutes</li>
+                    </ul>
+                </div>
+
+                <!-- Week 3 Monday -->
+                <div class="workout-day">
+                    <h3>Week 3 Monday - Chest & Triceps + Abs</h3>
+                    
+                    <div class="warmup">
+                        <h4>Warmup</h4>
+                        <p>5 minutes dynamic stretches + band pull-aparts</p>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 1</span> 4 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+flat+bench+press+form" target="_blank">Dumbbell Flat Bench Press</a>
+                            <div class="exercise-details">8-10 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+incline+bench+press+form" target="_blank">Dumbbell Incline Bench Press</a>
+                            <div class="exercise-details">8-10 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 2</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+chest+fly+form" target="_blank">Dumbbell Chest Flies</a>
+                            <div class="exercise-details">10-12 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+close+grip+press+form" target="_blank">Dumbbell Close-Grip Press</a>
+                            <div class="exercise-details">10-12 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 3</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+skull+crusher+form" target="_blank">Dumbbell Skull Crushers</a>
+                            <div class="exercise-details">10-12 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+overhead+tricep+extension+form" target="_blank">Dumbbell Overhead Tricep Extension</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 4 - ABS</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=hanging+knee+raise+form" target="_blank">Hanging Knee Raises (or Lying Leg Raises)</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+side+bend+form" target="_blank">Dumbbell Side Bends</a>
+                            <div class="exercise-details">15 reps each side</div>
+                        </div>
+                    </div>
+
+                    <div class="cardio">
+                        <h4>Cardio Finisher</h4>
+                        <p>17 minutes incline walk or row (moderate-high intensity)</p>
+                    </div>
+                </div>
+
+                <!-- Week 3 Tuesday -->
+                <div class="workout-day">
+                    <h3>Week 3 Tuesday - Legs & Glutes</h3>
+                    
+                    <div class="warmup">
+                        <h4>Warmup</h4>
+                        <p>5 minutes bike + leg swings + glute activation band work</p>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 1</span> 4 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=leg+press+form" target="_blank">Leg Press</a>
+                            <div class="exercise-details">8-10 reps (heavy)</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+romanian+deadlift+form" target="_blank">Dumbbell Romanian Deadlifts</a>
+                            <div class="exercise-details">8-10 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 2</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+bulgarian+split+squat+form" target="_blank">Dumbbell Bulgarian Split Squats</a>
+                            <div class="exercise-details">10 reps each leg</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+sumo+deadlift+form" target="_blank">Dumbbell Sumo Deadlifts</a>
+                            <div class="exercise-details">10-12 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 3</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+walking+lunge+form" target="_blank">Dumbbell Walking Lunges</a>
+                            <div class="exercise-details">12 reps each leg</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+goblet+squat+form" target="_blank">Dumbbell Goblet Squats</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 4</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=single+leg+hip+thrust+form" target="_blank">Single Leg Hip Thrusts (or DB Hip Thrusts)</a>
+                            <div class="exercise-details">12 reps each leg</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+calf+raise+form" target="_blank">Dumbbell Calf Raises</a>
+                            <div class="exercise-details">15-20 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="cardio">
+                        <h4>Cardio Finisher</h4>
+                        <p>15 minutes stair climber (glute focus - lean forward)</p>
+                    </div>
+                </div>
+
+                <!-- Week 3 Wednesday -->
+                <div class="rest-day">
+                    <h3>Week 3 Wednesday - REST DAY</h3>
+                    <p>Optional: 20-30 minute walk, yoga, or stretching</p>
+                </div>
+
+                <!-- Week 3 Thursday -->
+                <div class="workout-day">
+                    <h3>Week 3 Thursday - Back & Biceps + Abs</h3>
+                    
+                    <div class="warmup">
+                        <h4>Warmup</h4>
+                        <p>5 minutes row machine + band pull-aparts</p>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 1</span> 4 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+bent+over+row+form" target="_blank">Dumbbell Bent-Over Rows</a>
+                            <div class="exercise-details">8-10 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=back+lat+pulldown+form" target="_blank">Lat Pulldown Machine (or Chest Pull)</a>
+                            <div class="exercise-details">8-10 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 2</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+single+arm+row+form" target="_blank">Dumbbell Single-Arm Rows</a>
+                            <div class="exercise-details">10 reps each arm</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+pullover+form" target="_blank">Dumbbell Pullovers</a>
+                            <div class="exercise-details">10-12 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 3</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+bicep+curl+form" target="_blank">Dumbbell Bicep Curls</a>
+                            <div class="exercise-details">10-12 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+hammer+curl+form" target="_blank">Dumbbell Hammer Curls</a>
+                            <div class="exercise-details">10-12 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 4 - ABS</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=plank+form" target="_blank">Plank Hold</a>
+                            <div class="exercise-details">45-60 seconds</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=bicycle+crunch+form" target="_blank">Bicycle Crunches</a>
+                            <div class="exercise-details">20 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="cardio">
+                        <h4>Cardio Finisher</h4>
+                        <p>17 minutes row machine intervals (1 min moderate / 30 sec hard)</p>
+                    </div>
+                </div>
+
+                <!-- Week 3 Friday -->
+                <div class="workout-day">
+                    <h3>Week 3 Friday - Shoulders & Legs</h3>
+                    
+                    <div class="warmup">
+                        <h4>Warmup</h4>
+                        <p>5 minutes elliptical + arm circles + shoulder band work</p>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 1</span> 4 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+shoulder+press+form" target="_blank">Dumbbell Shoulder Press</a>
+                            <div class="exercise-details">8-10 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+goblet+squat+form" target="_blank">Dumbbell Goblet Squats</a>
+                            <div class="exercise-details">10-12 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 2</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+lateral+raise+form" target="_blank">Dumbbell Lateral Raises</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=leg+press+form" target="_blank">Leg Press</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 3</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+reverse+fly+form" target="_blank">Dumbbell Reverse Flies</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+step+up+form" target="_blank">Dumbbell Step-Ups</a>
+                            <div class="exercise-details">10 reps each leg</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 4</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+front+raise+form" target="_blank">Dumbbell Front Raises</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+single+leg+deadlift+form" target="_blank">Dumbbell Single-Leg Deadlifts</a>
+                            <div class="exercise-details">10 reps each leg</div>
+                        </div>
+                    </div>
+
+                    <div class="cardio">
+                        <h4>Cardio Finisher</h4>
+                        <p>15 minutes incline walk or bike (moderate-high intensity)</p>
+                    </div>
+                </div>
+
+                <!-- Week 3 Saturday -->
+                <div class="workout-day">
+                    <h3>Week 3 Saturday - Cardio/Core/Class Day</h3>
+                    
+                    <div class="warmup">
+                        <h4>Option 1: Lifetime Class</h4>
+                        <p>45-60 minutes spin, HIIT, boxing, or other class</p>
+                    </div>
+
+                    <div class="superset">
+                        <h4>Option 2: DIY Workout</h4>
+                        <div class="exercise">
+                            <strong>Cardio (30-40 minutes):</strong>
+                            <div class="exercise-details">Treadmill intervals: 2 min jog / 1 min sprint × 10 rounds<br>
+                            OR Row machine: 5 min warmup, 25 min steady state, 5 min cooldown</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4>Core Circuit - 4 Rounds</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=plank+form" target="_blank">Plank</a>
+                            <div class="exercise-details">60 seconds</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=russian+twist+dumbbell+form" target="_blank">Russian Twists with Dumbbell</a>
+                            <div class="exercise-details">20 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=bicycle+crunch+form" target="_blank">Bicycle Crunches</a>
+                            <div class="exercise-details">20 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=mountain+climber+form" target="_blank">Mountain Climbers</a>
+                            <div class="exercise-details">30 seconds</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dead+bug+exercise+form" target="_blank">Dead Bugs</a>
+                            <div class="exercise-details">15 reps each side</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Week 3 Sunday -->
+                <div class="rest-day">
+                    <h3>Week 3 Sunday - REST DAY</h3>
+                    <p>Full recovery. Meal prep and stretch.</p>
+                </div>
+            </div>
+
+            <!-- WEEKS 5-6 -->
+            <div id="weeks5-6" class="week-section">
+                <div class="phase-header">
+                    <h2>Weeks 5-6: Peak/Hypertrophy Phase</h2>
+                    <p>Week 5: Muscle-specific focus (similar to Week 3 but heavier). Week 6: Same as Week 1-2 structure with heavier weights (10% increase from Week 1-2), 6-8 reps main lifts.</p>
+                </div>
+
+                <div class="notes">
+                    <h4>Week 5 - Muscle-Specific Focus (New Structure Below)</h4>
+                    <ul>
+                        <li>Monday: Chest & Triceps + Abs</li>
+                        <li>Tuesday: Legs & Glutes</li>
+                        <li>Wednesday: REST</li>
+                        <li>Thursday: Back & Biceps + Abs</li>
+                        <li>Friday: Shoulders & Legs</li>
+                        <li>Saturday: Cardio/Core/Class</li>
+                        <li>Sunday: REST</li>
+                        <li><strong>Weights:</strong> 5% heavier than Week 3</li>
+                    </ul>
+                    <h4 style="margin-top: 15px;">Week 6 - Follow Week 1-2 Structure With These Changes:</h4>
+                    <ul>
+                        <li>Increase weights 10% from Week 1-2 (peak weights!)</li>
+                        <li>Superset 1: 6-8 reps (heavy), 5 sets</li>
+                        <li>Superset 2: 8-10 reps, 4 sets</li>
+                        <li>Supersets 3-4: 10-12 reps, same sets as Week 1-2</li>
+                        <li>Superset 5 (Abs): Same as Week 1-2</li>
+                        <li>Rest: 90-120 seconds between supersets</li>
+                        <li>Cardio: 20 minutes high intensity</li>
+                        <li>Optional: 20-min morning walks on rest days</li>
+                    </ul>
+                </div>
+
+                <!-- Week 5 Monday -->
+                <div class="workout-day">
+                    <h3>Week 5 Monday - Chest & Triceps + Abs</h3>
+                    
+                    <div class="warmup">
+                        <h4>Warmup</h4>
+                        <p>5 minutes dynamic stretches + band pull-aparts</p>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 1</span> 4 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+flat+bench+press+form" target="_blank">Dumbbell Flat Bench Press</a>
+                            <div class="exercise-details">6-8 reps (HEAVY)</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+incline+bench+press+form" target="_blank">Dumbbell Incline Bench Press</a>
+                            <div class="exercise-details">6-8 reps (HEAVY)</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 2</span> 4 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+chest+fly+form" target="_blank">Dumbbell Chest Flies</a>
+                            <div class="exercise-details">8-10 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+close+grip+press+form" target="_blank">Dumbbell Close-Grip Press</a>
+                            <div class="exercise-details">8-10 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 3</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+skull+crusher+form" target="_blank">Dumbbell Skull Crushers</a>
+                            <div class="exercise-details">10-12 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+overhead+tricep+extension+form" target="_blank">Dumbbell Overhead Tricep Extension</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 4 - ABS</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=hanging+leg+raise+form" target="_blank">Hanging Leg Raises (or Lying Leg Raises)</a>
+                            <div class="exercise-details">15 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+side+bend+form" target="_blank">Dumbbell Side Bends</a>
+                            <div class="exercise-details">15 reps each side</div>
+                        </div>
+                    </div>
+
+                    <div class="cardio">
+                        <h4>Cardio Finisher</h4>
+                        <p>20 minutes incline walk or row (high intensity)</p>
+                    </div>
+                </div>
+
+                <!-- Week 5 Tuesday -->
+                <div class="workout-day">
+                    <h3>Week 5 Tuesday - Legs & Glutes</h3>
+                    
+                    <div class="warmup">
+                        <h4>Warmup</h4>
+                        <p>5 minutes bike + leg swings + glute activation band work</p>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 1</span> 4 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=leg+press+form" target="_blank">Leg Press</a>
+                            <div class="exercise-details">6-8 reps (HEAVY)</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+romanian+deadlift+form" target="_blank">Dumbbell Romanian Deadlifts</a>
+                            <div class="exercise-details">6-8 reps (HEAVY)</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 2</span> 4 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+bulgarian+split+squat+form" target="_blank">Dumbbell Bulgarian Split Squats</a>
+                            <div class="exercise-details">8-10 reps each leg</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+sumo+deadlift+form" target="_blank">Dumbbell Sumo Deadlifts</a>
+                            <div class="exercise-details">8-10 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 3</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+walking+lunge+form" target="_blank">Dumbbell Walking Lunges</a>
+                            <div class="exercise-details">12 reps each leg</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+goblet+squat+form" target="_blank">Dumbbell Goblet Squats</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 4</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=single+leg+hip+thrust+form" target="_blank">Single Leg Hip Thrusts (or DB Hip Thrusts)</a>
+                            <div class="exercise-details">12 reps each leg</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+calf+raise+form" target="_blank">Dumbbell Calf Raises</a>
+                            <div class="exercise-details">15-20 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="cardio">
+                        <h4>Cardio Finisher</h4>
+                        <p>17 minutes stair climber (glute focus - lean forward)</p>
+                    </div>
+                </div>
+
+                <!-- Week 5 Wednesday -->
+                <div class="rest-day">
+                    <h3>Week 5 Wednesday - REST DAY</h3>
+                    <p>Optional: 20-30 minute walk, yoga, or stretching</p>
+                </div>
+
+                <!-- Week 5 Thursday -->
+                <div class="workout-day">
+                    <h3>Week 5 Thursday - Back & Biceps + Abs</h3>
+                    
+                    <div class="warmup">
+                        <h4>Warmup</h4>
+                        <p>5 minutes row machine + band pull-aparts</p>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 1</span> 4 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+bent+over+row+form" target="_blank">Dumbbell Bent-Over Rows</a>
+                            <div class="exercise-details">6-8 reps (HEAVY)</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=back+lat+pulldown+form" target="_blank">Lat Pulldown Machine (or Chest Pull)</a>
+                            <div class="exercise-details">6-8 reps (HEAVY)</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 2</span> 4 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+single+arm+row+form" target="_blank">Dumbbell Single-Arm Rows</a>
+                            <div class="exercise-details">8-10 reps each arm</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+pullover+form" target="_blank">Dumbbell Pullovers</a>
+                            <div class="exercise-details">8-10 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 3</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+bicep+curl+form" target="_blank">Dumbbell Bicep Curls</a>
+                            <div class="exercise-details">10-12 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+hammer+curl+form" target="_blank">Dumbbell Hammer Curls</a>
+                            <div class="exercise-details">10-12 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 4 - ABS</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=plank+form" target="_blank">Plank Hold</a>
+                            <div class="exercise-details">60 seconds</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=bicycle+crunch+form" target="_blank">Bicycle Crunches</a>
+                            <div class="exercise-details">25 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="cardio">
+                        <h4>Cardio Finisher</h4>
+                        <p>20 minutes row machine intervals (1 min moderate / 30 sec hard)</p>
+                    </div>
+                </div>
+
+                <!-- Week 5 Friday -->
+                <div class="workout-day">
+                    <h3>Week 5 Friday - Shoulders & Legs</h3>
+                    
+                    <div class="warmup">
+                        <h4>Warmup</h4>
+                        <p>5 minutes elliptical + arm circles + shoulder band work</p>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 1</span> 4 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+shoulder+press+form" target="_blank">Dumbbell Shoulder Press</a>
+                            <div class="exercise-details">6-8 reps (HEAVY)</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+goblet+squat+form" target="_blank">Dumbbell Goblet Squats</a>
+                            <div class="exercise-details">8-10 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 2</span> 4 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+lateral+raise+form" target="_blank">Dumbbell Lateral Raises</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=leg+press+form" target="_blank">Leg Press</a>
+                            <div class="exercise-details">10-12 reps</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 3</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+reverse+fly+form" target="_blank">Dumbbell Reverse Flies</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+step+up+form" target="_blank">Dumbbell Step-Ups</a>
+                            <div class="exercise-details">10 reps each leg</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4><span class="superset-badge">Superset 4</span> 3 Sets</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+front+raise+form" target="_blank">Dumbbell Front Raises</a>
+                            <div class="exercise-details">12-15 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dumbbell+single+leg+deadlift+form" target="_blank">Dumbbell Single-Leg Deadlifts</a>
+                            <div class="exercise-details">10 reps each leg</div>
+                        </div>
+                    </div>
+
+                    <div class="cardio">
+                        <h4>Cardio Finisher</h4>
+                        <p>17 minutes incline walk or bike (high intensity)</p>
+                    </div>
+                </div>
+
+                <!-- Week 5 Saturday -->
+                <div class="workout-day">
+                    <h3>Week 5 Saturday - Cardio/Core/Class Day</h3>
+                    
+                    <div class="warmup">
+                        <h4>Option 1: Lifetime Class</h4>
+                        <p>45-60 minutes spin, HIIT, boxing, or other class</p>
+                    </div>
+
+                    <div class="superset">
+                        <h4>Option 2: DIY Workout</h4>
+                        <div class="exercise">
+                            <strong>Cardio (35-45 minutes):</strong>
+                            <div class="exercise-details">Treadmill intervals: 2 min jog / 1 min sprint × 12 rounds<br>
+                            OR Row machine: 5 min warmup, 30 min steady state, 5 min cooldown</div>
+                        </div>
+                    </div>
+
+                    <div class="superset">
+                        <h4>Core Circuit - 4 Rounds</h4>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=plank+form" target="_blank">Plank</a>
+                            <div class="exercise-details">60 seconds</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=russian+twist+dumbbell+form" target="_blank">Russian Twists with Dumbbell</a>
+                            <div class="exercise-details">25 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=bicycle+crunch+form" target="_blank">Bicycle Crunches</a>
+                            <div class="exercise-details">25 reps</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=mountain+climber+form" target="_blank">Mountain Climbers</a>
+                            <div class="exercise-details">40 seconds</div>
+                        </div>
+                        <div class="exercise">
+                            <a href="https://www.youtube.com/results?search_query=dead+bug+exercise+form" target="_blank">Dead Bugs</a>
+                            <div class="exercise-details">20 reps each side</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Week 5 Sunday -->
+                <div class="rest-day">
+                    <h3>Week 5 Sunday - REST DAY</h3>
+                    <p>Full recovery. Meal prep and stretch.</p>
+                </div>
+            </div>
+
+            <!-- PROGRESS TRACKER -->
+            <div id="progress" class="week-section">
+                <div class="phase-header">
+                    <h2>Progress Tracker</h2>
+                    <p>Track your body composition and performance weekly</p>
+                </div>
+
+                <div class="progress-section">
+                    <h3>Body Composition Progress</h3>
+                    <div class="progress-input">
+                        <div class="input-group">
+                            <label>Week</label>
+                            <input type="number" id="week" placeholder="1-6" min="1" max="6">
+                        </div>
+                        <div class="input-group">
+                            <label>Weight (lbs)</label>
+                            <input type="number" id="weight" placeholder="230" step="0.1">
+                        </div>
+                        <div class="input-group">
+                            <label>Body Fat %</label>
+                            <input type="number" id="bodyfat" placeholder="25" step="0.1">
+                        </div>
+                        <div class="input-group">
+                            <label>Waist (inches)</label>
+                            <input type="number" id="waist" placeholder="Optional" step="0.1">
+                        </div>
+                    </div>
+                    <button class="save-button" onclick="saveProgress()">Save Progress</button>
+                    <button class="print-button" onclick="window.print()">Print Program</button>
+                </div>
+
+                <div class="progress-section">
+                    <h3>Strength Progress - Key Lifts</h3>
+                    <p style="margin-bottom: 15px; color: #666;">Track your working weight for these key exercises:</p>
+                    
+                    <div class="progress-input">
+                        <div class="input-group">
+                            <label>DB Bench Press (lbs each)</label>
+                            <input type="number" id="bench" placeholder="50">
+                        </div>
+                        <div class="input-group">
+                            <label>DB Bent-Over Row (lbs each)</label>
+                            <input type="number" id="row" placeholder="50">
+                        </div>
+                        <div class="input-group">
+                            <label>DB Shoulder Press (lbs each)</label>
+                            <input type="number" id="shoulder" placeholder="40">
+                        </div>
+                        <div class="input-group">
+                            <label>DB Romanian Deadlift (lbs each)</label>
+                            <input type="number" id="rdl" placeholder="60">
+                        </div>
+                        <div class="input-group">
+                            <label>Leg Press (total weight)</label>
+                            <input type="number" id="legpress" placeholder="200">
+                        </div>
+                        <div class="input-group">
+                            <label>DB Goblet Squat (lbs)</label>
+                            <input type="number" id="goblet" placeholder="50">
+                        </div>
+                    </div>
+                    <button class="save-button" onclick="saveStrength()">Save Strength</button>
+                </div>
+
+                <div class="progress-section">
+                    <h3>Saved Progress Log</h3>
+                    <div id="progressLog" style="padding: 20px; background: #f8f9fa; border-radius: 8px; min-height: 100px;">
+                        <p style="color: #999; text-align: center;">Your saved progress will appear here</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- PROGRAM NOTES -->
+            <div id="notes" class="week-section">
+                <div class="phase-header">
+                    <h2>Program Notes & Guidelines</h2>
+                    <p>Important information for success</p>
+                </div>
+
+                <div class="notes">
+                    <h4>Rest Periods:</h4>
+                    <ul>
+                        <li><strong>Weeks 1-2:</strong> 60-90 seconds between supersets</li>
+                        <li><strong>Weeks 3-4:</strong> 90 seconds between supersets</li>
+                        <li><strong>Weeks 5-6:</strong> 90-120 seconds between supersets (you're lifting heavier)</li>
+                    </ul>
+                </div>
+
+                <div class="notes">
+                    <h4>Progressive Overload:</h4>
+                    <ul>
+                        <li>Write down your weights each session in the Progress Tracker</li>
+                        <li>If you hit the top end of the rep range easily, increase weight by 5 lbs next session</li>
+                        <li>Example: If you do 12 reps easily, go up in weight the following week</li>
+                        <li>It's better to use slightly lighter weight with perfect form than heavy weight with poor form</li>
+                    </ul>
+                </div>
+
+                <div class="notes">
+                    <h4>Form Guidelines:</h4>
+                    <ul>
+                        <li>Always prioritize proper form over weight</li>
+                        <li>Control the eccentric (lowering) phase for 2-3 seconds</li>
+                        <li>Squeeze and contract at the top of each movement</li>
+                        <li>If form breaks down, reduce the weight immediately</li>
+                        <li>Click the exercise names to watch form videos!</li>
+                    </ul>
+                </div>
+
+                <div class="notes">
+                    <h4>Cardio Intensity Zones:</h4>
+                    <ul>
+                        <li><strong>Moderate:</strong> Can hold a conversation, 65-75% max heart rate</li>
+                        <li><strong>Moderate-High:</strong> Breathing hard, short sentences, 75-85% max heart rate</li>
+                        <li><strong>High:</strong> Can barely talk, 85%+ max heart rate</li>
+                    </ul>
+                </div>
+
+                <div class="notes">
+                    <h4>Recovery Tips:</h4>
+                    <ul>
+                        <li>Aim for 7-9 hours of sleep per night</li>
+                        <li>Stay hydrated: ~115 oz of water daily (bodyweight ÷ 2 = oz)</li>
+                        <li>Stretch or foam roll on rest days</li>
+                        <li>Listen to your body - if you need extra rest, take it</li>
+                        <li>Wednesday and Sunday are full rest days - use them!</li>
+                    </ul>
+                </div>
+
+                <div class="notes">
+                    <h4>Equipment Substitutions:</h4>
+                    <ul>
+                        <li>If dumbbells aren't available for an exercise, use the machine equivalent at Lifetime</li>
+                        <li>Chest pull machine can be substituted with lat pulldown</li>
+                        <li>Most leg exercises can be done with bodyweight if needed</li>
+                        <li>Saturday classes are flexible - choose what you enjoy!</li>
+                    </ul>
+                </div>
+
+                <div class="notes">
+                    <h4>Success Tips:</h4>
+                    <ul>
+                        <li>Work out in the morning when possible for consistency</li>
+                        <li>Prepare your gym bag and clothes the night before</li>
+                        <li>Track every workout - what gets measured gets improved</li>
+                        <li>Take progress photos every 2 weeks (same lighting, same pose)</li>
+                        <li>Stay consistent - 6 weeks goes fast!</li>
+                    </ul>
+                </div>
+
+                <div class="notes" style="background: #fff3cd; border-left-color: #ffc107;">
+                    <h4>⚠️ When to Modify:</h4>
+                    <ul>
+                        <li>If you feel pain (not muscle soreness), stop and assess</li>
+                        <li>If you're extremely sore, reduce volume or take extra rest</li>
+                        <li>If life gets busy, doing 3-4 days is better than 0 days</li>
+                        <li>Quality over quantity - never sacrifice form for reps</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showWeek(weekId) {
+            // Hide all sections
+            const sections = document.querySelectorAll('.week-section');
+            sections.forEach(section => section.classList.remove('active'));
+            
+            // Show selected section
+            document.getElementById(weekId).classList.add('active');
+            
+            // Update tab buttons
+            const buttons = document.querySelectorAll('.tab-button');
+            buttons.forEach(button => button.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Scroll to top
+            window.scrollTo({top: 0, behavior: 'smooth'});
+        }
+
+        function saveProgress() {
+            const week = document.getElementById('week').value;
+            const weight = document.getElementById('weight').value;
+            const bodyfat = document.getElementById('bodyfat').value;
+            const waist = document.getElementById('waist').value;
+
+            if (!week || !weight || !bodyfat) {
+                alert('Please fill in at least Week, Weight, and Body Fat %');
+                return;
+            }
+
+            const progressLog = document.getElementById('progressLog');
+            const date = new Date().toLocaleDateString();
+            
+            const entry = document.createElement('div');
+            entry.style.cssText = 'background: white; padding: 15px; margin-bottom: 10px; border-radius: 5px; border-left: 4px solid #667eea;';
+            entry.innerHTML = `
+                <strong>Week ${week}</strong> - ${date}<br>
+                Weight: ${weight} lbs | Body Fat: ${bodyfat}% ${waist ? `| Waist: ${waist}"` : ''}
+            `;
+            
+            if (progressLog.firstChild.tagName === 'P') {
+                progressLog.innerHTML = '';
+            }
+            
+            progressLog.insertBefore(entry, progressLog.firstChild);
+            
+            // Clear inputs
+            document.getElementById('week').value = '';
+            document.getElementById('weight').value = '';
+            document.getElementById('bodyfat').value = '';
+            document.getElementById('waist').value = '';
+            
+            alert('Progress saved!');
+        }
+
+        function saveStrength() {
+            const bench = document.getElementById('bench').value;
+            const row = document.getElementById('row').value;
+            const shoulder = document.getElementById('shoulder').value;
+            const rdl = document.getElementById('rdl').value;
+            const legpress = document.getElementById('legpress').value;
+            const goblet = document.getElementById('goblet').value;
+
+            if (!bench && !row && !shoulder && !rdl && !legpress && !goblet) {
+                alert('Please fill in at least one exercise weight');
+                return;
+            }
+
+            const progressLog = document.getElementById('progressLog');
+            const date = new Date().toLocaleDateString();
+            
+            const entry = document.createElement('div');
+            entry.style.cssText = 'background: white; padding: 15px; margin-bottom: 10px; border-radius: 5px; border-left: 4px solid #764ba2;';
+            
+            let strengthData = `<strong>Strength Check</strong> - ${date}<br>`;
+            if (bench) strengthData += `Bench: ${bench} lbs | `;
+            if (row) strengthData += `Row: ${row} lbs | `;
+            if (shoulder) strengthData += `Shoulder: ${shoulder} lbs | `;
+            if (rdl) strengthData += `RDL: ${rdl} lbs | `;
+            if (legpress) strengthData += `Leg Press: ${legpress} lbs | `;
+            if (goblet) strengthData += `Goblet: ${goblet} lbs`;
+            
+            entry.innerHTML = strengthData;
+            
+            if (progressLog.firstChild.tagName === 'P') {
+                progressLog.innerHTML = '';
+            }
+            
+            progressLog.insertBefore(entry, progressLog.firstChild);
+            
+            // Clear inputs
+            document.getElementById('bench').value = '';
+            document.getElementById('row').value = '';
+            document.getElementById('shoulder').value = '';
+            document.getElementById('rdl').value = '';
+            document.getElementById('legpress').value = '';
+            document.getElementById('goblet').value = '';
+            
+            alert('Strength data saved!');
+        }
+    </script>
+</body>
+</html>
