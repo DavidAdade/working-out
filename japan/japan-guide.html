@@ -1,0 +1,1918 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Japan Trip Guide — April 2026</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700;900&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #1a1a2e;
+  --paper: #faf8f5;
+  --accent: #c0392b;
+  --accent-light: #e74c3c;
+  --gold: #d4a762;
+  --gold-light: #f0dbb8;
+  --mist: #e8e4df;
+  --sage: #7a8b6f;
+  --sage-light: #d4dece;
+  --sky: #5b8fa8;
+  --sky-light: #d0e4ed;
+  --warm: #f5ede3;
+  --card-bg: #ffffff;
+  --shadow: 0 2px 20px rgba(26,26,46,0.06);
+  --shadow-hover: 0 8px 32px rgba(26,26,46,0.12);
+  --radius: 12px;
+  --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--paper);
+  color: var(--ink);
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── HERO ── */
+.hero {
+  position: relative;
+  padding: 80px 24px 60px;
+  text-align: center;
+  background: linear-gradient(165deg, #1a1a2e 0%, #2d1b3d 40%, #4a1942 70%, #c0392b 100%);
+  color: white;
+  overflow: hidden;
+}
+.hero::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") repeat;
+  opacity: 1;
+}
+.hero-content { position: relative; z-index: 1; max-width: 700px; margin: 0 auto; }
+.hero-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,255,255,0.12);
+  backdrop-filter: blur(8px);
+  padding: 8px 20px;
+  border-radius: 40px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  margin-bottom: 24px;
+  border: 1px solid rgba(255,255,255,0.15);
+}
+.hero h1 {
+  font-family: 'Playfair Display', serif;
+  font-size: clamp(2.6rem, 6vw, 4.2rem);
+  font-weight: 700;
+  line-height: 1.15;
+  margin-bottom: 16px;
+  letter-spacing: -0.02em;
+}
+.hero h1 em {
+  font-style: italic;
+  color: var(--gold-light);
+}
+.hero-sub {
+  font-size: 1.05rem;
+  opacity: 0.85;
+  font-weight: 300;
+  max-width: 500px;
+  margin: 0 auto 28px;
+  line-height: 1.6;
+}
+.hero-dates {
+  display: inline-flex;
+  gap: 20px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.hero-date {
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 10px;
+  padding: 10px 18px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  backdrop-filter: blur(4px);
+}
+.hero-date span { display: block; font-size: 0.72rem; opacity: 0.65; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 2px; }
+
+/* ── TAB NAV ── */
+.tab-nav-wrap {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: var(--paper);
+  border-bottom: 1px solid var(--mist);
+  box-shadow: 0 1px 8px rgba(0,0,0,0.04);
+}
+.tab-nav {
+  display: flex;
+  max-width: 900px;
+  margin: 0 auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.tab-nav::-webkit-scrollbar { display: none; }
+.tab-btn {
+  flex: 1;
+  min-width: 120px;
+  padding: 16px 12px;
+  background: none;
+  border: none;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--ink);
+  opacity: 0.5;
+  cursor: pointer;
+  position: relative;
+  transition: var(--transition);
+  white-space: nowrap;
+  text-align: center;
+  letter-spacing: 0.01em;
+}
+.tab-btn::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 3px;
+  background: var(--accent);
+  border-radius: 3px 3px 0 0;
+  transition: var(--transition);
+}
+.tab-btn.active { opacity: 1; }
+.tab-btn.active::after { width: 40px; }
+.tab-btn:hover { opacity: 0.8; }
+.tab-btn .tab-emoji { margin-right: 6px; }
+
+/* ── MAIN CONTENT ── */
+.main { max-width: 900px; margin: 0 auto; padding: 0 20px; }
+.tab-panel { display: none; padding: 36px 0 60px; animation: fadeIn 0.4s ease; }
+.tab-panel.active { display: block; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ── SECTION HEADERS ── */
+.section-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 48px 0 24px;
+  padding-bottom: 14px;
+  border-bottom: 2px solid var(--mist);
+}
+.section-header:first-child { margin-top: 0; }
+.section-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  flex-shrink: 0;
+}
+.section-icon.red { background: #fde8e8; }
+.section-icon.green { background: var(--sage-light); }
+.section-icon.blue { background: var(--sky-light); }
+.section-icon.gold { background: var(--gold-light); }
+.section-icon.purple { background: #ede7f6; }
+.section-header h2 {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.55rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.section-header p { font-size: 0.85rem; color: #777; margin-top: 2px; }
+
+/* ── CARDS ── */
+.card-grid { display: flex; flex-direction: column; gap: 18px; }
+
+.card {
+  background: var(--card-bg);
+  border-radius: var(--radius);
+  border: 1px solid var(--mist);
+  overflow: hidden;
+  transition: var(--transition);
+  box-shadow: var(--shadow);
+}
+.card:hover { box-shadow: var(--shadow-hover); transform: translateY(-2px); }
+
+.card-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 22px 24px 0;
+}
+.card-num {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.82rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  color: white;
+  margin-top: 2px;
+}
+.card-num.red { background: var(--accent); }
+.card-num.green { background: var(--sage); }
+.card-num.blue { background: var(--sky); }
+.card-num.gold { background: var(--gold); }
+.card-num.purple { background: #7e57c2; }
+
+.card-title-wrap { flex: 1; }
+.card-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.18rem;
+  font-weight: 700;
+  line-height: 1.3;
+  margin-bottom: 2px;
+}
+.card-subtitle { font-size: 0.82rem; color: #888; font-weight: 400; }
+
+.card-body { padding: 14px 24px 20px; }
+.card-body p { font-size: 0.92rem; color: #444; margin-bottom: 10px; line-height: 1.65; }
+
+.card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 12px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+.tag.cost { background: #fef3e2; color: #b8860b; }
+.tag.time { background: #e8f4fd; color: #2980b9; }
+.tag.book { background: #fde8e8; color: #c0392b; }
+.tag.free { background: #e8f5e9; color: #388e3c; }
+.tag.family { background: #f3e5f5; color: #7b1fa2; }
+.tag.skip { background: #fce4ec; color: #c62828; }
+.tag.walk-in { background: #e0f2f1; color: #00695c; }
+.tag.viral { background: #fff3e0; color: #e65100; }
+
+.card-highlights {
+  font-size: 0.88rem;
+  color: #555;
+  padding-left: 0;
+  list-style: none;
+  margin-bottom: 14px;
+}
+.card-highlights li {
+  position: relative;
+  padding-left: 20px;
+  margin-bottom: 6px;
+  line-height: 1.55;
+}
+.card-highlights li::before {
+  content: '›';
+  position: absolute;
+  left: 4px;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.card-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid #f0eeeb;
+}
+.card-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: var(--transition);
+}
+.card-link.primary { background: var(--accent); color: white; }
+.card-link.primary:hover { background: var(--accent-light); }
+.card-link.secondary { background: var(--mist); color: var(--ink); }
+.card-link.secondary:hover { background: #d9d5d0; }
+
+/* ── SKIP CARDS (expanded info) ── */
+.skip-card {
+  background: #fff8f6;
+  border: 1px solid #f0d5cf;
+  border-radius: var(--radius);
+  padding: 24px;
+  margin-bottom: 18px;
+  box-shadow: var(--shadow);
+}
+.skip-card .skip-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #fde8e8;
+  color: #c0392b;
+  padding: 5px 14px;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 14px;
+}
+.skip-card h3 {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+.skip-card p { font-size: 0.9rem; color: #555; margin-bottom: 8px; line-height: 1.65; }
+.skip-card .alt-box {
+  background: #e8f5e9;
+  border-radius: 10px;
+  padding: 14px 18px;
+  margin-top: 14px;
+}
+.skip-card .alt-box strong { color: #2e7d32; font-size: 0.85rem; display: block; margin-bottom: 4px; }
+.skip-card .alt-box p { color: #444; font-size: 0.85rem; margin: 0; }
+
+/* ── TIPS TAB ── */
+.tip-section {
+  margin-bottom: 36px;
+}
+.tip-section h3 {
+  font-family: 'Playfair Display', serif;
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--mist);
+}
+.tip-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+.tip-card {
+  background: var(--card-bg);
+  border: 1px solid var(--mist);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+  box-shadow: var(--shadow);
+  transition: var(--transition);
+}
+.tip-card:hover { box-shadow: var(--shadow-hover); }
+.tip-card .tip-icon { font-size: 1.3rem; margin-bottom: 8px; }
+.tip-card h4 { font-size: 0.95rem; font-weight: 700; margin-bottom: 6px; }
+.tip-card p { font-size: 0.88rem; color: #555; line-height: 1.6; }
+.tip-card .tip-do {
+  background: #e8f5e9;
+  color: #2e7d32;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  display: inline-block;
+  margin-top: 8px;
+}
+.tip-card .tip-dont {
+  background: #fde8e8;
+  color: #c0392b;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  display: inline-block;
+  margin-top: 8px;
+}
+
+/* ── BOOKING TIMELINE ── */
+.timeline {
+  position: relative;
+  padding-left: 28px;
+  margin: 20px 0;
+}
+.timeline::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--mist);
+}
+.timeline-item {
+  position: relative;
+  padding-bottom: 24px;
+}
+.timeline-item::before {
+  content: '';
+  position: absolute;
+  left: -24px;
+  top: 6px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: var(--paper);
+}
+.timeline-item.urgent::before { background: var(--accent); }
+.timeline-item h4 { font-size: 0.92rem; font-weight: 700; margin-bottom: 4px; }
+.timeline-item p { font-size: 0.85rem; color: #666; }
+
+/* ── COST TABLE ── */
+.cost-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+  font-size: 0.88rem;
+}
+.cost-table th {
+  text-align: left;
+  padding: 12px 16px;
+  background: var(--warm);
+  font-weight: 600;
+  border-bottom: 2px solid var(--mist);
+}
+.cost-table td {
+  padding: 10px 16px;
+  border-bottom: 1px solid #f0eeeb;
+  color: #555;
+}
+.cost-table tr:hover td { background: #fdfcfa; }
+
+/* ── RESPONSIVE ── */
+@media (min-width: 640px) {
+  .tip-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 600px) {
+  .hero { padding: 60px 20px 40px; }
+  .hero h1 { font-size: 2rem; }
+  .card-top { padding: 18px 18px 0; }
+  .card-body { padding: 12px 18px 18px; }
+  .section-header h2 { font-size: 1.3rem; }
+}
+
+/* ── DIVIDER ── */
+.divider {
+  height: 1px;
+  background: var(--mist);
+  margin: 40px 0;
+}
+
+/* ── CALLOUT ── */
+.callout {
+  background: var(--warm);
+  border-left: 4px solid var(--gold);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  padding: 18px 22px;
+  margin: 20px 0;
+  font-size: 0.9rem;
+  color: #555;
+  line-height: 1.65;
+}
+.callout strong { color: var(--ink); }
+
+.callout.green {
+  background: #f0f7f0;
+  border-left-color: var(--sage);
+}
+
+.callout.red {
+  background: #fff5f5;
+  border-left-color: var(--accent);
+}
+</style>
+</head>
+<body>
+
+<!-- ════════ HERO ════════ -->
+<header class="hero">
+  <div class="hero-content">
+    <div class="hero-flag">🇯🇵 Family Adventure</div>
+    <h1>David's <em>Japan</em> Trip Guide</h1>
+    <p class="hero-sub">Osaka → Kyoto → Tokyo with your wife, daughter & crew. Everything you need, all in one place.</p>
+    <div class="hero-dates">
+      <div class="hero-date"><span>Osaka</span>Apr 16 – 20</div>
+      <div class="hero-date"><span>Kyoto</span>Day Trip</div>
+      <div class="hero-date"><span>Tokyo</span>Apr 20 – 27</div>
+    </div>
+  </div>
+</header>
+
+<!-- ════════ TAB NAV ════════ -->
+<nav class="tab-nav-wrap">
+  <div class="tab-nav">
+    <button class="tab-btn active" data-tab="osaka"><span class="tab-emoji">🏯</span>Osaka</button>
+    <button class="tab-btn" data-tab="kyoto"><span class="tab-emoji">⛩️</span>Kyoto</button>
+    <button class="tab-btn" data-tab="tokyo"><span class="tab-emoji">🗼</span>Tokyo</button>
+    <button class="tab-btn" data-tab="bookings"><span class="tab-emoji">📅</span>Bookings</button>
+    <button class="tab-btn" data-tab="tips"><span class="tab-emoji">🎌</span>Tips & Etiquette</button>
+  </div>
+</nav>
+
+<!-- ════════ MAIN ════════ -->
+<div class="main">
+
+<!-- ══════════════════════════════════════════ -->
+<!-- OSAKA TAB -->
+<!-- ══════════════════════════════════════════ -->
+<div id="osaka" class="tab-panel active">
+
+  <div class="section-header">
+    <div class="section-icon red">🔥</div>
+    <div><h2>Must Do</h2><p>Non-negotiable Osaka experiences</p></div>
+  </div>
+  <div class="card-grid">
+
+    <!-- 1 -->
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num red">1</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Dotonbori Street Food Crawl</div>
+          <div class="card-subtitle">Iconic neon-lit canal district</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">¥2,000–3,000pp</span>
+          <span class="tag time">Evening 6–10pm</span>
+          <span class="tag family">👶 Family-friendly</span>
+        </div>
+        <p>This IS Osaka. Massive neon signs, the iconic Glico Running Man, and the best street food in Japan. Evening visits are essential for the full sensory overload.</p>
+        <ul class="card-highlights">
+          <li><strong>Takoyaki Tamaya</strong> — Locals say best takoyaki in the city (cash only)</li>
+          <li><strong>Mizuno</strong> — Famous for its okonomiyaki</li>
+          <li><strong>Kushikatsu Daruma</strong> — Deep-fried skewer heaven</li>
+          <li>Outdoor and casual — your daughter can snack as you walk</li>
+        </ul>
+        <div class="card-links">
+          <a href="https://www.osaka-info.jp/en/page/dotonbori" target="_blank" class="card-link primary">🌐 Info</a>
+          <a href="https://www.youtube.com/results?search_query=dotonbori+osaka+food+guide+2024" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2 -->
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num red">2</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Kuromon Ichiba Market</div>
+          <div class="card-subtitle">"Osaka's Kitchen" — Fresh seafood market</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">¥1,500–2,500pp</span>
+          <span class="tag time">9am–2pm</span>
+          <span class="tag family">👶 Family-friendly</span>
+          <span class="tag walk-in">Walk-in</span>
+        </div>
+        <p>Eat-as-you-walk seafood market. Grilled king crab legs, fresh tuna sashimi, salt-grilled prawns — all incredibly fresh and affordable. Covered market, easy with a stroller.</p>
+        <div class="card-links">
+          <a href="https://kuromon.com/" target="_blank" class="card-link primary">🌐 Website</a>
+          <a href="https://www.youtube.com/results?search_query=kuromon+market+osaka+2024" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3 -->
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num red">3</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Osaka Castle & Park</div>
+          <div class="card-subtitle">Historic castle with expansive grounds</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag free">Park FREE</span>
+          <span class="tag cost">Castle ¥600</span>
+          <span class="tag time">2–3 hours</span>
+          <span class="tag family">👶 Family-friendly</span>
+        </div>
+        <p>Major landmark with beautiful grounds. Cherry blossoms will be done by mid-April, but the castle park is still gorgeous. Wide open spaces for your daughter to run around.</p>
+        <div class="card-links">
+          <a href="https://www.osakacastle.net/english" target="_blank" class="card-link primary">🌐 Website</a>
+          <a href="https://www.youtube.com/results?search_query=osaka+castle+guide" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4 -->
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num red">4</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Shinsekai & Tsutenkaku Tower</div>
+          <div class="card-subtitle">Retro neighborhood with old-school vibes</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">~¥2,000pp food</span>
+          <span class="tag viral">📱 TikTok-worthy</span>
+          <span class="tag family">👶 Family-friendly</span>
+          <span class="tag walk-in">Walk-in</span>
+        </div>
+        <p>Authentic Osaka, kushikatsu (deep-fried skewers) heaven, carnival games, and a vintage retro aesthetic that's TikTok gold. Super affordable.</p>
+        <ul class="card-highlights">
+          <li><strong>Kushikatsu Daruma</strong> or <strong>Yaekatu</strong> for the best skewers</li>
+          <li><strong>Jan Jan Yokocho alley</strong> for the full retro vibe</li>
+        </ul>
+        <div class="card-links">
+          <a href="https://www.youtube.com/results?search_query=shinsekai+osaka" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /card-grid -->
+
+  <div class="section-header">
+    <div class="section-icon green">👍</div>
+    <div><h2>Should Do</h2><p>Highly recommended if time allows</p></div>
+  </div>
+  <div class="card-grid">
+
+    <!-- 5 -->
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num green">5</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Universal Studios Japan + Super Nintendo World</div>
+          <div class="card-subtitle">Theme park with EXCLUSIVE Nintendo World</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">¥8,600–10,400 day pass</span>
+          <span class="tag book">⚠️ Book 2 months ahead</span>
+          <span class="tag time">Full day</span>
+        </div>
+        <p>Super Nintendo World is the main draw — it doesn't exist in most other Universal parks. Mario Kart: Koopa's Challenge (AR ride), Yoshi's Adventure (gentle, great for families), interactive Power-Up Bands, Bowser's Castle, Princess Peach's Castle. The whole land is insanely detailed and photogenic.</p>
+        <ul class="card-highlights">
+          <li><strong>Express Pass (¥10,800–27,800)</strong> — Skip lines + guaranteed Nintendo World entry. Highly recommended.</li>
+          <li><strong>Nintendo World requires timed entry OR Express Pass</strong> — regular admission ≠ guaranteed entry</li>
+          <li>Your daughter needs a ticket but can do Yoshi's Adventure and meet & greets</li>
+          <li>Also has Harry Potter, Minions Park, Jujutsu Kaisen, Demon Slayer attractions</li>
+          <li><strong>Strategy:</strong> Buy tickets mid-Feb, download USJ app, arrive at park opening, immediately grab Nintendo timed entry via app</li>
+        </ul>
+        <div class="card-links">
+          <a href="https://www.usj.co.jp/web/en/us" target="_blank" class="card-link primary">🎫 Official Site</a>
+          <a href="https://www.klook.com/en-US/activity/883-universal-studios-japan-osaka/" target="_blank" class="card-link primary">🎫 Klook</a>
+          <a href="https://www.youtube.com/results?search_query=super+nintendo+world+osaka+2024" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6 -->
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num green">6</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Umeda Sky Building — Floating Garden</div>
+          <div class="card-subtitle">360° open-air rooftop observatory</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">¥1,500 adults / Under 4 FREE</span>
+          <span class="tag time">Sunset ~6:30pm</span>
+          <span class="tag family">👶 Family-friendly</span>
+        </div>
+        <p>Stunning sunset views from a unique architectural landmark. Elevator access, safe railings — great for the whole family.</p>
+        <div class="card-links">
+          <a href="https://www.skybldg.co.jp/en/" target="_blank" class="card-link primary">🌐 Website</a>
+          <a href="https://www.youtube.com/results?search_query=umeda+sky+building" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7 -->
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num green">7</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Nipponbashi Den Den Town</div>
+          <div class="card-subtitle">Osaka's Akihabara — Anime, manga, gaming</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag free">Free to browse</span>
+          <span class="tag family">👶 Stroller-friendly</span>
+          <span class="tag walk-in">Walk-in</span>
+        </div>
+        <p>Less touristy than Tokyo's Akihabara. Great for group browsing through anime shops, arcades, and electronics. Don't miss the <strong>Pokémon Center Osaka</strong> and <strong>Nintendo Store Osaka</strong> inside Daimaru Shinsaibashi.</p>
+        <div class="card-links">
+          <a href="https://www.youtube.com/results?search_query=den+den+town+osaka" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /card-grid -->
+
+  <div class="section-header">
+    <div class="section-icon blue">🤔</div>
+    <div><h2>Maybe Do</h2><p>Worth it depending on energy & schedule</p></div>
+  </div>
+  <div class="card-grid">
+
+    <!-- 8 -->
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num blue">8</div>
+        <div class="card-title-wrap">
+          <div class="card-title">teamLab Botanical Garden Osaka</div>
+          <div class="card-subtitle">Nighttime digital art light show</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">¥2,200 adults / Under 6 FREE</span>
+          <span class="tag time">Evening only (after 6pm)</span>
+          <span class="tag viral">📱 Instagram gold</span>
+        </div>
+        <p>Stunning light installations in a botanical garden setting. Incredible for photos and TikTok content. However, dark walking paths might be tricky with a 21-month-old at night.</p>
+        <div class="card-links">
+          <a href="https://www.teamlab.art/e/botanicalgarden-osaka/" target="_blank" class="card-link primary">🌐 Website</a>
+          <a href="https://www.youtube.com/results?search_query=teamlab+botanical+garden+osaka" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 9 -->
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num blue">9</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Spa World</div>
+          <div class="card-subtitle">Massive onsen theme park</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">¥1,500 adults</span>
+          <span class="tag family">👶 Family sections available</span>
+          <span class="tag walk-in">Walk-in</span>
+        </div>
+        <p>European & Asian themed bath floors. A great way to introduce your daughter to onsen culture in a less intimidating, family-friendly setting with mixed bathing areas.</p>
+        <div class="card-links">
+          <a href="http://www.spaworld.co.jp/english/" target="_blank" class="card-link primary">🌐 Website</a>
+          <a href="https://www.youtube.com/results?search_query=spa+world+osaka" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 10 -->
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num blue">10</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Tenma Standing Bar District</div>
+          <div class="card-subtitle">1,000+ tiny bars & izakayas — ADULTS ONLY</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">¥2,000–3,000pp</span>
+          <span class="tag time">Evening</span>
+          <span class="tag walk-in">Walk-in</span>
+        </div>
+        <p>For an evening without your daughter: ultra-local vibe, dirt cheap prices. Tachinomi Jin for sake, Kawachiya for yakitori. Real Osaka, not tourist Osaka.</p>
+        <div class="card-links">
+          <a href="https://www.youtube.com/results?search_query=tenma+osaka+bars" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- 11 -->
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num blue">11</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Book and Bed — All-Black Café</div>
+          <div class="card-subtitle">Viral TikTok spot in Shinsaibashi</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">¥800–1,200 per item</span>
+          <span class="tag viral">📱 TikTok Viral</span>
+          <span class="tag walk-in">Walk-in</span>
+        </div>
+        <p>Everything is black — lattes, desserts, décor. Bit gimmicky but super fun for photos and unique content.</p>
+        <div class="card-links">
+          <a href="https://www.youtube.com/results?search_query=black+cafe+osaka" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="callout red">
+    <strong>⚠️ Skip: Tempozan Anipa (Petting Zoo)</strong> — Recent reviews cite poor animal welfare, cramped spaces, and stressed animals. Go to AniTouch in Tokyo instead (much better rated, opened 2024).
+  </div>
+
+  <div class="section-header">
+    <div class="section-icon gold">📋</div>
+    <div><h2>Suggested Osaka Itinerary</h2><p>Two options depending on USJ</p></div>
+  </div>
+
+  <div class="callout">
+    <strong>Option A: With USJ (4-day Osaka)</strong><br>
+    Day 1: Arrive, Dotonbori evening &bull; Day 2: Universal Studios Japan (full day) &bull; Day 3: Osaka Castle, Kuromon Market, Shinsekai, Umeda Sky Building &bull; Day 4: Kyoto day trip
+  </div>
+  <div class="callout green">
+    <strong>Option B: Without USJ (4-day Osaka)</strong><br>
+    Day 1: Arrive, Dotonbori evening &bull; Day 2: Osaka Castle, Nipponbashi, Nintendo Store, Pokémon Center &bull; Day 3: Shinsekai, Kuromon Market, Umeda Sky Building, Tenma bars &bull; Day 4: Kyoto day trip
+  </div>
+
+</div><!-- /osaka -->
+
+<!-- ══════════════════════════════════════════ -->
+<!-- KYOTO TAB -->
+<!-- ══════════════════════════════════════════ -->
+<div id="kyoto" class="tab-panel">
+
+  <div class="callout">
+    <strong>Getting There:</strong> 25 min on Special Rapid from Osaka (¥560) or 15 min Shinkansen. Easy day trip — leave early, return for dinner in Osaka.
+  </div>
+
+  <div class="section-header">
+    <div class="section-icon red">🔥</div>
+    <div><h2>Must Do</h2><p>The essential Kyoto trifecta</p></div>
+  </div>
+  <div class="card-grid">
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num red">1</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Fushimi Inari Shrine</div>
+          <div class="card-subtitle">The 10,000 orange torii gates</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag free">FREE</span>
+          <span class="tag time">7–9am arrival, 2–3 hours</span>
+          <span class="tag family">👶 Family-friendly</span>
+          <span class="tag walk-in">Walk-in, always open</span>
+        </div>
+        <p>THE most photographed spot in Kyoto. Go early (7–8am) to avoid crushing crowds. Your daughter can walk through the smaller gates — incredibly photogenic. Stroller is doable but a baby carrier is better due to stairs.</p>
+        <div class="card-links">
+          <a href="http://inari.jp/en/" target="_blank" class="card-link primary">🌐 Website</a>
+          <a href="https://www.youtube.com/results?search_query=fushimi+inari+shrine+guide" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num red">2</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Arashiyama Bamboo Grove</div>
+          <div class="card-subtitle">Towering bamboo forest pathway</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag free">FREE</span>
+          <span class="tag time">Early morning or late afternoon</span>
+          <span class="tag family">👶 Stroller-friendly (paved)</span>
+        </div>
+        <p>Otherworldly, iconic Kyoto. Paved pathway through towering bamboo. Monkey Park is nearby (30-min hike) but skip it with a toddler.</p>
+        <div class="card-links">
+          <a href="https://www.youtube.com/results?search_query=arashiyama+bamboo+grove" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num red">3</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Kinkaku-ji (Golden Pavilion)</div>
+          <div class="card-subtitle">Stunning gold-covered temple</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">¥500 adults / Kids FREE</span>
+          <span class="tag time">30–45 min</span>
+          <span class="tag family">👶 Easy walking paths</span>
+        </div>
+        <p>Most beautiful temple in Kyoto. Gold-covered, reflected perfectly in its pond. Quick visit but absolutely worth it.</p>
+        <div class="card-links">
+          <a href="https://www.shokoku-ji.jp/en/kinkakuji/" target="_blank" class="card-link primary">🌐 Website</a>
+          <a href="https://www.youtube.com/results?search_query=kinkakuji+golden+pavilion" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="section-header">
+    <div class="section-icon green">👍</div>
+    <div><h2>Should Do</h2><p>If you have time after the big three</p></div>
+  </div>
+  <div class="card-grid">
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num green">4</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Nishiki Market</div>
+          <div class="card-subtitle">"Kyoto's Kitchen" — 400-year-old covered food market</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">¥1,000–2,000 snacking</span>
+          <span class="tag time">10am–5pm (shops close early)</span>
+          <span class="tag family">👶 Covered, stroller-friendly</span>
+        </div>
+        <p>Samples, street food, souvenirs, and all-weather. Great for a lunch stop between temples.</p>
+        <div class="card-links">
+          <a href="https://www.youtube.com/results?search_query=nishiki+market+kyoto" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num green">5</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Gion District</div>
+          <div class="card-subtitle">Traditional geisha district</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag free">FREE to walk</span>
+          <span class="tag time">Best at dusk</span>
+          <span class="tag family">👶 Pedestrian streets</span>
+        </div>
+        <p>Beautiful traditional streets, possible geisha sightings near Hanami-koji Street. Stunning for photos, especially at twilight.</p>
+        <div class="card-links">
+          <a href="https://www.youtube.com/results?search_query=gion+district+kyoto" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="callout">
+    <strong>💡 Kyoto is extremely stroller-friendly.</strong> Pack snacks for your daughter — temple grounds have limited food options. Baby carrier recommended for Fushimi Inari's stairs.
+  </div>
+
+</div><!-- /kyoto -->
+
+<!-- ══════════════════════════════════════════ -->
+<!-- TOKYO TAB -->
+<!-- ══════════════════════════════════════════ -->
+<div id="tokyo" class="tab-panel">
+
+  <div class="section-header">
+    <div class="section-icon red">🔥</div>
+    <div><h2>Family Must Do</h2><p>You + wife + daughter</p></div>
+  </div>
+  <div class="card-grid">
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num red">1</div>
+        <div class="card-title-wrap">
+          <div class="card-title">teamLab Borderless</div>
+          <div class="card-subtitle">Azabudai Hills — 75+ interactive digital art installations</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">¥3,800+ adults / Under 4 FREE</span>
+          <span class="tag book">⚠️ Book NOW — Feb 2 for April</span>
+          <span class="tag time">3 hours minimum</span>
+          <span class="tag family">👶 She'll LOVE this</span>
+        </div>
+        <p>"Museum without a map" — borderless digital art that responds to your movement. Your daughter will be mesmerized by the interactive elements. Weekday mornings are less crowded.</p>
+        <div class="card-links">
+          <a href="https://borderless.teamlab.art/tokyo/" target="_blank" class="card-link primary">🎫 Official</a>
+          <a href="https://www.klook.com/en-US/activity/20707-teamlab-borderless-admission-ticket-tokyo/" target="_blank" class="card-link primary">🎫 Klook</a>
+          <a href="https://www.youtube.com/results?search_query=teamlab+borderless+tokyo+2024" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num red">2</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Asakusa & Sensō-ji Temple</div>
+          <div class="card-subtitle">Tokyo's oldest temple + Nakamise shopping street</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag free">FREE</span>
+          <span class="tag time">2–3 hours</span>
+          <span class="tag family">👶 Very stroller-friendly</span>
+          <span class="tag walk-in">Walk-in</span>
+        </div>
+        <p>Classic Tokyo. Massive red lantern gate, traditional snacks on the shopping street, wide pedestrian areas perfect with a stroller.</p>
+        <div class="card-links">
+          <a href="https://www.youtube.com/results?search_query=senso-ji+temple+tokyo" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num red">3</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Ueno Park & Ueno Zoo</div>
+          <div class="card-subtitle">Giant park with Japan's oldest zoo — PANDAS!</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">Zoo ¥600 / Under 12 FREE</span>
+          <span class="tag time">3–4 hours</span>
+          <span class="tag family">👶 Petting zoo section</span>
+        </div>
+        <p>Your daughter will love the pandas and the petting zoo section. Expansive park with wide paths for running around.</p>
+        <div class="card-links">
+          <a href="https://www.tokyo-zoo.net/english/ueno/" target="_blank" class="card-link primary">🌐 Website</a>
+          <a href="https://www.youtube.com/results?search_query=ueno+zoo+tokyo+pandas" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num red">4</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Shibuya Crossing + Shibuya Sky</div>
+          <div class="card-subtitle">World's busiest intersection + rooftop observatory</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">Shibuya Sky ¥2,000–2,500 / Under 6 FREE</span>
+          <span class="tag book">⚠️ Book 2–3 weeks ahead (sunset slots)</span>
+          <span class="tag time">2–3 hours</span>
+        </div>
+        <p>Iconic Tokyo experience. Let your daughter experience the organized chaos of the crossing (best viewed from Starbucks 2nd floor), then head up Shibuya Sky for 360° views including Mt. Fuji.</p>
+        <div class="card-links">
+          <a href="https://www.shibuya-scramble-square.com/sky/en/" target="_blank" class="card-link primary">🎫 Book</a>
+          <a href="https://www.klook.com/en-US/activity/70672-shibuya-sky-tokyo/" target="_blank" class="card-link primary">🎫 Klook</a>
+          <a href="https://www.youtube.com/results?search_query=shibuya+sky+tokyo" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /must do -->
+
+  <div class="section-header">
+    <div class="section-icon green">👍</div>
+    <div><h2>Family Should Do</h2></div>
+  </div>
+  <div class="card-grid">
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num green">5</div>
+        <div class="card-title-wrap">
+          <div class="card-title">KyunKyun Harajuku Animal Café</div>
+          <div class="card-subtitle">Guinea pigs, hedgehogs, chinchillas — unlimited time</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">¥2,500 adults / Under 3 FREE</span>
+          <span class="tag time">10am–8pm</span>
+          <span class="tag family">👶 Safe, gentle animals</span>
+          <span class="tag walk-in">Walk-in weekdays</span>
+        </div>
+        <p>Unlimited time with small, gentle animals. Clean space, multilingual staff, 5-min walk from Harajuku Station. Reserve on weekends.</p>
+        <div class="card-links">
+          <a href="https://www.youtube.com/results?search_query=kyunkyu+harajuku+animal+cafe" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num green">6</div>
+        <div class="card-title-wrap">
+          <div class="card-title">AniTouch Tokyo Dome City</div>
+          <div class="card-subtitle">Indoor petting zoo — 60 animals, 19 species (opened 2024)</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">¥2,500 adults</span>
+          <span class="tag family">👶 Stroller accessible</span>
+          <span class="tag walk-in">Walk-in</span>
+        </div>
+        <p>Capybaras, owls, dogs, cats — excellent reviews and good animal welfare. Stroller accessible, educational, safe.</p>
+        <div class="card-links">
+          <a href="https://www.anitouch.com/en/" target="_blank" class="card-link primary">🌐 Website</a>
+          <a href="https://www.youtube.com/results?search_query=anitouch+tokyo+dome" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num green">7</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Odaiba Waterfront</div>
+          <div class="card-subtitle">Beaches, malls, Gundam, petting zoos</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag free">Area FREE</span>
+          <span class="tag family">👶 Very kid-oriented</span>
+        </div>
+        <p>Man-made island with beaches for your daughter to play, Animeal Odaiba (another petting zoo), DiverCity Tokyo Plaza, and the life-size Gundam statue. Multiple attractions in one area.</p>
+        <div class="card-links">
+          <a href="https://www.youtube.com/results?search_query=odaiba+tokyo+family" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num green">8</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Yoyogi Park & Meiji Shrine</div>
+          <div class="card-subtitle">Massive central park — let her burn energy</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag free">FREE</span>
+          <span class="tag family">👶 Playground, wide spaces</span>
+        </div>
+        <p>Huge park with bike rentals and often weekend events. Near Meiji Shrine. Perfect for toddler energy burning — wide open spaces and street performers on weekends.</p>
+        <div class="card-links">
+          <a href="https://www.youtube.com/results?search_query=yoyogi+park+tokyo" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="section-header">
+    <div class="section-icon blue">🤔</div>
+    <div><h2>Family Maybe Do</h2></div>
+  </div>
+  <div class="card-grid">
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num blue">9</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Tokyo Skytree</div>
+          <div class="card-subtitle">Japan's tallest structure — 634m with aquarium</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">Tembo Deck ¥2,100–2,400 / Under 6 FREE</span>
+          <span class="tag book">Book 30 days ahead (saves ¥400)</span>
+        </div>
+        <p>Panoramic views, can see Mt. Fuji on clear days. Aquarium at the base is a nice bonus. Combo ticket with Galleria (450m) is ¥3,100–3,400.</p>
+        <div class="card-links">
+          <a href="https://www.tokyo-skytree.jp/en/ticket/" target="_blank" class="card-link primary">🎫 Book</a>
+          <a href="https://www.klook.com/en-US/activity/8072-tokyo-skytree-tickets-tokyo/" target="_blank" class="card-link primary">🎫 Klook</a>
+          <a href="https://www.youtube.com/results?search_query=tokyo+skytree+guide" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num blue">10</div>
+        <div class="card-title-wrap">
+          <div class="card-title">teamLab Planets</div>
+          <div class="card-subtitle">Alternative to Borderless — more tactile, wade through water</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">¥3,200 adults / Under 3 FREE</span>
+          <span class="tag time">2–3 hours</span>
+        </div>
+        <p>More physical/tactile than Borderless — you remove shoes and wade through water, mirrored rooms, flower ceiling. Only do ONE teamLab experience (Borderless OR Planets, not both).</p>
+        <div class="card-links">
+          <a href="https://planets.teamlab.art/tokyo/" target="_blank" class="card-link primary">🎫 Official</a>
+          <a href="https://www.klook.com/en-US/activity/2978-teamlab-planets-tokyo/" target="_blank" class="card-link primary">🎫 Klook</a>
+          <a href="https://www.youtube.com/results?search_query=teamlab+planets+tokyo" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- SKIP SECTION -->
+  <div class="section-header">
+    <div class="section-icon red">❌</div>
+    <div><h2>Skip This Trip</h2><p>Great attractions, wrong timing — here's why & what to do instead</p></div>
+  </div>
+
+  <div class="skip-card">
+    <div class="skip-badge">❌ Skip for Now</div>
+    <h3>Pokémon Café (Tokyo & Osaka)</h3>
+    <p><strong>Why it's tempting:</strong> Themed food shaped like Pikachu and friends, character appearances, exclusive merchandise. A dream for Pokémon fans.</p>
+    <p><strong>Why skip:</strong> Booking opens 31 days ahead at 6pm JST and sells out in <em>literally 2–5 minutes</em>. You need to be logged in with credit card ready at the exact second. Even then, it's a lottery system for popular times. At 21 months, your daughter won't appreciate the themed food or character interactions enough to justify the booking stress.</p>
+    <p><strong>Booking details (if you try anyway):</strong> Official website only (Japanese — use Google Translate). Opens at 6pm JST, 31 days before desired date. Credit card required at checkout. Popular dates use a lottery system.</p>
+    <div class="alt-box">
+      <strong>✅ Do This Instead: Pokémon Center Stores</strong>
+      <p>Visit <strong>Pokémon Center Mega Tokyo</strong> (Ikebukuro — largest in Japan) or <strong>Pokémon Center Osaka</strong> (Daimaru Shinsaibashi). Free to browse, no reservation needed, exclusive Japan-only merchandise, photo ops with Pikachu displays. Your daughter will love the colors and plushies, and you can grab souvenirs for everyone back home.</p>
+    </div>
+  </div>
+
+  <div class="skip-card">
+    <div class="skip-badge">❌ Skip for Now</div>
+    <h3>Kirby Café (Tokyo)</h3>
+    <p><strong>Why it's tempting:</strong> Adorable Kirby-themed food and drinks, pastel pink everything, exclusive merchandise. One of the cutest themed cafés in Japan.</p>
+    <p><strong>Why skip:</strong> Same brutal booking situation as Pokémon Café. Opens 10th of the month before at 6pm JST and sells out in minutes. Your daughter is too young to appreciate the character theming. The food is cute but portions are small and prices are steep.</p>
+    <p><strong>Booking details (if you try anyway):</strong> Official website. Opens 10th of previous month at 6pm JST. Very limited seating. Walk-ins are essentially impossible.</p>
+    <div class="alt-box">
+      <strong>✅ Do This Instead: Reissue Café (Custom Latte Art)</strong>
+      <p>Get custom designs printed on your latte — your daughter's face, a Pokémon, anything. Way easier to get into, no reservation needed, unique personalized souvenir. Also check out <strong>Snoopy Café</strong> (Harajuku) or <strong>Sanrio cafés</strong> which are more walk-in friendly.</p>
+    </div>
+  </div>
+
+  <div class="skip-card">
+    <div class="skip-badge">❌ Skip for Now</div>
+    <h3>Ghibli Museum (Mitaka, Tokyo)</h3>
+    <p><strong>Why it's tempting:</strong> Studio Ghibli's official museum — Totoro, Spirited Away, Princess Mononoke come to life. Original short films screened nowhere else. Miyazaki's hand-drawn sketches, a giant Catbus kids can climb on, rooftop garden with a life-size Robot Soldier from Laputa.</p>
+    <p><strong>Why skip:</strong> Booking opens on the 10th of each month at 10am JST for 2 months ahead — for April, that's <strong>February 10, 2026 at 10am JST</strong> (9pm Feb 9 Toronto time). Sells out within 30 minutes. From abroad, you need to use JTB or the Lawson ticket system, which is complicated. Most importantly, at 21 months your daughter won't remember any of it. The Catbus is for ages 4–12 only. The real magic hits around age 4–6 when kids know the films.</p>
+    <p><strong>Booking details (if you try anyway):</strong> Through JTB (international) or Lawson ticket machines (in Japan). Adults ~¥1,000, children 4–6 ~¥100, under 4 free. Must select a timed entry slot. No re-entry. Strict capacity limits.</p>
+    <div class="alt-box">
+      <strong>✅ Do This Instead: Ghibli Store + Donguri Republic</strong>
+      <p>Visit any <strong>Donguri Republic</strong> or <strong>Ghibli Store</strong> location (multiple in Tokyo malls). Full of Totoro plushies, Spirited Away merchandise, and Ghibli magic — no booking required. Then plan the museum visit for when your daughter is 4–5 and can actually ride the Catbus and watch the exclusive short films.</p>
+    </div>
+  </div>
+
+  <div class="skip-card">
+    <div class="skip-badge">❌ Skip for Now</div>
+    <h3>Tokyo Disney Resort</h3>
+    <p><strong>Why it's tempting:</strong> DisneySea is genuinely unique to Japan — Mediterranean Harbor, Journey to the Center of the Earth, and the new Fantasy Springs area. It's often ranked the #1 theme park in the world.</p>
+    <p><strong>Why skip:</strong> At 21 months, your daughter can't ride 80% of the attractions. She'll need naps, get overwhelmed by crowds, and the full-day commitment (¥8,400–10,900 per person, plus ¥5,600 for her) is hard to justify. April is peak season — expect 60–90 minute waits. You're already potentially doing USJ in Osaka which is a full day.</p>
+    <p><strong>Booking details (if you try anyway):</strong> Tickets go on sale every Wednesday at 2pm JST for the same day 2 months ahead. For April 20: tickets on sale February 20, 2026 at 2pm JST. Cannot buy at gate — must book online. DisneySea is more unique to Japan than Disneyland.</p>
+    <div class="alt-box">
+      <strong>✅ Do This Instead: Save for Ages 3–4</strong>
+      <p>Tokyo Disney is worth a <em>full</em> dedicated trip when she's older. For now, you'll get more value from <strong>teamLab Borderless</strong> (interactive, she'll love it), <strong>animal cafés</strong> (she'll remember touching animals), and <strong>parks</strong> (free, no lines, no stress). If you need a theme park fix, USJ's Yoshi's Adventure is gentler and more toddler-appropriate.</p>
+    </div>
+  </div>
+
+  <div class="skip-card">
+    <div class="skip-badge">❌ Skip for Now</div>
+    <h3>Harry Potter Studio Tour Tokyo</h3>
+    <p><strong>Why it's tempting:</strong> Warner Bros. Studio Tour — actual sets, props, and costumes from the films. Butterbeer, the Great Hall, Diagon Alley. It's like walking through the movies.</p>
+    <p><strong>Why skip:</strong> Your daughter is too young for Harry Potter content, and the 3–4 hour walking tour is a lot for a toddler. Under 4 is free, but she'll be restless. Better when she's at least 5–6 and has seen the films.</p>
+    <p><strong>Booking details (if one parent wants to go with the group):</strong> Book ~3 months ahead. Official website or Klook. ¥6,500 adults, ¥3,900 children 4–11, under 4 free. Located in Nerima (30–40 min from central Tokyo). Could work as a half-day if your wife watches your daughter.</p>
+    <div class="alt-box">
+      <strong>✅ Consider: Split the Group</strong>
+      <p>If members of your 6–10 person group are HP fans, they could do this while you do family activities. It's in Nerima, about 30–40 min from central Tokyo. Or save it for a future trip when your daughter is old enough to be sorted into her house.</p>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- GROUP ACTIVITIES -->
+  <div class="section-header">
+    <div class="section-icon purple">👥</div>
+    <div><h2>Group Activities (6–10 People)</h2><p>For your whole crew in Tokyo</p></div>
+  </div>
+  <div class="card-grid">
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num purple">1</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Shibuya Bar Hopping / Food Tour</div>
+          <div class="card-subtitle">Hit multiple izakayas, bars, street food in one night</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">¥3,000–5,000pp</span>
+          <span class="tag walk-in">Walk-in or organized tour</span>
+        </div>
+        <p>Quintessential Tokyo group experience. Golden Gai (Shinjuku) has 200+ tiny bars in 6 narrow alleys. Organized tours available or DIY.</p>
+        <div class="card-links">
+          <a href="https://www.magicaltripjapan.com/tours/shibuya-bar-hopping-food-tour/" target="_blank" class="card-link primary">🎫 Magical Trip Tour</a>
+          <a href="https://www.youtube.com/results?search_query=tokyo+bar+hopping+tour" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num purple">2</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Akihabara Electric Town</div>
+          <div class="card-subtitle">Electronics, anime, manga, gaming central</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag free">Free to browse</span>
+          <span class="tag walk-in">Walk-in</span>
+        </div>
+        <p>Otaku culture central. Multi-story arcades, maid cafés, anime shops, retro game stores. Great for browsing and arcade competitions with the group.</p>
+        <div class="card-links">
+          <a href="https://www.youtube.com/results?search_query=akihabara+tokyo+guide" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num purple">3</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Tsukiji Outer Market — Group Sushi Breakfast</div>
+          <div class="card-subtitle">Early morning fresh sushi & street food</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">¥2,000–4,000pp</span>
+          <span class="tag time">6–9am (arrive early)</span>
+          <span class="tag walk-in">Walk-in</span>
+        </div>
+        <p>Authentic Tokyo experience. Incredible fresh sushi for breakfast. Many stalls — your group can split up and reconvene.</p>
+        <div class="card-links">
+          <a href="https://www.youtube.com/results?search_query=tsukiji+outer+market+tokyo" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num purple">4</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Karaoke Night</div>
+          <div class="card-subtitle">Private rooms, all-you-can-drink</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">¥3,000–5,000pp for 2–3 hrs + drinks</span>
+          <span class="tag walk-in">Walk-in or call ahead for large groups</span>
+        </div>
+        <p>Very Japanese experience. Private rooms at Big Echo, Karaoke Kan, or Pasela. All-you-can-drink packages available. Hilarious group bonding.</p>
+        <div class="card-links">
+          <a href="https://www.youtube.com/results?search_query=karaoke+tokyo+experience" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num purple">5</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Samurai & Ninja Museum</div>
+          <div class="card-subtitle">Interactive experience in Shinjuku</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">¥2,200pp</span>
+          <span class="tag time">1.5 hours</span>
+        </div>
+        <p>Learn sword techniques, dress up in samurai gear, photo ops. Fun interactive group activity designed for groups.</p>
+        <div class="card-links">
+          <a href="https://mai-ko.com/culture/samurai-ninja-museum-tokyo/" target="_blank" class="card-link primary">🎫 Book</a>
+          <a href="https://www.klook.com/en-US/activity/72458-samurai-ninja-museum-tokyo/" target="_blank" class="card-link primary">🎫 Klook</a>
+          <a href="https://www.youtube.com/results?search_query=samurai+ninja+museum+tokyo" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num purple">6</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Hakone Day Trip</div>
+          <div class="card-subtitle">Hot springs, Mt. Fuji views, pirate ship cruise</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">¥5,000–8,000pp</span>
+          <span class="tag time">Full day (8am–8pm)</span>
+        </div>
+        <p>Scenic escape from Tokyo. Hot springs town, pirate ship cruise on Lake Ashi, Mt. Fuji views (weather permitting). Great for a group of 6–10.</p>
+        <div class="card-links">
+          <a href="https://www.klook.com/en-US/activity/1075-hakone-day-trip-tokyo/" target="_blank" class="card-link primary">🎫 Klook</a>
+          <a href="https://www.youtube.com/results?search_query=hakone+day+trip+from+tokyo" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num purple">7</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Mario Kart Street Go-Karting</div>
+          <div class="card-subtitle">Dress as Mario, drive real streets — viral experience</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta">
+          <span class="tag cost">¥8,000–12,000pp</span>
+          <span class="tag book">⚠️ Need International Driving Permit</span>
+          <span class="tag viral">📱 TikTok Viral</span>
+        </div>
+        <p>Dress as Mario characters, drive go-karts on actual Tokyo streets. Must have International Driving Permit (get BEFORE Japan from CAA). Not for nervous drivers — traffic is real.</p>
+        <div class="card-links">
+          <a href="https://streetkart.com/" target="_blank" class="card-link primary">🎫 Book</a>
+          <a href="https://www.youtube.com/results?search_query=mario+kart+tokyo+streets" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- GROUP DINING -->
+  <div class="section-header">
+    <div class="section-icon gold">🍽️</div>
+    <div><h2>Group Dining Picks</h2></div>
+  </div>
+  <div class="card-grid">
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num gold">🥩</div>
+        <div class="card-title-wrap">
+          <div class="card-title">All-You-Can-Eat Yakiniku BBQ</div>
+          <div class="card-subtitle">Grill your own wagyu — Tengoku Aburiya</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta"><span class="tag cost">¥5,000–8,000pp premium</span><span class="tag book">Book 2–3 weeks ahead</span></div>
+        <p>Interactive dining — grill your own meat at the table. Fun for groups. Premium wagyu courses available.</p>
+        <div class="card-links">
+          <a href="https://www.youtube.com/results?search_query=yakiniku+tokyo+all+you+can+eat" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num gold">🍣</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Gonpachi (Kill Bill Restaurant)</div>
+          <div class="card-subtitle">Multi-level atmospheric restaurant — Nishi-Azabu</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta"><span class="tag cost">¥4,000–6,000pp</span></div>
+        <p>The restaurant that inspired the Kill Bill fight scene. Theatrical, atmospheric, seats large groups well.</p>
+        <div class="card-links">
+          <a href="https://gonpachi.jp/nishiazabu/en/" target="_blank" class="card-link primary">🌐 Website</a>
+          <a href="https://www.youtube.com/results?search_query=gonpachi+tokyo+kill+bill" target="_blank" class="card-link secondary">▶ Videos</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-top">
+        <div class="card-num gold">🍢</div>
+        <div class="card-title-wrap">
+          <div class="card-title">Izakaya Chains — Budget Group Dining</div>
+          <div class="card-subtitle">Watami, Torikizoku, Kushikatsu Tanaka</div>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="card-meta"><span class="tag cost">¥2,500–4,000pp with drinks</span><span class="tag walk-in">Walk-in usually fine</span></div>
+        <p>Affordable, casual, large group seating. All-you-can-drink packages common. Perfect for a rowdy group dinner.</p>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- VIRAL/TIKTOK -->
+  <div class="section-header">
+    <div class="section-icon gold">📱</div>
+    <div><h2>Viral & TikTok Spots</h2></div>
+  </div>
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-body" style="padding-top: 22px;">
+        <ul class="card-highlights">
+          <li><strong>3D Cat Billboard (Shinjuku)</strong> — Free, mesmerizing, great for video content</li>
+          <li><strong>Shodai White Curry Udon (Shibuya)</strong> — Viral creamy curry udon</li>
+          <li><strong>Totti Candy Factory (Harajuku)</strong> — Giant rainbow cotton candy on Takeshita Street</li>
+          <li><strong>Reissue Café</strong> — Custom designs printed on your latte</li>
+          <li><strong>Nezu Shrine</strong> — Azaleas in late April, Instagram perfection</li>
+          <li><strong>Long, Longer, Longest (Harajuku)</strong> — Massive potato chip</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- FAMILY-FRIENDLY FOOD -->
+  <div class="section-header">
+    <div class="section-icon gold">🍜</div>
+    <div><h2>Family-Friendly Food</h2><p>Easy eating with a toddler</p></div>
+  </div>
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-body" style="padding-top: 22px;">
+        <ul class="card-highlights">
+          <li><strong>Conveyor Belt Sushi (kaiten-zushi)</strong> — Fun for kids, affordable, grab what you want</li>
+          <li><strong>Ichiran Ramen</strong> — Solo booth ordering, customizable, surprisingly kid-friendly</li>
+          <li><strong>Depachika (department store food halls)</strong> — Prepared foods, clean seating, easy with a toddler</li>
+          <li><strong>7-Eleven / FamilyMart</strong> — Don't sleep on convenience store meals. Seriously good onigiri, sandwiches, and hot food. Cheap, quick, high chairs at many locations</li>
+          <li><strong>Ramen shops</strong> — Most have high chairs, meals come fast</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /tokyo -->
+
+<!-- ══════════════════════════════════════════ -->
+<!-- BOOKINGS TAB -->
+<!-- ══════════════════════════════════════════ -->
+<div id="bookings" class="tab-panel">
+
+  <div class="section-header">
+    <div class="section-icon red">🚨</div>
+    <div><h2>Book NOW — Early February</h2><p>These sell out fast for April dates</p></div>
+  </div>
+
+  <div class="timeline">
+    <div class="timeline-item urgent">
+      <h4>teamLab Borderless (Tokyo)</h4>
+      <p>Opens Feb 2 for April dates. Book via <a href="https://borderless.teamlab.art/tokyo/" target="_blank">official site</a> or <a href="https://www.klook.com/en-US/activity/20707-teamlab-borderless-admission-ticket-tokyo/" target="_blank">Klook</a> (5% first-time discount). Weekday mornings = less crowded.</p>
+    </div>
+    <div class="timeline-item urgent">
+      <h4>Universal Studios Japan (if going)</h4>
+      <p>Book mid-February. <a href="https://www.usj.co.jp/web/en/us" target="_blank">Official</a> or <a href="https://www.klook.com/en-US/activity/883-universal-studios-japan-osaka/" target="_blank">Klook</a>. Express Pass strongly recommended for Nintendo World.</p>
+    </div>
+    <div class="timeline-item">
+      <h4>Tokyo Disney (if going)</h4>
+      <p>Tickets on sale Feb 20 at 2pm JST for April 20. <a href="https://www.tokyodisneyresort.jp/en/" target="_blank">Official site</a>. Cannot buy at gate.</p>
+    </div>
+    <div class="timeline-item">
+      <h4>Ghibli Museum (if interested)</h4>
+      <p>Feb 10 at 10am JST (9pm Feb 9 Toronto time). Sells out in 30 min. Via JTB or Lawson. Recommend: skip with toddler.</p>
+    </div>
+  </div>
+
+  <div class="section-header">
+    <div class="section-icon gold">📋</div>
+    <div><h2>Book Mid-March — 2–4 Weeks Before</h2></div>
+  </div>
+
+  <div class="timeline">
+    <div class="timeline-item">
+      <h4>Shibuya Sky</h4>
+      <p>Opens 2–3 weeks ahead. Sunset slots sell out fast. <a href="https://www.shibuya-scramble-square.com/sky/en/" target="_blank">Official</a> or <a href="https://www.klook.com/en-US/activity/70672-shibuya-sky-tokyo/" target="_blank">Klook</a>.</p>
+    </div>
+    <div class="timeline-item">
+      <h4>Tokyo Skytree</h4>
+      <p>Opens 30 days ahead. Saves ~¥400 vs same-day. <a href="https://www.tokyo-skytree.jp/en/ticket/" target="_blank">Official site</a>.</p>
+    </div>
+    <div class="timeline-item">
+      <h4>Restaurant Reservations</h4>
+      <p>High-end omakase: 2–3 months ahead. Regular nice restaurants: 1–2 weeks ahead. Group yakiniku: 2–3 weeks ahead.</p>
+    </div>
+  </div>
+
+  <div class="section-header">
+    <div class="section-icon green">✅</div>
+    <div><h2>No Booking Needed — Walk Right In</h2></div>
+  </div>
+  <div class="card-grid">
+    <div class="card">
+      <div class="card-body" style="padding-top: 22px;">
+        <ul class="card-highlights">
+          <li>All temples & shrines (Fushimi Inari, Sensō-ji, Kinkaku-ji, Meiji Shrine)</li>
+          <li>All street food markets (Kuromon, Nishiki, Tsukiji, Dotonbori)</li>
+          <li>Animal cafés (KyunKyun weekdays, AniTouch, Animeal)</li>
+          <li>Shopping districts (Akihabara, Den Den Town, Harajuku, Shibuya)</li>
+          <li>Parks (Ueno, Yoyogi, Osaka Castle)</li>
+          <li>Most casual restaurants and ramen shops</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="section-header">
+    <div class="section-icon gold">💰</div>
+    <div><h2>Estimated Costs Per Person Per Day</h2></div>
+  </div>
+
+  <table class="cost-table">
+    <thead>
+      <tr><th>Level</th><th>Daily (¥)</th><th>Daily (CAD ~)</th><th>Includes</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>Budget</strong></td><td>¥8,000–12,000</td><td>$75–110</td><td>Casual meals, some attractions, local transport</td></tr>
+      <tr><td><strong>Mid-Range</strong></td><td>¥15,000–25,000</td><td>$135–225</td><td>Nicer meals, major attractions, activities</td></tr>
+      <tr><td><strong>Comfortable</strong></td><td>¥30,000+</td><td>$270+</td><td>High-end dining, all attractions, shopping</td></tr>
+    </tbody>
+  </table>
+  <div class="callout green">
+    <strong>Your daughter (21 months):</strong> Most attractions FREE, transport FREE, meals usually free or minimal. Japan is very generous with toddler pricing.
+  </div>
+
+</div><!-- /bookings -->
+
+<!-- ══════════════════════════════════════════ -->
+<!-- TIPS TAB -->
+<!-- ══════════════════════════════════════════ -->
+<div id="tips" class="tab-panel">
+
+  <div class="section-header">
+    <div class="section-icon red">🎌</div>
+    <div><h2>Etiquette & Respect</h2><p>How to be a great guest in Japan</p></div>
+  </div>
+
+  <div class="tip-section">
+    <h3>🙇 Bowing & Greetings</h3>
+    <div class="tip-grid">
+      <div class="tip-card">
+        <h4>The Basics</h4>
+        <p>A slight head nod (15°) works for most casual interactions — entering shops, thanking staff, greeting strangers. You don't need to bow deeply unless in a very formal situation. Japanese people don't expect foreigners to bow perfectly, but the effort is deeply appreciated.</p>
+        <span class="tip-do">✓ A small nod goes a long way</span>
+      </div>
+      <div class="tip-card">
+        <h4>Key Phrases</h4>
+        <p><strong>"Sumimasen"</strong> (excuse me / sorry) — your most useful word. Use it to get attention, apologize, or say "pardon me." <strong>"Arigatou gozaimasu"</strong> — thank you (formal). <strong>"Konnichiwa"</strong> — hello (daytime). Staff will always greet you with "Irasshaimase!" (welcome!) — just smile, no need to respond.</p>
+        <span class="tip-do">✓ "Sumimasen" and "Arigatou" will cover 90% of situations</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="tip-section">
+    <h3>💴 Tipping Culture</h3>
+    <div class="tip-grid">
+      <div class="tip-card">
+        <h4>Do NOT Tip — Seriously</h4>
+        <p>Japan has no tipping culture. Leaving a tip can actually be confusing or even offensive — staff may chase you down thinking you forgot your change. This applies everywhere: restaurants, taxis, hotels, hair salons, tour guides. Service is excellent because of professional pride, not the expectation of tips. The price you see is the price you pay.</p>
+        <span class="tip-dont">✗ Never leave cash on the table as a tip</span>
+      </div>
+      <div class="tip-card">
+        <h4>One Exception</h4>
+        <p>If you stay at a traditional ryokan (Japanese inn) and want to thank your personal attendant (nakai-san), you can place money in a small envelope (never bare cash) and present it at the beginning of your stay, not the end. This is rare and not expected — most travelers skip it entirely.</p>
+        <span class="tip-do">✓ If in doubt, just don't tip</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="tip-section">
+    <h3>🍜 Food & Dining Etiquette</h3>
+    <div class="tip-grid">
+      <div class="tip-card">
+        <h4>Slurping is Good</h4>
+        <p>Slurp your ramen and noodles loudly — it's not rude, it signals you're enjoying the food. It also cools the noodles. Don't slurp other dishes though (just noodle soups).</p>
+        <span class="tip-do">✓ Slurp those noodles with confidence</span>
+      </div>
+      <div class="tip-card">
+        <h4>Chopstick Rules</h4>
+        <p><strong>Never</strong> stick chopsticks upright in rice — this resembles incense at funerals and is deeply disrespectful. Don't pass food chopstick-to-chopstick (also a funeral ritual). Don't point or gesture with them. Rest them on the chopstick holder when not eating.</p>
+        <span class="tip-dont">✗ Never stand chopsticks in rice vertically</span>
+      </div>
+      <div class="tip-card">
+        <h4>Before & After Eating</h4>
+        <p>Say <strong>"Itadakimasu"</strong> before eating (like "let's eat" / giving thanks) and <strong>"Gochisousama deshita"</strong> after (thank you for the meal). Even a quiet mumble shows respect. You'll hear locals say it constantly.</p>
+        <span class="tip-do">✓ "Itadakimasu" before, "Gochisousama" after</span>
+      </div>
+      <div class="tip-card">
+        <h4>Don't Walk and Eat</h4>
+        <p>Walking while eating is generally considered rude in Japan. Street food markets are the exception (Dotonbori, Kuromon, Tsukiji) — but on regular streets, find a spot to stand and eat. Most convenience stores have small eating areas.</p>
+        <span class="tip-dont">✗ Avoid eating while walking on regular streets</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="tip-section">
+    <h3>🚆 Train & Transit Tips</h3>
+    <div class="tip-grid">
+      <div class="tip-card">
+        <h4>Quiet on the Train</h4>
+        <p>Trains are library-quiet. Don't talk loudly, take phone calls, or play media without headphones. Switch your phone to silent (Japan calls it "manner mode"). Priority seating is strictly enforced — always give it up for elderly, pregnant, or disabled passengers.</p>
+        <span class="tip-do">✓ Manner mode on phone, quiet conversations</span>
+      </div>
+      <div class="tip-card">
+        <h4>IC Cards (Suica/Pasmo)</h4>
+        <p>Get an IC card immediately — it works on all trains, buses, and even convenience stores and vending machines. Load it at any station. Tap in, tap out. Way easier than buying individual tickets. Your daughter rides free on trains until age 6.</p>
+        <span class="tip-do">✓ Get IC cards at the airport on arrival</span>
+      </div>
+      <div class="tip-card">
+        <h4>Avoid Rush Hour</h4>
+        <p>Rush hour is 7:30–9am and 5:30–7pm. With a stroller and toddler, you do NOT want to be on packed Tokyo trains during these times. Plan your travel between 10am–4pm or after 8pm for a much more comfortable experience.</p>
+        <span class="tip-dont">✗ Avoid trains 7:30–9am and 5:30–7pm with a stroller</span>
+      </div>
+      <div class="tip-card">
+        <h4>Line Up Properly</h4>
+        <p>Platforms have marked lines showing where to queue for train doors. Stand in line, let people off before boarding, and move to the sides. It's incredibly orderly and efficient — just follow the crowd.</p>
+        <span class="tip-do">✓ Follow the marked lines on platforms</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="tip-section">
+    <h3>🏪 Convenience Store Secrets</h3>
+    <div class="tip-grid">
+      <div class="tip-card">
+        <h4>7-Eleven, FamilyMart, Lawson</h4>
+        <p>Japanese convenience stores are on a completely different level. Fresh onigiri (rice balls), egg sandwiches, hot fried chicken (karaage), premium desserts, and decent coffee. You can easily eat well for under ¥500 per meal. Many have seating areas, microwaves, and hot water for instant noodles.</p>
+        <span class="tip-do">✓ Don't be snobby — conbini food is genuinely delicious</span>
+      </div>
+      <div class="tip-card">
+        <h4>ATMs & Cash</h4>
+        <p><strong>7-Eleven ATMs</strong> are the most reliable for foreign cards. Japan is still heavily cash-based, especially at small restaurants, street food stalls, and shrines. Withdraw ¥20,000–30,000 at a time. Post office ATMs also work well for international cards.</p>
+        <span class="tip-do">✓ Always carry ¥10,000+ cash on you</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="tip-section">
+    <h3>👶 Traveling with a Toddler</h3>
+    <div class="tip-grid">
+      <div class="tip-card">
+        <h4>Japan is INCREDIBLY Baby-Friendly</h4>
+        <p>Diaper changing stations in virtually every mall, station, and public restroom. Many have full "baby rooms" with private nursing areas, hot water for formula, and changing tables. Department store baby rooms are luxurious.</p>
+        <span class="tip-do">✓ Look for the baby symbol (🚼) in stations and malls</span>
+      </div>
+      <div class="tip-card">
+        <h4>Stroller Tips</h4>
+        <p>Elevators are everywhere, but they can be slow and crowded. Stations have stroller/wheelchair accessible routes (look for signs). Bring a compact, lightweight stroller — some temple paths and older areas have stairs. Baby carrier is essential as a backup for places like Fushimi Inari.</p>
+        <span class="tip-do">✓ Compact stroller + baby carrier = best combo</span>
+      </div>
+      <div class="tip-card">
+        <h4>Baby Food & Supplies</h4>
+        <p>Drug stores (Matsumoto Kiyoshi, Welcia) carry excellent Japanese baby food pouches, diapers (Merries brand is top-tier), and supplies. Don't overpack — you can buy everything locally, often better quality than what's available in Canada.</p>
+        <span class="tip-do">✓ Buy diapers and baby food locally — it's great quality</span>
+      </div>
+      <div class="tip-card">
+        <h4>Onsen with Toddlers</h4>
+        <p>Some onsen don't allow young children. Family-friendly onsen (like Spa World in Osaka) have mixed/family bathing areas. Always check first. Your daughter needs to be able to control her bladder to enter public baths (diaper-wearing children are usually not allowed in shared pools).</p>
+        <span class="tip-dont">✗ Check onsen policy for toddlers before visiting</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="tip-section">
+    <h3>🎎 General Cultural Tips</h3>
+    <div class="tip-grid">
+      <div class="tip-card">
+        <h4>Shoes Off</h4>
+        <p>Remove shoes when entering homes, some restaurants (especially tatami rooms), temples, and ryokans. There will be a clear step-up or shoe lockers. Wear clean, hole-free socks. This is non-negotiable.</p>
+        <span class="tip-do">✓ Wear easy-on/easy-off shoes for temple days</span>
+      </div>
+      <div class="tip-card">
+        <h4>Trash Cans Don't Exist</h4>
+        <p>Public trash cans are almost non-existent in Japan. Carry a small bag for trash. You'll find bins at convenience stores and some vending machines. Japanese people carry their trash home — you should too.</p>
+        <span class="tip-do">✓ Keep a small plastic bag in your day bag for trash</span>
+      </div>
+      <div class="tip-card">
+        <h4>Queue Culture</h4>
+        <p>Japanese people queue for everything — restaurants, trains, photo spots. Never cut in line. Popular ramen shops can have 20–40 minute waits, but lines move fast. The queue is part of the experience.</p>
+        <span class="tip-dont">✗ Never cut in line, even if it seems informal</span>
+      </div>
+      <div class="tip-card">
+        <h4>Cash Tray</h4>
+        <p>When paying, place cash on the small tray on the counter — don't hand it directly to the cashier. Change will be returned the same way. This is a hygiene and respect thing.</p>
+        <span class="tip-do">✓ Use the cash tray, receive change from the tray</span>
+      </div>
+      <div class="tip-card">
+        <h4>Tattoos</h4>
+        <p>If anyone in your group has visible tattoos, many onsen and public baths will refuse entry. Some gyms too. This is deeply cultural, not personal. Cover with bandages/clothing at onsen, or seek tattoo-friendly facilities.</p>
+        <span class="tip-dont">✗ Check tattoo policy before entering onsen</span>
+      </div>
+      <div class="tip-card">
+        <h4>Photos of People</h4>
+        <p>Don't photograph geisha, temple visitors, or locals without permission. Especially in Gion — there are actual signs asking tourists to stop photographing geisha. Landscapes and food are fine, but be respectful with people.</p>
+        <span class="tip-dont">✗ Don't photograph people (especially geisha) without asking</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="tip-section">
+    <h3>📱 Tech & Connectivity</h3>
+    <div class="tip-grid">
+      <div class="tip-card">
+        <h4>Pocket WiFi or eSIM</h4>
+        <p>Get a pocket WiFi device or eSIM before arrival. Google Maps works perfectly in Japan and is essential for navigating the train system. Pocket WiFi can be rented at the airport or pre-ordered for hotel delivery. eSIM (like Ubigi, Airalo, or Holafly) is easier if your phone supports it.</p>
+        <span class="tip-do">✓ Set up eSIM or order pocket WiFi before your flight</span>
+      </div>
+      <div class="tip-card">
+        <h4>Essential Apps</h4>
+        <p><strong>Google Maps</strong> — train navigation is perfect. <strong>Google Translate</strong> — camera mode translates Japanese signs in real-time. <strong>Tabelog</strong> — Japan's #1 restaurant rating app (more trusted than Google reviews). <strong>Navitime</strong> — train schedules with platform numbers.</p>
+        <span class="tip-do">✓ Download all apps + offline maps before departure</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="tip-section">
+    <h3>💡 Insider Gotchas</h3>
+    <div class="tip-grid">
+      <div class="tip-card">
+        <h4>Last Train is Real</h4>
+        <p>Last trains run around midnight. Miss it and you're looking at an expensive taxi (¥3,000–8,000+) or staying out until 5am when trains restart. Set alarms for your last train time. Google Maps shows last train schedules.</p>
+        <span class="tip-dont">✗ Don't miss the last train — set an alarm</span>
+      </div>
+      <div class="tip-card">
+        <h4>Coin Lockers are Your Friend</h4>
+        <p>Available at every major station. ¥300–700 per day. Store your bags when sightseeing instead of dragging them around. Perfect for day trips between cities. IC cards work on most modern lockers.</p>
+        <span class="tip-do">✓ Use station lockers when exploring light</span>
+      </div>
+      <div class="tip-card">
+        <h4>Weather in April</h4>
+        <p>15–20°C, generally pleasant but can swing. Pack layers. Late April is post-cherry blossom but azaleas and wisteria may be blooming. Rain is possible — bring a compact umbrella. Convenience stores sell them for ¥500 if you forget.</p>
+        <span class="tip-do">✓ Layers + compact umbrella</span>
+      </div>
+      <div class="tip-card">
+        <h4>Tax-Free Shopping</h4>
+        <p>Spend ¥5,000+ at a single store and you can get the 10% consumption tax refunded. Look for "Tax Free" signs. Bring your passport. Works at electronics stores, department stores, drug stores, and some clothing shops. The savings add up fast.</p>
+        <span class="tip-do">✓ Carry your passport for tax-free shopping</span>
+      </div>
+      <div class="tip-card">
+        <h4>Restaurants Close Early</h4>
+        <p>Many restaurants stop taking orders by 8–9pm, especially outside major entertainment districts. Last order ("last order desu") is usually 30 min before close. Don't assume you can eat at 10pm everywhere.</p>
+        <span class="tip-dont">✗ Don't leave dinner too late — aim for 6–7pm</span>
+      </div>
+      <div class="tip-card">
+        <h4>Vending Machines are Everywhere</h4>
+        <p>Hot and cold drinks from ¥100–160. Many have hot coffee, tea, and even soup in winter. They're on literally every block. Some sell beer and sake. Great for staying hydrated while sightseeing.</p>
+        <span class="tip-do">✓ Try Boss Coffee from a vending machine</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <strong>The golden rule:</strong> Japanese culture is built on consideration for others. If you're ever unsure about something, just observe what locals are doing and follow their lead. The fact that you're even reading this shows you care — and that attitude will be noticed and deeply appreciated.
+  </div>
+
+</div><!-- /tips -->
+
+</div><!-- /main -->
+
+<!-- ════════ FOOTER ════════ -->
+<footer style="text-align:center; padding: 40px 20px 60px; font-size: 0.82rem; color: #999;">
+  <p>Built for David's family trip — April 2026 🇯🇵</p>
+  <p style="margin-top:4px; font-size:0.75rem; opacity:0.7;">Prices and availability may change. Always verify booking details before purchasing.</p>
+</footer>
+
+<script>
+// Tab switching
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab).classList.add('active');
+    window.scrollTo({ top: document.querySelector('.tab-nav-wrap').offsetTop, behavior: 'smooth' });
+  });
+});
+</script>
+</body>
+</html>
