@@ -1,0 +1,1410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TOKYO 2026 — Millz 35th Birthday Trip</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Noto+Sans+JP:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --red: #D72631;
+    --dark: #0D0D0D;
+    --cream: #FAF7F2;
+    --gold: #C9A84C;
+    --charcoal: #1A1A2E;
+    --soft-white: #F5F1EB;
+    --muted: #6B6B6B;
+    --card-bg: #FFFFFF;
+    --border: #E8E2D9;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--cream);
+    color: var(--dark);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── HERO ─────────────────────────── */
+  .hero {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    background: var(--charcoal);
+    overflow: hidden;
+    padding: 2rem;
+  }
+
+  .hero::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 30% 20%, rgba(215,38,49,0.15) 0%, transparent 60%),
+      radial-gradient(ellipse at 70% 80%, rgba(201,168,76,0.1) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  .hero-flag {
+    font-size: 5rem;
+    margin-bottom: 1rem;
+    animation: float 3s ease-in-out infinite;
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-12px); }
+  }
+
+  .hero h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(3.5rem, 10vw, 8rem);
+    color: #fff;
+    letter-spacing: 0.06em;
+    line-height: 0.95;
+  }
+
+  .hero h1 span {
+    color: var(--red);
+  }
+
+  .hero-sub {
+    font-size: 1.15rem;
+    color: rgba(255,255,255,0.6);
+    margin-top: 0.75rem;
+    font-weight: 500;
+  }
+
+  .hero-sub strong { color: var(--gold); }
+
+  .hero-dates {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 2rem;
+    padding: 0.75rem 2rem;
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 999px;
+    color: #fff;
+    font-weight: 600;
+    font-size: 1.05rem;
+    backdrop-filter: blur(4px);
+    background: rgba(255,255,255,0.04);
+  }
+
+  .hero-dates .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--red);
+  }
+
+  .hero-scroll {
+    position: absolute;
+    bottom: 2.5rem;
+    color: rgba(255,255,255,0.35);
+    font-size: 0.8rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.35; }
+    50% { opacity: 0.8; }
+  }
+
+  /* ── NAV ──────────────────────────── */
+  .sticky-nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(250,247,242,0.92);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    overflow-x: auto;
+  }
+
+  .sticky-nav ul {
+    display: flex;
+    gap: 0.25rem;
+    list-style: none;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0.75rem 0;
+  }
+
+  .sticky-nav a {
+    text-decoration: none;
+    padding: 0.4rem 1rem;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--muted);
+    white-space: nowrap;
+    transition: all 0.2s;
+  }
+
+  .sticky-nav a:hover {
+    background: var(--dark);
+    color: #fff;
+  }
+
+  /* ── SECTIONS ─────────────────────── */
+  .container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+  }
+
+  section {
+    padding: 5rem 0;
+  }
+
+  .section-label {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 0.85rem;
+    letter-spacing: 0.2em;
+    color: var(--red);
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+  }
+
+  .section-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(2.2rem, 5vw, 3.5rem);
+    line-height: 1.05;
+    margin-bottom: 1rem;
+  }
+
+  .section-desc {
+    color: var(--muted);
+    max-width: 640px;
+    font-size: 1rem;
+    margin-bottom: 2.5rem;
+  }
+
+  /* ── COST CARD ────────────────────── */
+  .cost-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 2rem;
+  }
+
+  .cost-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.75rem;
+    transition: transform 0.2s;
+  }
+
+  .cost-card:hover { transform: translateY(-4px); }
+
+  .cost-card .icon {
+    font-size: 1.8rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .cost-card h3 {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    margin-bottom: 0.35rem;
+  }
+
+  .cost-card .price {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2rem;
+    color: var(--dark);
+  }
+
+  .cost-card .note {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-top: 0.35rem;
+  }
+
+  .cost-total {
+    background: var(--charcoal);
+    color: #fff;
+    border: none;
+  }
+
+  .cost-total h3 { color: rgba(255,255,255,0.5); }
+  .cost-total .price { color: var(--gold); }
+  .cost-total .note { color: rgba(255,255,255,0.5); }
+
+  /* ── ACTIVITY TABLE ───────────────── */
+  .activity-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: var(--card-bg);
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    margin-bottom: 2rem;
+  }
+
+  .activity-table thead {
+    background: var(--charcoal);
+    color: rgba(255,255,255,0.8);
+  }
+
+  .activity-table th {
+    padding: 1rem 1.25rem;
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    text-align: left;
+    font-weight: 600;
+  }
+
+  .activity-table td {
+    padding: 0.9rem 1.25rem;
+    font-size: 0.9rem;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+
+  .activity-table tbody tr:last-child td { border-bottom: none; }
+
+  .activity-table tbody tr:hover { background: rgba(215,38,49,0.03); }
+
+  .tag {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .tag-must { background: #D72631; color: #fff; }
+  .tag-group { background: #2D9CDB; color: #fff; }
+  .tag-fun { background: #F2994A; color: #fff; }
+  .tag-culture { background: #9B51E0; color: #fff; }
+
+  .booking-yes {
+    color: var(--red);
+    font-weight: 700;
+    font-size: 0.78rem;
+  }
+
+  .booking-no {
+    color: var(--muted);
+    font-size: 0.78rem;
+  }
+
+  /* ── FOOD CARDS ───────────────────── */
+  .food-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 1rem;
+  }
+
+  .food-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1.35rem;
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+    transition: transform 0.2s;
+  }
+
+  .food-card:hover { transform: translateY(-3px); }
+
+  .food-emoji {
+    font-size: 1.6rem;
+    flex-shrink: 0;
+    width: 2.5rem;
+    height: 2.5rem;
+    background: var(--soft-white);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .food-card h4 {
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin-bottom: 0.2rem;
+  }
+
+  .food-card .food-meta {
+    font-size: 0.8rem;
+    color: var(--muted);
+  }
+
+  .food-card .food-price {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    background: var(--soft-white);
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    margin-right: 0.4rem;
+  }
+
+  .food-card .food-detail {
+    font-size: 0.82rem;
+    color: var(--dark);
+    margin-top: 0.35rem;
+  }
+
+  /* ── TOP 5 LISTS ──────────────────── */
+  .top5-section {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(480px, 1fr));
+    gap: 2rem;
+    margin-top: 1.5rem;
+  }
+
+  .top5-block {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .top5-header {
+    padding: 1.5rem 1.75rem;
+    background: var(--charcoal);
+    color: #fff;
+  }
+
+  .top5-header h3 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.6rem;
+    letter-spacing: 0.04em;
+  }
+
+  .top5-header p {
+    font-size: 0.82rem;
+    color: rgba(255,255,255,0.5);
+    margin-top: 0.25rem;
+  }
+
+  .top5-item {
+    padding: 1.25rem 1.75rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+
+  .top5-item:last-child { border-bottom: none; }
+
+  .top5-rank {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.8rem;
+    color: var(--red);
+    line-height: 1;
+    flex-shrink: 0;
+    width: 2rem;
+  }
+
+  .top5-item h4 { font-size: 0.95rem; margin-bottom: 0.15rem; }
+  .top5-item p { font-size: 0.82rem; color: var(--muted); }
+  .top5-item .top5-price { font-weight: 700; color: var(--dark); }
+
+  /* ── GROUP STRATEGY ───────────────── */
+  .strategy-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.25rem;
+  }
+
+  .strategy-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2rem;
+  }
+
+  .strategy-card .strat-icon {
+    font-size: 2rem;
+    margin-bottom: 1rem;
+  }
+
+  .strategy-card h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 0.6rem;
+  }
+
+  .strategy-card p {
+    font-size: 0.88rem;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  .strategy-card ul {
+    list-style: none;
+    margin-top: 0.75rem;
+  }
+
+  .strategy-card li {
+    position: relative;
+    padding-left: 1.25rem;
+    font-size: 0.88rem;
+    color: var(--muted);
+    margin-bottom: 0.4rem;
+    line-height: 1.5;
+  }
+
+  .strategy-card li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--red);
+    font-weight: 700;
+  }
+
+  /* ── TIPS ─────────────────────────── */
+  .tips-columns {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1.25rem;
+  }
+
+  .tip-block {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 2rem;
+  }
+
+  .tip-block h3 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.25rem;
+    letter-spacing: 0.04em;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .tip-list {
+    list-style: none;
+  }
+
+  .tip-list li {
+    padding: 0.55rem 0;
+    font-size: 0.88rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-start;
+  }
+
+  .tip-list li:last-child { border-bottom: none; }
+
+  .tip-list .check {
+    color: var(--red);
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  /* ── ETIQUETTE ────────────────────── */
+  .etiquette-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1rem;
+  }
+
+  .etiquette-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 1.5rem;
+    text-align: center;
+    transition: transform 0.2s;
+  }
+
+  .etiquette-card:hover { transform: translateY(-3px); }
+
+  .etiquette-card .eti-icon {
+    font-size: 2.2rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .etiquette-card h4 {
+    font-size: 0.9rem;
+    font-weight: 700;
+    margin-bottom: 0.4rem;
+  }
+
+  .etiquette-card p {
+    font-size: 0.82rem;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .do-dont {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+  }
+
+  .do { background: #27AE60; color: #fff; }
+  .dont { background: var(--red); color: #fff; }
+
+  /* ── CALLOUT ──────────────────────── */
+  .callout {
+    background: var(--charcoal);
+    border-radius: 20px;
+    padding: 3rem;
+    color: #fff;
+    text-align: center;
+    margin: 2rem 0;
+  }
+
+  .callout h3 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .callout p {
+    color: rgba(255,255,255,0.6);
+    max-width: 600px;
+    margin: 0 auto;
+    font-size: 0.95rem;
+  }
+
+  /* ── FOOTER ──────────────────────── */
+  footer {
+    text-align: center;
+    padding: 3rem 1.5rem;
+    color: var(--muted);
+    font-size: 0.82rem;
+    border-top: 1px solid var(--border);
+  }
+
+  footer .big {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.5rem;
+    color: var(--dark);
+    margin-bottom: 0.5rem;
+  }
+
+  /* ── RESPONSIVE ──────────────────── */
+  @media (max-width: 768px) {
+    .top5-section {
+      grid-template-columns: 1fr;
+    }
+    .activity-table { font-size: 0.82rem; }
+    .activity-table th, .activity-table td { padding: 0.7rem 0.8rem; }
+    section { padding: 3.5rem 0; }
+    .callout { padding: 2rem 1.5rem; }
+  }
+
+  @media (max-width: 500px) {
+    .food-grid { grid-template-columns: 1fr; }
+    .cost-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ HERO ═══════════════ -->
+<header class="hero">
+  <div class="hero-flag">🇯🇵</div>
+  <h1>TOKYO <span>2026</span></h1>
+  <p class="hero-sub">Celebrating <strong>Millz 35th</strong> Birthday 🥳</p>
+  <div class="hero-dates">
+    <span>April 20</span>
+    <span class="dot"></span>
+    <span>April 28</span>
+  </div>
+  <span class="hero-scroll">↓ scroll down ↓</span>
+</header>
+
+<!-- ═══════════════ NAV ════════════════ -->
+<nav class="sticky-nav">
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#costs">Costs</a></li>
+    <li><a href="#adventures">Adventures</a></li>
+    <li><a href="#food">Food Spots</a></li>
+    <li><a href="#top5">Wagyu & Omakase</a></li>
+    <li><a href="#group">Group Strategy</a></li>
+    <li><a href="#tips">Travel Tips</a></li>
+    <li><a href="#etiquette">Etiquette</a></li>
+  </ul>
+</nav>
+
+<!-- ═══════════════ OVERVIEW ═══════════ -->
+<section id="overview">
+  <div class="container">
+    <p class="section-label">The Plan</p>
+    <h2 class="section-title">8 Days in Tokyo</h2>
+    <p class="section-desc">We're rolling 8–15 deep for Millz's 35th. Staying at <strong>Keio Plaza Hotel Tokyo</strong> in Shinjuku — right in the heart of everything. Tokyo is our playground: street food, nightlife, go-karts, anime, temples, and the best beef on the planet.</p>
+
+    <div class="cost-grid">
+      <div class="cost-card">
+        <div class="icon">🏨</div>
+        <h3>Hotel</h3>
+        <div class="price">Keio Plaza</div>
+        <div class="note">Shinjuku · 7 nights</div>
+      </div>
+      <div class="cost-card">
+        <div class="icon">✈️</div>
+        <h3>Fly Into</h3>
+        <div class="price">Tokyo HND</div>
+        <div class="note">Round-trip from YYZ · ~13 hrs</div>
+      </div>
+      <div class="cost-card">
+        <div class="icon">🕐</div>
+        <h3>Time Zone</h3>
+        <div class="price">+13 HRS</div>
+        <div class="note">Ahead of Toronto, ON</div>
+      </div>
+      <div class="cost-card">
+        <div class="icon">👥</div>
+        <h3>Squad Size</h3>
+        <div class="price">8 – 15</div>
+        <div class="note">Group trip · book ahead!</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ COSTS ══════════════ -->
+<section id="costs" style="background: var(--soft-white);">
+  <div class="container">
+    <p class="section-label">Budget</p>
+    <h2 class="section-title">General Cost Breakdown</h2>
+    <p class="section-desc">Average per person. Prices in CAD unless noted.</p>
+
+    <div class="cost-grid">
+      <div class="cost-card">
+        <div class="icon">✈️</div>
+        <h3>Flight</h3>
+        <div class="price">$1,500</div>
+        <div class="note">Round-trip YYZ → HND</div>
+      </div>
+      <div class="cost-card">
+        <div class="icon">🏨</div>
+        <h3>Hotel</h3>
+        <div class="price">$2,000</div>
+        <div class="note">7 nights · Keio Plaza</div>
+      </div>
+      <div class="cost-card">
+        <div class="icon">🍜</div>
+        <h3>Food</h3>
+        <div class="price">$1,360</div>
+        <div class="note">$20 brkfst + $50 lunch + $100 dinner × 8 days</div>
+      </div>
+      <div class="cost-card">
+        <div class="icon">🎌</div>
+        <h3>Fun & Activities</h3>
+        <div class="price">$500 – $1,000</div>
+        <div class="note">Attractions, transport, shopping</div>
+      </div>
+      <div class="cost-card cost-total">
+        <div class="icon">💰</div>
+        <h3>Estimated Total</h3>
+        <div class="price">$5,360 – $5,860</div>
+        <div class="note">Per person · all-in estimate</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ ADVENTURES ═════════ -->
+<section id="adventures">
+  <div class="container">
+    <p class="section-label">April 20 – 28</p>
+    <h2 class="section-title">Tokyo Adventures</h2>
+    <p class="section-desc">Everything we're hitting. <span class="tag tag-must">Must</span> = non-negotiable. <span class="tag tag-group">Group</span> = great for the whole crew. <span class="tag tag-fun">Fun</span> = optional fun. <span class="tag tag-culture">Culture</span> = temples & vibes.</p>
+
+    <div style="overflow-x: auto;">
+    <table class="activity-table">
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Activity</th>
+          <th>Price</th>
+          <th>Booking</th>
+          <th>Distance</th>
+          <th>Details</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="tag tag-fun">Fun</span></td>
+          <td><strong>PokéPark Kanto</strong></td>
+          <td>$100</td>
+          <td><span class="booking-yes">Required</span></td>
+          <td>23 km W</td>
+          <td>Pokémon theme park — book group tickets early</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-culture">Culture</span></td>
+          <td><strong>Senso-Ji Temple</strong></td>
+          <td>Free</td>
+          <td><span class="booking-no">Walk-in</span></td>
+          <td>12 km E</td>
+          <td>Tokyo's oldest temple · Asakusa · amazing group photos</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-fun">Fun</span></td>
+          <td><strong>Ueno Zoo</strong></td>
+          <td>$6</td>
+          <td><span class="booking-yes">Required</span></td>
+          <td>12 km E</td>
+          <td>Panda zoo — walk-in friendly for groups</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-fun">Fun</span></td>
+          <td><strong>Akihabara</strong></td>
+          <td>Free</td>
+          <td><span class="booking-no">Walk-in</span></td>
+          <td>10 km E</td>
+          <td>Anime City · arcades · maid cafés · Pokémon merch</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-must">Must</span></td>
+          <td><strong>Tokyo Skytree</strong></td>
+          <td>$20</td>
+          <td><span class="booking-yes">Required</span></td>
+          <td>13 km E</td>
+          <td>634m tower · pre-book group tickets for skip-the-line</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-must">Must</span></td>
+          <td><strong>Japan Kart 🏎️</strong></td>
+          <td>$80</td>
+          <td><span class="booking-yes">Required</span></td>
+          <td>13 km E</td>
+          <td>Go-kart through Tokyo streets in costume! Max ~10/session — book 2 slots for full crew</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-fun">Fun</span></td>
+          <td><strong>Yoyogi Park</strong></td>
+          <td>Free</td>
+          <td><span class="booking-no">Walk-in</span></td>
+          <td>3 km S</td>
+          <td>Cherry blossoms · great group hangout + picnic spot</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-fun">Fun</span></td>
+          <td><strong>Tokyo Tower</strong></td>
+          <td>$70</td>
+          <td><span class="booking-no">Walk-in</span></td>
+          <td>8 km SE</td>
+          <td>Iconic Tokyo landmark · sunset views</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-culture">Culture</span></td>
+          <td><strong>Hie Shrine</strong></td>
+          <td>Free</td>
+          <td><span class="booking-no">Walk-in</span></td>
+          <td>7 km SE</td>
+          <td>Tokyo's major Shinto shrine · beautiful tunnel of torii</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-group">Group</span></td>
+          <td><strong>Shibuya Sky 🌇</strong></td>
+          <td>$20</td>
+          <td><span class="booking-yes">Required</span></td>
+          <td>5 km S</td>
+          <td>Rooftop observatory · sunset group photos — book ahead</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-group">Group</span></td>
+          <td><strong>Omoide Yokocho</strong></td>
+          <td>Free</td>
+          <td><span class="booking-no">Walk-in</span></td>
+          <td>2 km E</td>
+          <td>Atmospheric alley of tiny izakayas — split into smaller groups to eat</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-group">Group</span></td>
+          <td><strong>Shibuya Parco</strong></td>
+          <td>Free</td>
+          <td><span class="booking-no">Walk-in</span></td>
+          <td>4 km S</td>
+          <td>6th floor: Capcom, Pokémon Center, Nintendo</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-group">Group</span></td>
+          <td><strong>Takeshita Street</strong></td>
+          <td>Free</td>
+          <td><span class="booking-no">Walk-in</span></td>
+          <td>4 km S</td>
+          <td>Harajuku shopping · street fashion · crepes</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-fun">Fun</span></td>
+          <td><strong>Kabukicho Tower</strong></td>
+          <td>Varies</td>
+          <td><span class="booking-no">Walk-in</span></td>
+          <td>2 km N</td>
+          <td>Japanese Dave & Busters — perfect for group nightlife</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-culture">Culture</span></td>
+          <td><strong>Naka-Meguro</strong></td>
+          <td>Free</td>
+          <td><span class="booking-no">Walk-in</span></td>
+          <td>8 km S</td>
+          <td>Night-time cherry blossom ravine — stunning evening walk</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-group">Group</span></td>
+          <td><strong>Azabudai Hills</strong></td>
+          <td>Free</td>
+          <td><span class="booking-no">Walk-in</span></td>
+          <td>8 km SE</td>
+          <td>Luxury shopping complex — en route to teamLab</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-must">Must</span></td>
+          <td><strong>teamLab Planets 🎨</strong></td>
+          <td>$35</td>
+          <td><span class="booking-yes">Required</span></td>
+          <td>12 km SE</td>
+          <td>Immersive digital art — closing 2027, don't miss it! Book timed group entry</td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-group">Group</span></td>
+          <td><strong>Odaiba</strong></td>
+          <td>Free</td>
+          <td><span class="booking-no">Walk-in</span></td>
+          <td>15 km SE</td>
+          <td>Waterfront district · giant Gundam · DiverCity · great group day out</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="callout">
+      <h3>🎉 Bonus Group Activities</h3>
+      <p>Consider adding: a <strong>private karaoke night</strong> (karaoke rooms fit 10–20 easily), a <strong>group cooking class</strong> (sushi/ramen making — Maikoya or ABC Cooking), a <strong>sumo stable morning visit</strong> (intimate experience, book 2+ months ahead), a <strong>Kabuki single-act show</strong> at Kabuki-za Theatre ($22/person), or a <strong>yakatabune dinner cruise</strong> on Tokyo Bay (fits 10+ easily, wagyu on a boat!).</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ FOOD ═══════════════ -->
+<section id="food" style="background: var(--soft-white);">
+  <div class="container">
+    <p class="section-label">Eat</p>
+    <h2 class="section-title">Tokyo Food Spots</h2>
+    <p class="section-desc">From street wagyu to Louis Vuitton cafés. $ = ~$25 CAD per person.</p>
+
+    <div class="food-grid">
+      <div class="food-card">
+        <div class="food-emoji">🥩</div>
+        <div>
+          <h4>Nikuya no Daidokoro Shinjuku</h4>
+          <div class="food-meta"><span class="food-price">$$</span> Lunch · 2 km</div>
+          <div class="food-detail">All-you-can-eat wagyu — group-friendly!</div>
+        </div>
+      </div>
+      <div class="food-card">
+        <div class="food-emoji">🎮</div>
+        <div>
+          <h4>Kabukicho Tower Shinjuku</h4>
+          <div class="food-meta"><span class="food-price">$$</span> Dinner · 2 km</div>
+          <div class="food-detail">Eat, drink, and game — Dave & Busters style</div>
+        </div>
+      </div>
+      <div class="food-card">
+        <div class="food-emoji">🥞</div>
+        <div>
+          <h4>Ginza Aoyama West Akasaka</h4>
+          <div class="food-meta"><span class="food-price">$$</span> Breakfast · 6 km</div>
+          <div class="food-detail">Tokyo's best soufflé pancakes</div>
+        </div>
+      </div>
+      <div class="food-card">
+        <div class="food-emoji">⚡</div>
+        <div>
+          <h4>Pokémon Cafe</h4>
+          <div class="food-meta"><span class="food-price">$</span> Lunch · 16 km</div>
+          <div class="food-detail">Themed experience — book 31 days ahead exactly at noon JST</div>
+        </div>
+      </div>
+      <div class="food-card">
+        <div class="food-emoji">🍸</div>
+        <div>
+          <h4>Bar Centifolia</h4>
+          <div class="food-meta"><span class="food-price">$$$$</span> Dinner · 8 km · <span class="booking-yes">Book!</span></div>
+          <div class="food-detail">Fancy cocktail bar with smoke infusions</div>
+        </div>
+      </div>
+      <div class="food-card">
+        <div class="food-emoji">🍮</div>
+        <div>
+          <h4>St. Sawai Orions</h4>
+          <div class="food-meta"><span class="food-price">$$</span> Snack · 10 km</div>
+          <div class="food-detail">Crème brûlée pudding — viral dessert spot</div>
+        </div>
+      </div>
+      <div class="food-card">
+        <div class="food-emoji">🎂</div>
+        <div>
+          <h4>Yakiniku Kappo Note</h4>
+          <div class="food-meta"><span class="food-price">$$$$$</span> Dinner · 7 km</div>
+          <div class="food-detail">Birthday dinner — TBD. Premium wagyu kappo.</div>
+        </div>
+      </div>
+      <div class="food-card">
+        <div class="food-emoji">🐷</div>
+        <div>
+          <h4>Katsudon-ya Zuicho</h4>
+          <div class="food-meta"><span class="food-price">$</span> Lunch · 5 km</div>
+          <div class="food-detail">THE BEST deep fried pork cutlets in Tokyo</div>
+        </div>
+      </div>
+      <div class="food-card">
+        <div class="food-emoji">🥳</div>
+        <div>
+          <h4>Ginza Steak</h4>
+          <div class="food-meta"><span class="food-price">$$$$</span> Dinner · 6 km · <span class="booking-yes">Book!</span></div>
+          <div class="food-detail">Birthday AYCE dinner — book private room for group</div>
+        </div>
+      </div>
+      <div class="food-card">
+        <div class="food-emoji">🍕</div>
+        <div>
+          <h4>Pizza Omakase</h4>
+          <div class="food-meta"><span class="food-price">$85</span> Lunch · 10 km · <span class="booking-yes">Book!</span></div>
+          <div class="food-detail">Pizza bar on the 38th floor — views for days</div>
+        </div>
+      </div>
+      <div class="food-card">
+        <div class="food-emoji">👜</div>
+        <div>
+          <h4>Le Cafe V</h4>
+          <div class="food-meta"><span class="food-price">$$$</span> Lunch · 8 km</div>
+          <div class="food-detail">Louis Vuitton Café — the flex lunch</div>
+        </div>
+      </div>
+      <div class="food-card">
+        <div class="food-emoji">🥩</div>
+        <div>
+          <h4>Emperor Steak</h4>
+          <div class="food-meta"><span class="food-price">$$$</span> Dinner · 2 km · <span class="booking-yes">Book!</span></div>
+          <div class="food-detail">A5 Kobe Wagyu teppanyaki — book private room</div>
+        </div>
+      </div>
+      <div class="food-card">
+        <div class="food-emoji">🌸</div>
+        <div>
+          <h4>Haute Cafe</h4>
+          <div class="food-meta"><span class="food-price">$$$$</span> Snack · 6 km</div>
+          <div class="food-detail">Cherry blossom themed café — IG heaven</div>
+        </div>
+      </div>
+      <div class="food-card">
+        <div class="food-emoji">🍖</div>
+        <div>
+          <h4>Slice of Life BBQ</h4>
+          <div class="food-meta"><span class="food-price">$</span> Snack · 5 km</div>
+          <div class="food-detail">Street wagyu brisket — grab and go</div>
+        </div>
+      </div>
+      <div class="food-card">
+        <div class="food-emoji">✨</div>
+        <div>
+          <h4>Wagyumafi</h4>
+          <div class="food-meta"><span class="food-price">$$$$$$</span> Dinner · 4 km</div>
+          <div class="food-detail">Gold-dusted wagyu — the ultimate splurge</div>
+        </div>
+      </div>
+      <div class="food-card">
+        <div class="food-emoji">🍢</div>
+        <div>
+          <h4>Yakitori Sei Shinjuku</h4>
+          <div class="food-meta"><span class="food-price">$$$</span> Dinner · 3 km</div>
+          <div class="food-detail">BEST yakitori in Shinjuku — counter-style, split into groups</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ TOP 5 ══════════════ -->
+<section id="top5">
+  <div class="container">
+    <p class="section-label">The Best of the Best</p>
+    <h2 class="section-title">Top 5 Wagyu & Omakase</h2>
+    <p class="section-desc">Researched and curated picks. For groups of 8–15, wagyu yakiniku spots are your best bet — they have private rooms and accommodate big parties. Omakase is intimate by nature (6–14 seats), so split into smaller groups or book multiple seatings.</p>
+
+    <div class="top5-section">
+      <div class="top5-block">
+        <div class="top5-header">
+          <h3>🥩 Top 5 Wagyu Experiences</h3>
+          <p>Group-friendly picks with private rooms & large party options</p>
+        </div>
+        <div class="top5-item">
+          <div class="top5-rank">1</div>
+          <div>
+            <h4>Rokkasen — Otakibashi, Shinjuku</h4>
+            <p>Premium yakiniku, shabu-shabu & sukiyaki. <strong>Private rooms for 10–20 people.</strong> Walking distance from Keio Plaza. A5 wagyu with multiple cooking styles. <span class="top5-price">~¥10,000/person</span></p>
+          </div>
+        </div>
+        <div class="top5-item">
+          <div class="top5-rank">2</div>
+          <div>
+            <h4>Yoroniku — Minami-Aoyama</h4>
+            <p>Tokyo's most celebrated yakiniku. 18-course wagyu omakase with caviar-topped sushi and sparklers. Lively atmosphere — perfect for Millz's birthday dinner. Book 2+ months ahead. <span class="top5-price">~¥20,000–30,000/person</span></p>
+          </div>
+        </div>
+        <div class="top5-item">
+          <div class="top5-rank">3</div>
+          <div>
+            <h4>Ushihachi — Multiple Locations</h4>
+            <p>Best value A5 wagyu yakiniku chain. Uses only female kuroge wagyu. Multiple branches = easy to seat a big group. Great for a casual group dinner without breaking the bank. <span class="top5-price">~¥5,000–8,000/person</span></p>
+          </div>
+        </div>
+        <div class="top5-item">
+          <div class="top5-rank">4</div>
+          <div>
+            <h4>Bifteck Kawamura — Roppongi/Ginza</h4>
+            <p>Legendary Kobe beef teppanyaki. Private rooms available for 10+. White-glove service — chef grills in front of you. Use My Concierge Japan to book. <span class="top5-price">~¥15,000–25,000/person</span></p>
+          </div>
+        </div>
+        <div class="top5-item">
+          <div class="top5-rank">5</div>
+          <div>
+            <h4>Nikuya Yokocho — Shibuya</h4>
+            <p>30+ cuts of A5 wagyu in a lively, colourful setting. Fun, casual, energetic — perfect for a group night out in Shibuya. Counter and table seating. <span class="top5-price">~¥6,000–10,000/person</span></p>
+          </div>
+        </div>
+      </div>
+
+      <div class="top5-block">
+        <div class="top5-header">
+          <h3>🍣 Top 5 Omakase Experiences</h3>
+          <p>Intimate, chef-driven meals — split into groups of 2–4</p>
+        </div>
+        <div class="top5-item">
+          <div class="top5-rank">1</div>
+          <div>
+            <h4>Sushi Ryo — Ginza</h4>
+            <p>Young prodigy chef Ryo Sasaki's Edo-style counter. 8 seats only. Book through TableAll or Pocket Concierge. Incredible nigiri with seasonal fish. <span class="top5-price">~¥20,000–30,000/person</span></p>
+          </div>
+        </div>
+        <div class="top5-item">
+          <div class="top5-rank">2</div>
+          <div>
+            <h4>Sushi Masuda — Aoyama</h4>
+            <p>3 Michelin stars. Protégé of Jiro Ono. 14 seats with 6–7 small dishes plus 10+ nigiri. Truly world-class. Book way ahead via hotel concierge. <span class="top5-price">~¥30,000–45,000/person</span></p>
+          </div>
+        </div>
+        <div class="top5-item">
+          <div class="top5-rank">3</div>
+          <div>
+            <h4>Isseki Sancho — Shinbashi/Ginza</h4>
+            <p>Most accessible high-quality omakase. Starts at ¥8,800 for 15 items. Direct-sourced fish keeps prices down. Great "first omakase" for the group. <span class="top5-price">~¥8,800–22,800/person</span></p>
+          </div>
+        </div>
+        <div class="top5-item">
+          <div class="top5-rank">4</div>
+          <div>
+            <h4>Sushi Azabu — Azabudai Hills</h4>
+            <p>Affordable lunch omakase from ¥4,800. Beautiful setting in Azabudai Hills (pair with teamLab). Dinner courses from ¥9,800. Sister spots in Miami & Kyoto. <span class="top5-price">~¥4,800–15,000/person</span></p>
+          </div>
+        </div>
+        <div class="top5-item">
+          <div class="top5-rank">5</div>
+          <div>
+            <h4>Ginza Tarikino — Ginza</h4>
+            <p>Relaxed, unpretentious omakase with a private room option. Seasonal ingredients on beautiful Karatsuware pottery. Easier to book than most Ginza spots. <span class="top5-price">~¥15,000–25,000/person</span></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ GROUP STRATEGY ═════ -->
+<section id="group" style="background: var(--soft-white);">
+  <div class="container">
+    <p class="section-label">Big Squad Energy</p>
+    <h2 class="section-title">Group Strategy for 8–15 People</h2>
+    <p class="section-desc">Tokyo is built for solo diners and couples. Here's how we navigate as a large crew without losing our minds.</p>
+
+    <div class="strategy-grid">
+      <div class="strategy-card">
+        <div class="strat-icon">🍽️</div>
+        <h3>Dining: The Split Strategy</h3>
+        <p>Most Tokyo restaurants seat 4–8 people max. Here's the playbook:</p>
+        <ul>
+          <li><strong>Izakayas with private rooms (個室):</strong> Search "kosshitsu" — many izakayas have rooms for 10–20. Book 2+ weeks ahead.</li>
+          <li><strong>Yakiniku restaurants:</strong> Best group format. Multiple grills, private rooms, accommodate 10+ easily.</li>
+          <li><strong>Split & reconvene:</strong> For ramen, sushi counters, and street food — split into groups of 3–4 and meet up after.</li>
+          <li><strong>Hotel concierge:</strong> Ask Keio Plaza to book group dinners. They have connections local apps don't.</li>
+          <li><strong>Depachika hack:</strong> Buy premium bento, wagyu, and sushi from department store basements (Isetan, Takashimaya) — eat together back at the hotel.</li>
+        </ul>
+      </div>
+
+      <div class="strategy-card">
+        <div class="strat-icon">🚇</div>
+        <h3>Getting Around: 15 People on Transit</h3>
+        <p>Forget taxis and rental cars. The train is king.</p>
+        <ul>
+          <li><strong>Suica IC card on Apple Pay:</strong> Everyone loads this before arriving. Tap and ride everywhere.</li>
+          <li><strong>Travel in pods of 4–5:</strong> Don't try to keep 15 people together on a packed train. Designate meeting points at exits.</li>
+          <li><strong>Use exit numbers:</strong> "Meet at Exit A3 of Shibuya Station" is way more useful than "meet at Shibuya."</li>
+          <li><strong>NaviTime app:</strong> Everyone downloads this. Shows routes, platforms, and fares.</li>
+          <li><strong>Go Taxi app:</strong> Japan's Uber. For late-night or when the group is exhausted. Activate once in Japan.</li>
+          <li><strong>One-day metro passes:</strong> ¥600/day for unlimited Tokyo Metro rides — saves money on heavy sightseeing days.</li>
+        </ul>
+      </div>
+
+      <div class="strategy-card">
+        <div class="strat-icon">📋</div>
+        <h3>Booking Strategy</h3>
+        <p>For a group this size, advance planning is non-negotiable.</p>
+        <ul>
+          <li><strong>Book 2+ months ahead:</strong> teamLab, Japan Kart, Pokémon Cafe, Shibuya Sky, and any premium restaurant.</li>
+          <li><strong>Use booking platforms:</strong> TableAll, Pocket Concierge, My Concierge Japan, and Klook for activities.</li>
+          <li><strong>Japan Kart:</strong> Max ~10 per session. Book 2 consecutive slots for the full crew.</li>
+          <li><strong>Pokémon Cafe:</strong> Opens bookings exactly 31 days ahead at noon JST. Set an alarm!</li>
+          <li><strong>For 10+ at restaurants:</strong> This enters "enkai" (banquet) territory. Ask concierge or use a booking service.</li>
+        </ul>
+      </div>
+
+      <div class="strategy-card">
+        <div class="strat-icon">🎯</div>
+        <h3>Group-Friendly Activities</h3>
+        <p>These scale perfectly for 8–15 people:</p>
+        <ul>
+          <li><strong>Karaoke:</strong> Rooms fit 10–20. Book at Joysound or Big Echo. ¥2,000–3,000/person for 2 hours with drinks.</li>
+          <li><strong>Kabukicho Tower:</strong> Multi-floor entertainment complex — arcade, food, bars. No booking needed.</li>
+          <li><strong>Yakatabune dinner cruise:</strong> Private boat dining on Tokyo Bay. Fits 10–30. Wagyu + sake + city lights.</li>
+          <li><strong>Cooking class:</strong> Maikoya Tokyo does group sushi/ramen making for up to 15.</li>
+          <li><strong>Cherry blossom hanami:</strong> Grab konbini snacks + drinks, picnic at Yoyogi Park. Free and unforgettable.</li>
+          <li><strong>Robot Restaurant / Samurai Restaurant:</strong> Wild dinner shows in Shinjuku. Seats 100+. Book on GetYourGuide.</li>
+        </ul>
+      </div>
+
+      <div class="strategy-card">
+        <div class="strat-icon">💬</div>
+        <h3>Communication Plan</h3>
+        <p>Keep the squad coordinated:</p>
+        <ul>
+          <li><strong>WhatsApp group chat:</strong> Create before the trip. Share daily schedules, meeting points, and live locations.</li>
+          <li><strong>Designate 2–3 leaders:</strong> One handles restaurants, one handles transit, one handles activities.</li>
+          <li><strong>Daily schedule:</strong> Post a simple AM/PM plan each night for the next day.</li>
+          <li><strong>Free time blocks:</strong> Build in 2–3 hour windows daily for people to explore solo or in smaller groups.</li>
+          <li><strong>eSIM for everyone:</strong> Airalo Japan plan. No one gets lost without data.</li>
+        </ul>
+      </div>
+
+      <div class="strategy-card">
+        <div class="strat-icon">💴</div>
+        <h3>Money & Splitting Bills</h3>
+        <p>Japan is still very cash-heavy. Be prepared:</p>
+        <ul>
+          <li><strong>Carry ¥5,000+ cash daily.</strong> Many small restaurants are cash-only.</li>
+          <li><strong>Convert CAD → JPY before arriving</strong> at a currency exchange — airport rates are bad.</li>
+          <li><strong>Coin purse:</strong> You'll accumulate coins fast. Japan uses ¥500, ¥100, ¥50 coins heavily.</li>
+          <li><strong>Splitwise app:</strong> Track shared expenses. Settle up at end of trip.</li>
+          <li><strong>Notify your bank</strong> about travel to Japan to avoid card blocks.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ TIPS ═══════════════ -->
+<section id="tips">
+  <div class="container">
+    <p class="section-label">Essentials</p>
+    <h2 class="section-title">Travel Tips & Checklist</h2>
+    <p class="section-desc">Don't leave Toronto without checking these off.</p>
+
+    <div class="tips-columns">
+      <div class="tip-block">
+        <h3>✈️ Before You Fly</h3>
+        <ul class="tip-list">
+          <li><span class="check">☐</span> Check passport expiry (6+ months validity)</li>
+          <li><span class="check">☐</span> Fill out Japan's Online Immigration Customs Form before arrival</li>
+          <li><span class="check">☐</span> Buy eSIM — Airalo Japan plan (activate before landing)</li>
+          <li><span class="check">☐</span> Battery pack — 20,000 mAh minimum</li>
+          <li><span class="check">☐</span> Universal adapter (multi-port USB-C)</li>
+          <li><span class="check">☐</span> Set up Suica IC Pass on Apple Pay</li>
+          <li><span class="check">☐</span> Download NaviTime app (trains, platforms, fares)</li>
+          <li><span class="check">☐</span> Download Go Taxi app (activate once in Japan)</li>
+          <li><span class="check">☐</span> Convert cash to ¥en in advance</li>
+          <li><span class="check">☐</span> Notify your bank about Japan travel</li>
+          <li><span class="check">☐</span> Bring medication (Advil, Benadryl, etc.)</li>
+          <li><span class="check">☐</span> Apple AirTag on luggage</li>
+        </ul>
+      </div>
+
+      <div class="tip-block">
+        <h3>🎒 Daily Carry</h3>
+        <ul class="tip-list">
+          <li><span class="check">☐</span> Compact umbrella (April = rain season starts)</li>
+          <li><span class="check">☐</span> Hand towel / rag (many restrooms lack paper towels)</li>
+          <li><span class="check">☐</span> Small bag / fanny pack for carrying garbage (no public bins!)</li>
+          <li><span class="check">☐</span> Coin purse (Japan is coin-heavy)</li>
+          <li><span class="check">☐</span> ¥5,000+ cash daily</li>
+          <li><span class="check">☐</span> Charged battery pack</li>
+          <li><span class="check">☐</span> Comfortable walking shoes (10–15k steps/day easy)</li>
+        </ul>
+      </div>
+
+      <div class="tip-block">
+        <h3>💡 Pro Tips</h3>
+        <ul class="tip-list">
+          <li><span class="check">★</span> Google "good izakaya near me" for cheap, atmospheric alley food</li>
+          <li><span class="check">★</span> Hit grocery stores after 8 PM — 50% off bento, sushi, wagyu!</li>
+          <li><span class="check">★</span> Use Ecbo Cloak app to store luggage at coin lockers and shops</li>
+          <li><span class="check">★</span> Don't book trains between 12 AM – 5 AM (they don't run)</li>
+          <li><span class="check">★</span> One-day metro passes save money on heavy sightseeing days</li>
+          <li><span class="check">★</span> Ask hotel front desk for "Please take me to ___" cards in Japanese</li>
+          <li><span class="check">★</span> Klook discount code: <strong>KLOOKGABTK</strong> for 10% off activities</li>
+        </ul>
+      </div>
+
+      <div class="tip-block">
+        <h3>🛍️ Shopping Guide</h3>
+        <ul class="tip-list">
+          <li><span class="check">🏪</span> <strong>Don Quijote</strong> — Japan's Walmart. Open 24 hrs. Everything.</li>
+          <li><span class="check">👕</span> <strong>Uniqlo</strong> — Basics & Japan-exclusive collabs</li>
+          <li><span class="check">🎁</span> <strong>Loft</strong> — Best souvenirs & gifts</li>
+          <li><span class="check">✏️</span> <strong>Itoya</strong> — Stationery paradise (Ginza)</li>
+          <li><span class="check">💊</span> <strong>Matsumoto Kiyoshi</strong> — Drugstore (Shoppers equivalent)</li>
+          <li><span class="check">🏀</span> <strong>Gallery-2</strong> — Basketball sneakers & streetwear</li>
+          <li><span class="check">🥢</span> <strong>Wood Works Kawagoe</strong> — Custom handmade chopsticks</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ ETIQUETTE ══════════ -->
+<section id="etiquette" style="background: var(--soft-white);">
+  <div class="container">
+    <p class="section-label">Respect the Culture</p>
+    <h2 class="section-title">Japan Etiquette Guide</h2>
+    <p class="section-desc">Japan is incredibly welcoming, but there are customs we should respect. These aren't just polite — they'll make our experience better too.</p>
+
+    <div class="etiquette-grid">
+      <div class="etiquette-card">
+        <div class="eti-icon">🚶</div>
+        <span class="do-dont dont">Don't</span>
+        <h4>Walk & Eat</h4>
+        <p>Eating while walking is considered rude. Stop, eat, then keep moving. Street food stalls have standing areas.</p>
+      </div>
+      <div class="etiquette-card">
+        <div class="eti-icon">🗑️</div>
+        <span class="do-dont do">Do</span>
+        <h4>Carry Your Trash</h4>
+        <p>There are almost no public garbage bins. Bring a small bag to hold your trash until you find one (usually at konbini).</p>
+      </div>
+      <div class="etiquette-card">
+        <div class="eti-icon">🚇</div>
+        <span class="do-dont dont">Don't</span>
+        <h4>Talk Loudly on Trains</h4>
+        <p>Trains are silent zones. Keep voices low, phones on silent, and never take calls. Our group of 15 needs to be especially careful here.</p>
+      </div>
+      <div class="etiquette-card">
+        <div class="eti-icon">🥢</div>
+        <span class="do-dont dont">Don't</span>
+        <h4>Stick Chopsticks Upright</h4>
+        <p>Never stick chopsticks vertically in rice — it resembles a funeral ritual. Lay them flat on the rest or plate.</p>
+      </div>
+      <div class="etiquette-card">
+        <div class="eti-icon">👟</div>
+        <span class="do-dont do">Do</span>
+        <h4>Remove Shoes When Asked</h4>
+        <p>Temples, some restaurants, and ryokans require shoes off. Wear easy slip-on shoes and clean socks.</p>
+      </div>
+      <div class="etiquette-card">
+        <div class="eti-icon">💴</div>
+        <span class="do-dont do">Do</span>
+        <h4>Use the Cash Tray</h4>
+        <p>Place cash/card on the small tray at registers — don't hand money directly to the cashier.</p>
+      </div>
+      <div class="etiquette-card">
+        <div class="eti-icon">🙅</div>
+        <span class="do-dont dont">Don't</span>
+        <h4>Tip Anyone</h4>
+        <p>Tipping is not customary and can be seen as rude. Service is already included. A genuine "arigatou gozaimasu" goes a long way.</p>
+      </div>
+      <div class="etiquette-card">
+        <div class="eti-icon">🏊</div>
+        <span class="do-dont do">Do</span>
+        <h4>Shower Before Onsen</h4>
+        <p>Always wash thoroughly at the shower stations before entering any hot spring or public bath. It's mandatory.</p>
+      </div>
+      <div class="etiquette-card">
+        <div class="eti-icon">📸</div>
+        <span class="do-dont dont">Don't</span>
+        <h4>Photo Without Permission</h4>
+        <p>Don't photograph people (especially geisha/maiko) without asking. Many temples also restrict photography inside.</p>
+      </div>
+      <div class="etiquette-card">
+        <div class="eti-icon">🚪</div>
+        <span class="do-dont do">Do</span>
+        <h4>Queue Properly</h4>
+        <p>Japanese people queue for everything. Line up neatly, don't cut, and wait your turn — even for escalators (stand left in Tokyo).</p>
+      </div>
+      <div class="etiquette-card">
+        <div class="eti-icon">📱</div>
+        <span class="do-dont dont">Don't</span>
+        <h4>Talk on Phone in Public</h4>
+        <p>Phone calls in restaurants, trains, and shops are frowned upon. Step outside to take a call.</p>
+      </div>
+      <div class="etiquette-card">
+        <div class="eti-icon">🍜</div>
+        <span class="do-dont do">Do</span>
+        <h4>Slurp Your Noodles</h4>
+        <p>Slurping ramen and soba is not just accepted — it's a compliment to the chef. Go for it!</p>
+      </div>
+    </div>
+
+    <div class="callout" style="margin-top: 3rem;">
+      <h3>🗣️ Key Phrases</h3>
+      <p style="text-align: left; max-width: 500px;">
+        <strong style="color: var(--gold);">Arigatou gozaimasu</strong> — Thank you (formal)<br>
+        <strong style="color: var(--gold);">Sumimasen</strong> — Excuse me / Sorry<br>
+        <strong style="color: var(--gold);">Onegaishimasu</strong> — Please (when ordering)<br>
+        <strong style="color: var(--gold);">Itadakimasu</strong> — Said before eating (like "bon appétit")<br>
+        <strong style="color: var(--gold);">Gochisousama deshita</strong> — Said after eating (thanks for the meal)<br>
+        <strong style="color: var(--gold);">Kore kudasai</strong> — "This one, please" (while pointing)<br>
+        <strong style="color: var(--gold);">Eigo daijoubu?</strong> — "Is English okay?"<br>
+        <strong style="color: var(--gold);">Okanjo kudasai</strong> — "Check, please"
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════ FOOTER ═════════════ -->
+<footer>
+  <div class="big">MILLZ 35TH — TOKYO 2026 🇯🇵</div>
+  <p>April 20 – 28 · Keio Plaza Hotel, Shinjuku · Let's make it legendary.</p>
+  <p style="margin-top: 0.5rem; opacity: 0.5;">Last updated: February 2026</p>
+</footer>
+
+</body>
+</html>
