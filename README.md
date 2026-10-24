@@ -20,14 +20,8 @@ The plan is never stored. It is regenerated from each person's settings, so chan
 ## Setup
 
 1. **Supabase project.** Create one, then apply the schema: `supabase link --project-ref YOUR-REF && supabase db push`, or paste `supabase/migrations/0001_init.sql` into the SQL editor.
-2. **Lock sign-ups.** Authentication → Sign In / Providers → turn off **Allow new users to sign up**. Add people under Authentication → Users → **Add user → Create new user** (tick auto-confirm).
-3. **Email template.** Authentication → Emails → **Magic Link**, so the email carries a code as well as a link:
-   ```html
-   <h2>Sign in to Sub-30</h2>
-   <p>Your code: <strong>{{ .Token }}</strong></p>
-   <p><a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email">Or tap here to sign in</a></p>
-   ```
-   Type the code into the app when it's installed on your home screen: a link would open in Safari instead.
+2. **Lock sign-ups.** Authentication → Sign In / Providers → turn off **Allow new users to sign up**. Add people under Authentication → Users → **Add user → Create new user** with an email and password (tick auto-confirm).
+3. **Sign-in.** People sign in with that email and password, which works inside a home-screen app. The emailed magic link is a fallback and has to be opened in the same browser that requested it.
 4. **Redirect URLs.** Authentication → URL Configuration: set Site URL to your Vercel URL and add `http://localhost:3000/**` and `https://YOUR-APP.vercel.app/**` to the redirect list.
 5. **Env vars.** Fill in `.env.local` (template in `.env.example`) with the URL and anon key from Project Settings → API.
 6. **Run it.**
@@ -40,11 +34,11 @@ The plan is never stored. It is regenerated from each person's settings, so chan
 
 ## On your phone
 
-Open the site in Safari → Share → **Add to Home Screen**. It opens full-screen like an app. Sign in with the code from the email.
+Open the site in Safari → Share → **Add to Home Screen**. It opens full-screen like an app. Sign in with your email and password.
 
 ## Adding a person (e.g. your wife)
 
-Authentication → Users → **Add user → Create new user** with her email (tick auto-confirm). She signs in with the emailed code, lands on **Set up your plan**, and gets her own plan from her own times and dates. RLS keeps her data and yours separate. Untick "Coming back from an injury" for anyone who doesn't need the gates and run-walk weeks.
+Authentication → Users → **Add user → Create new user** with her email with a password (tick auto-confirm). She signs in with that, lands on **Set up your plan**, and gets her own plan from her own times and dates. RLS keeps her data and yours separate. Untick "Coming back from an injury" for anyone who doesn't need the gates and run-walk weeks.
 
 ## Your settings
 

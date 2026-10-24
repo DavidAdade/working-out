@@ -3,44 +3,52 @@
 import { useActionState, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
-import { sendMagicLink, verifyCode, type ActionResult } from "@/app/actions";
+import { sendMagicLink, signInWithPassword, type ActionResult } from "@/app/actions";
 
 function LoginForm() {
   const params = useSearchParams();
-  const [email, setEmail] = useState("");
-  const [state, action, pending] = useActionState<ActionResult | null, FormData>(sendMagicLink, null);
-  const [codeState, codeAction, codePending] = useActionState<ActionResult | null, FormData>(verifyCode, null);
+  const [useLink, setUseLink] = useState(false);
+  const [state, action, pending] = useActionState<ActionResult | null, FormData>(signInWithPassword, null);
+  const [linkState, linkAction, linkPending] = useActionState<ActionResult | null, FormData>(sendMagicLink, null);
 
   return (
     <main className="mt-10 flex flex-col gap-4">
       <h1 className="font-display text-5xl font-bold text-accent">SUB-30</h1>
       <div className="card">
         <h2 className="font-display text-2xl font-bold">Sign in</h2>
-        {state?.ok ? (
-          <form action={codeAction} className="flex flex-col gap-3">
-            <p>
-              We emailed <b>{email}</b>. Tap the link, or type the code here.
-            </p>
-            <input type="hidden" name="email" value={email} />
-            <label className="label" htmlFor="code">
-              Code
-            </label>
-            <input id="code" name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]*" required className="input font-mono tracking-[0.3em]" />
-            {codeState && !codeState.ok && <p className="text-sm text-bad">{codeState.error}</p>}
-            <button className="btn" disabled={codePending}>
-              {codePending ? "Checking…" : "Sign in"}
-            </button>
-          </form>
-        ) : (
+        {params.get("error") && <p className="text-sm text-bad">That link expired or was already used. Request a new one.</p>}
+        {!useLink ? (
           <form action={action} className="flex flex-col gap-3">
             <label className="label" htmlFor="email">
               Email
             </label>
-            <input id="email" name="email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="input" />
-            {params.get("error") && <p className="text-sm text-bad">That link expired or was already used. Request a new one.</p>}
+            <input id="email" name="email" type="email" autoComplete="email" autoCapitalize="none" required className="input" />
+            <label className="label" htmlFor="password">
+              Password
+            </label>
+            <input id="password" name="password" type="password" autoComplete="current-password" required className="input" />
             {state && !state.ok && <p className="text-sm text-bad">{state.error}</p>}
             <button className="btn" disabled={pending}>
-              {pending ? "Sending…" : "Email me a sign-in code"}
+              {pending ? "Signing in…" : "Sign in"}
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => setUseLink(true)}>
+              Email me a sign-in link instead
+            </button>
+          </form>
+        ) : linkState?.ok ? (
+          <p>Check your email for a sign-in link. Open it in this same browser.</p>
+        ) : (
+          <form action={linkAction} className="flex flex-col gap-3">
+            <label className="label" htmlFor="link-email">
+              Email
+            </label>
+            <input id="link-email" name="email" type="email" autoComplete="email" autoCapitalize="none" required className="input" />
+            {linkState && !linkState.ok && <p className="text-sm text-bad">{linkState.error}</p>}
+            <button className="btn" disabled={linkPending}>
+              {linkPending ? "Sending…" : "Email me a sign-in link"}
+            </button>
+            <button type="button" className="btn-ghost" onClick={() => setUseLink(false)}>
+              Use password
             </button>
           </form>
         )}

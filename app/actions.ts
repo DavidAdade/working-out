@@ -34,14 +34,14 @@ export async function sendMagicLink(_: unknown, form: FormData): Promise<ActionR
   return { ok: true };
 }
 
-/** The code from the sign-in email. Lets a home-screen app sign in without the link opening a separate browser. */
-export async function verifyCode(_: unknown, form: FormData): Promise<ActionResult> {
+/** Password sign-in. Works inside a home-screen app, where an emailed link would open in Safari instead. */
+export async function signInWithPassword(_: unknown, form: FormData): Promise<ActionResult> {
   const email = String(form.get("email") ?? "").trim().toLowerCase();
-  const token = String(form.get("code") ?? "").replace(/\s/g, "");
-  if (!/^\d{6,10}$/.test(token)) return { ok: false, error: "Enter the code from the email." };
+  const password = String(form.get("password") ?? "");
+  if (!email || !password) return { ok: false, error: "Enter your email and password." };
   const supabase = await createClient();
-  const { error } = await supabase.auth.verifyOtp({ email, token, type: "email" });
-  if (error) return { ok: false, error: "That code didn't work. It may have expired, so request a new one." };
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) return { ok: false, error: "Wrong email or password." };
   redirect("/");
 }
 
