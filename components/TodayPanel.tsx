@@ -47,7 +47,7 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, onLo
             </div>
             <Chip kind={dayKind(day)} />
           </div>
-          <DayBlocks day={day} onSkip={onSkip} logOpen />
+          <DayBlocks day={day} onSkip={onSkip} today={today} logOpen />
           <div className="flex flex-wrap items-center gap-2">
             {loggedToday && <span className="font-bold text-good">✓ Logged</span>}
             <button className="btn" onClick={() => onLog(today)}>
@@ -77,7 +77,7 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, onLo
       {week && (
         <>
           <div className="label">This week</div>
-          <WeekCard week={week} logs={logs} today={today} onSkip={onSkip} open />
+          <WeekCard week={week} logs={logs} today={today} onSkip={onSkip} open todayAbove={!!day && !day.skipped} />
         </>
       )}
     </section>

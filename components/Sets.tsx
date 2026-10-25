@@ -8,6 +8,8 @@ import { compareSession, sessions, toUnit, type Change, type Session } from "@/l
 import type { SetRow, Unit } from "@/lib/types";
 import { useDates } from "./DateLabels";
 import { LineChart } from "./charts";
+import { useOpenVideo } from "./VideoModal";
+import { videoFor } from "@/lib/plan/videos.ts";
 
 /* ---------- shared state: every logged set, saved optimistically ---------- */
 interface SetsCtx {
@@ -145,46 +147,116 @@ export function fmtSet(s: Pick<SetRow, "weight_kg" | "reps" | "duration_sec">, u
   return w ? `${w}×${s.reps ?? "?"}` : `×${s.reps ?? "?"}`;
 }
 
-/* ---------- one exercise's set table ---------- */
-export function ExerciseSets({ line, date: planDate, light, dayTitle, startOpen }: { line: string; date: string; light: boolean; dayTitle: string; startOpen: boolean }) {
+/* ---------- one exercise: a compact row that opens into its set table ---------- */
+export interface RowProps {
+  anchorId?: string;
+  line: string;
+  /** Date the sets save under, or null when this day can't be logged yet */
+  logDate: string | null;
+  light: boolean;
+  dayTitle: string;
+  open: boolean;
+  onToggle: () => void;
+  /** Called once when the last planned set is ticked */
+  onComplete: () => void;
+}
+
+export function ExerciseRow({ anchorId, line, logDate, light, dayTitle, open, onToggle, onComplete }: RowProps) {
   const parsed = parseLine(line);
-  const { sets, today } = useSets();
-  const [open, setOpen] = useState(startOpen);
-  if (!parsed) return null;
-  // A future day's workout done early is logged under today, so history stays in the order you lifted
-  const early = planDate > today;
-  const date = early ? today : planDate;
-  const { exercise, target } = parsed;
-  const done = sets.filter((s) => s.date === date && s.exercise_key === exercise.key).sort((a, b) => a.set_no - b.set_no);
-
-  if (!open)
+  const { sets, unit } = useSets();
+  const openVideo = useOpenVideo();
+  const video = videoFor(line);
+  if (!parsed) {
     return (
-      <button type="button" onClick={() => setOpen(true)} className="mt-1 flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-dashed border-line px-3 text-left text-sm">
-        <SetSummary rows={done} />
-        <span className="font-semibold text-accent-ink">{done.length ? "Edit" : early ? "Log today" : "Log sets"}</span>
-      </button>
+      <li id={anchorId} className="flex min-h-11 items-center gap-1 py-1 text-[0.92rem]">
+        {video ? <VideoButton onClick={() => openVideo(video)} label={video.name} /> : <span className="w-11 flex-none" />}
+        <span className="min-w-0">{line}</span>
+      </li>
     );
+  }
+  const { exercise, target, name } = parsed;
+  const sized = light ? { ...target, sets: Math.min(target.sets, 2) } : target;
+  const done = logDate ? sets.filter((s) => s.date === logDate && s.exercise_key === exercise.key).sort((a, b) => a.set_no - b.set_no) : [];
+  const complete = done.length >= sized.sets;
+  // The weight warning stays visible after the row closes
+  const change = logDate && complete && !open && exercise.load === "weight" ? compareSession(sessions(sets, exercise.key), logDate) : null;
+  const targetText = `${sized.sets}×${target.sec ? `${target.sec}s` : target.reps ?? "max"}${target.each ? " each" : ""}`;
+
   return (
-    <>
-      {early && <p className="mt-1 text-xs text-muted">Doing this early: sets save under today.</p>}
-      <SetTable exercise={exercise} target={light ? { ...target, sets: Math.min(target.sets, 2) } : target} date={date} light={light} dayTitle={dayTitle} done={done} />
-    </>
+    <li id={anchorId} className={`flex scroll-mt-20 flex-col ${complete && !open ? "opacity-70" : ""}`}>
+      <div className="flex min-h-11 items-center gap-1">
+        {video ? <VideoButton onClick={() => openVideo(video)} label={video.name} /> : <span className="w-11 flex-none" />}
+        <button
+          type="button"
+          disabled={!logDate}
+          aria-expanded={logDate ? open : undefined}
+          onClick={onToggle}
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-default"
+        >
+          <span className="min-w-0 flex-1">
+            <span className="font-medium">{name}</span> <span className="whitespace-nowrap font-mono text-[0.8rem] text-muted">{targetText}</span>
+          </span>
+          {logDate && (
+            <>
+              <span
+                className={`whitespace-nowrap rounded-full px-2 py-0.5 font-mono text-xs font-semibold ${
+                  complete ? "bg-good/15 text-good" : done.length ? "bg-warn/15 text-warn" : "bg-sunk text-muted"
+                }`}
+              >
+                {complete ? `✓ ${fmtSet(topOf(done), unit)}` : `${done.length}/${sized.sets}`}
+              </span>
+              <span aria-hidden className={`w-4 text-center text-muted transition-transform ${open ? "rotate-180" : ""}`}>
+                ▾
+              </span>
+            </>
+          )}
+        </button>
+      </div>
+      {change && (
+        <div className="mb-2 ml-11">
+          <ChangeBanner change={change} exerciseKey={exercise.key} />
+        </div>
+      )}
+      {open && logDate && (
+        <SetTable exercise={exercise} target={sized} date={logDate} light={light} dayTitle={dayTitle} done={done} onCollapse={onToggle} onComplete={onComplete} />
+      )}
+    </li>
   );
 }
 
-function SetSummary({ rows }: { rows: SetRow[] }) {
-  const { unit } = useSets();
-  if (!rows.length) return <span className="text-muted">Not logged</span>;
+function VideoButton({ onClick, label }: { onClick: () => void; label: string }) {
   return (
-    <span className="font-mono text-[0.85rem]">
-      <span className="text-good">✓ </span>
-      {rows.map((r) => fmtSet(r, unit)).join(", ")}
-    </span>
+    <button type="button" onClick={onClick} aria-label={`Watch ${label} video`} className="flex h-11 w-11 flex-none items-center justify-center rounded-lg text-accent-ink active:bg-sunk">
+      <span aria-hidden className="text-[0.8rem]">▶</span>
+    </button>
   );
 }
 
-function SetTable({ exercise, target, date, light, dayTitle, done }: { exercise: Exercise; target: Target; date: string; light: boolean; dayTitle: string; done: SetRow[] }) {
+/** Heaviest set, or the best reps/seconds for bodyweight work */
+const topOf = (rows: SetRow[]) =>
+  rows.reduce((best, r) => ((r.weight_kg ?? 0) > (best.weight_kg ?? 0) || ((r.weight_kg ?? 0) === (best.weight_kg ?? 0) && (r.reps ?? r.duration_sec ?? 0) > (best.reps ?? best.duration_sec ?? 0)) ? r : best), rows[0]);
+
+function SetTable({
+  exercise,
+  target,
+  date,
+  light,
+  dayTitle,
+  done,
+  onCollapse,
+  onComplete,
+}: {
+  exercise: Exercise;
+  target: Target;
+  date: string;
+  light: boolean;
+  dayTitle: string;
+  done: SetRow[];
+  onCollapse: () => void;
+  onComplete: () => void;
+}) {
   const { sets, unit, isLightDate, save, remove, openHistory } = useSets();
+  const dates = useDates();
   const all = useMemo(() => sessions(sets, exercise.key), [sets, exercise.key]);
   const prev = all.find((s) => s.date < date);
   const lightSession = light || isLightDate(date);
@@ -192,14 +264,27 @@ function SetTable({ exercise, target, date, light, dayTitle, done }: { exercise:
   const rowCount = Math.max(target.sets, done.length ? done[done.length - 1].set_no : 0) + extra;
   const change = done.length >= Math.min(target.sets, prev?.sets.length ?? target.sets) ? compareSession(all, date) : null;
 
-  const cols =
-    exercise.load === "weight" ? "grid-cols-[1.25rem_minmax(0,1fr)_4.25rem_3.5rem_2.75rem]" : "grid-cols-[1.25rem_minmax(0,1fr)_4.25rem_2.75rem]";
+  // Move on once the last planned set is ticked; opening an already-finished exercise doesn't count
+  const count = useRef(done.length);
+  const completeRef = useRef(onComplete);
+  completeRef.current = onComplete;
+  useEffect(() => {
+    const before = count.current;
+    count.current = done.length;
+    if (before < target.sets && done.length >= target.sets) setTimeout(() => completeRef.current(), 600);
+  }, [done.length, target.sets]);
+
+  const cols = exercise.load === "weight" ? "grid-cols-[1.25rem_5rem_4rem_2.75rem]" : "grid-cols-[1.25rem_5rem_2.75rem]";
 
   return (
-    <div className="mt-1.5 flex flex-col gap-1.5">
+    <div className="mb-2 ml-11 flex max-w-sm flex-col gap-1.5">
+      {prev && (
+        <button type="button" onClick={() => openHistory(exercise.key, prev.date)} className="text-left text-xs text-muted">
+          Last ({dates.day(prev.date)}): <span className="font-mono">{prev.sets.map((x) => fmtSet(x, unit)).join(", ")}</span>
+        </button>
+      )}
       <div className={`grid ${cols} items-center gap-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted`}>
         <span>#</span>
-        <span>Last</span>
         {exercise.load === "weight" && <span className="text-center">{unit}</span>}
         <span className="text-center">{exercise.load === "time" ? "Sec" : "Reps"}</span>
         <span className="text-center">✓</span>
@@ -231,14 +316,17 @@ function SetTable({ exercise, target, date, light, dayTitle, done }: { exercise:
           onRemove={() => remove(date, exercise.key, n)}
         />
       ))}
-      <div className="flex items-center gap-2">
-        <button type="button" className="btn-ghost" onClick={() => setExtra((x) => x + 1)}>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <button type="button" className="btn-ghost px-3 text-xs" onClick={() => setExtra((x) => x + 1)}>
           + Set
         </button>
-        <button type="button" className="btn-ghost" onClick={() => openHistory(exercise.key)}>
+        <button type="button" className="btn-ghost px-3 text-xs" onClick={() => openHistory(exercise.key)}>
           History
         </button>
-        {target.each && <span className="text-xs text-muted">Log one side</span>}
+        {target.each && <span className="text-xs text-muted">One side</span>}
+        <button type="button" className="btn-ghost ml-auto px-3 text-xs" onClick={onCollapse} aria-label={`Collapse ${exercise.name}`}>
+          Collapse ▴
+        </button>
       </div>
       {change && <ChangeBanner change={change} exerciseKey={exercise.key} />}
     </div>
@@ -298,7 +386,6 @@ function SetRowView({
   return (
     <div className={`grid ${cols} items-center gap-1.5`}>
       <span className="font-mono text-sm text-muted">{setNo}</span>
-      <span className="truncate font-mono text-[0.8rem] text-muted">{last ? fmtSet(last, unit) : "—"}</span>
       {exercise.load === "weight" && (
         <input
           aria-label={`Set ${setNo} weight (${unit})`}
