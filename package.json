@@ -9,7 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --no-warnings --test lib/plan/plan.test.ts",
     "check-videos": "node --experimental-strip-types --no-warnings scripts/check-videos.ts",
-    "sync-exercises": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/sync-exercises.ts"
+    "sync-exercises": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/sync-exercises.ts",
+    "seed:test": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/seed-test-user.ts"
   },
   "engines": {
     "node": ">=22.9"

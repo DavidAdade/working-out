@@ -15,6 +15,11 @@ Next.js 15 (App Router, Server Actions) + Supabase (Postgres, Auth, RLS) + Tailw
 - **Set logs** (`set_logs`) store `exercise_key`, never template text. Progression logic is in `lib/plan/progress.ts`.
 - **UI**: `components/Dashboard.tsx` tabs → `TodayPanel`, `PlanPanel`/`WeekCard`/`DayView`, `LogPanel`, `ProgressPanel`, `LibraryPanel`. `components/Sets.tsx` holds set logging and the exercise sheet (muscle map + video + history), opened anywhere with `openHistory(key)`.
 
+## Testing
+
+- `test@mailinator.com` is the shared test account. `npm run seed:test` resets it to ~5 weeks of history (runs, a 5K test, lifting sets, a stalled `lat-pulldown` and a dropped `db-ohp` so both warnings show, a skipped day, a cutback week). The script refuses any non-`@mailinator.com` address.
+- Never run `next build` in this folder while `npm run dev` is running: both write `.next` and the dev server breaks. Build in a separate worktree instead.
+
 ## Rules
 
 - **Adding or changing an exercise:** follow `.claude/skills/add-exercise/SKILL.md`. Never rename an existing `key`: logged history is stored by it.
