@@ -102,6 +102,19 @@ h3 {
   @apply min-h-11 w-full rounded-lg border border-line bg-bg px-3 py-2 text-base text-ink;
 }
 
+/* iOS gives date inputs an intrinsic width wider than a phone card and centres the value */
+input[type="date"].input {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  text-align: left;
+}
+input[type="date"].input::-webkit-date-and-time-value {
+  text-align: left;
+}
+
 /* race-bib safety pins */
 .bib-pin {
   @apply absolute h-[9px] w-[9px] rounded-full border border-line bg-bg;

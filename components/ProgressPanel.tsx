@@ -11,6 +11,7 @@ import { ChangeBanner, fmtWeight, useSets } from "./Sets";
 import { compareSession, sessions } from "@/lib/plan/progress.ts";
 import { REGIONS, regionOf, type Region } from "@/lib/plan/muscles.ts";
 import { useState } from "react";
+import Pager, { usePage } from "./Pager";
 
 const AREA_COLORS = ["rgb(var(--area1))", "rgb(var(--area2))", "rgb(var(--area3))"];
 
@@ -159,9 +160,7 @@ function LiftsCard() {
     .filter((r) => r !== null)
     .sort((a, b) => (a.latest.date < b.latest.date ? 1 : a.latest.date > b.latest.date ? -1 : a.ex.name.localeCompare(b.ex.name)));
   const rows = region ? all.filter((r) => r.region === region) : all;
-  const pages = Math.max(1, Math.ceil(rows.length / PAGE));
-  const current = Math.min(page, pages - 1);
-  const shown = rows.slice(current * PAGE, current * PAGE + PAGE);
+  const { pages, current, shown, from, to } = usePage(rows, PAGE, page);
   const pick = (r: Region | null) => {
     setRegion(r);
     setPage(0);
@@ -217,19 +216,7 @@ function LiftsCard() {
               );
             })}
           </ul>
-          {pages > 1 && (
-            <nav className="flex items-center justify-between gap-2" aria-label="Lifts pages">
-              <button type="button" className="btn-ghost" disabled={current === 0} onClick={() => setPage(current - 1)}>
-                ‹ Prev
-              </button>
-              <span className="text-sm text-muted">
-                {current * PAGE + 1}–{current * PAGE + shown.length} of {rows.length}
-              </span>
-              <button type="button" className="btn-ghost" disabled={current >= pages - 1} onClick={() => setPage(current + 1)}>
-                Next ›
-              </button>
-            </nav>
-          )}
+          <Pager current={current} pages={pages} label={`${from}–${to} of ${rows.length}`} onPage={setPage} />
         </>
       )}
     </article>

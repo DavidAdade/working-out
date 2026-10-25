@@ -184,39 +184,56 @@ function GoalHeader({ settings, fitness, thisWeek, daysToTT }: { settings: PlanS
   const goal = settings.goal5kSec;
   const tenK = predict(goal, 5, 10, 1.06);
   return (
-    <header className="relative grid grid-cols-[1fr_auto] items-end gap-x-4 gap-y-1 rounded-md border border-line bg-surface px-[22px] pb-[18px] pt-5" aria-label="Goal">
+    <header className="relative flex flex-col gap-3 rounded-md border border-line bg-surface px-[22px] pb-[18px] pt-4" aria-label="Goal">
       <span className="bib-pin left-[9px] top-[9px]" />
-      <span className="bib-pin right-[9px] top-[9px]" />
       <span className="bib-pin bottom-[9px] left-[9px]" />
       <span className="bib-pin bottom-[9px] right-[9px]" />
-      <div className="col-span-2 flex flex-wrap justify-between gap-2">
-        <span className="label">5K time trial · {dates.long(settings.timeTrialDate)}</span>
-        <span className="label">{thisWeek ? `${PHASE_NAMES[thisWeek.phase]}${thisWeek.index ? ` · week ${thisWeek.index}` : ""}` : ""}</span>
-      </div>
-      <div className="font-display text-[clamp(3.6rem,15vw,5.6rem)] font-bold leading-[0.9] text-accent">SUB-{Math.ceil(goal / 60)}</div>
-      <div className="flex flex-col items-end pb-1.5">
-        <span className="font-display text-[2rem] font-bold leading-none">{daysToTT > 0 ? (dates.hide ? Math.ceil(daysToTT / 7) : daysToTT) : daysToTT === 0 ? "Today" : "Done"}</span>
-        <span className="label">{dates.hide ? "weeks to go" : "days to go"}</span>
-      </div>
-      <div className="col-span-2 mt-2 flex flex-wrap gap-x-3.5 gap-y-1.5 border-t-2 border-dashed border-line pt-2.5 text-sm">
-        <span>
-          Now <b className="font-mono font-medium">{duration(fitness)}</b>
-        </span>
-        <span>
-          Goal pace <b className="font-mono font-medium">{pace(goalPace(goal))}/km</b>
-        </span>
-        <span>
-          10K target <b className="font-mono font-medium">~{duration(Math.round(tenK / 30) * 30)}</b>
-        </span>
-        {settings.raceDate && (
-          <span>
-            {settings.raceName || "Half"} <b className={dates.hide ? "font-semibold" : "font-mono font-medium"}>{dates.hide ? dates.long(settings.raceDate) : fmtShort(settings.raceDate)}</b>
-          </span>
-        )}
-        <Link href="/settings" className="-my-3 ml-auto inline-flex min-h-11 items-center px-1 text-muted underline underline-offset-2">
-          Settings
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 pt-1.5">
+          <div className="label">5K time trial</div>
+          <div className="text-sm font-semibold">{dates.long(settings.timeTrialDate)}</div>
+        </div>
+        <Link href="/settings" aria-label="Settings" className="-mr-3 flex h-11 w-11 flex-none items-center justify-center rounded-lg text-muted active:bg-sunk">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
         </Link>
       </div>
+      <div className="flex items-end justify-between gap-4">
+        <div className="min-w-0">
+          <div className="font-display text-[clamp(3.6rem,15vw,5.6rem)] font-bold leading-[0.9] text-accent">SUB-{Math.ceil(goal / 60)}</div>
+          {thisWeek && (
+            <div className="label mt-1.5">
+              {PHASE_NAMES[thisWeek.phase]}
+              {thisWeek.index ? ` · week ${thisWeek.index}` : ""}
+            </div>
+          )}
+        </div>
+        <div className="flex flex-none flex-col items-end pb-1">
+          <span className="font-display text-[2.2rem] font-bold leading-none">{daysToTT > 0 ? (dates.hide ? Math.ceil(daysToTT / 7) : daysToTT) : daysToTT === 0 ? "Today" : "Done"}</span>
+          <span className="label">{dates.hide ? "weeks to go" : "days to go"}</span>
+        </div>
+      </div>
+      <dl className="grid grid-cols-3 gap-2 border-t-2 border-dashed border-line pt-3">
+        <Stat label="Now" value={duration(fitness)} />
+        <Stat label="Goal pace" value={`${pace(goalPace(goal))}/km`} />
+        <Stat label="10K" value={`~${duration(Math.round(tenK / 30) * 30)}`} />
+      </dl>
+      {settings.raceDate && (
+        <p className="-mt-1 text-sm text-muted">
+          Then {settings.raceName || "the half"} · {dates.hide ? dates.long(settings.raceDate) : fmtShort(settings.raceDate)}
+        </p>
+      )}
     </header>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="label">{label}</dt>
+      <dd className="truncate font-mono text-base font-medium">{value}</dd>
+    </div>
   );
 }

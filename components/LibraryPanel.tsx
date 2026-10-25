@@ -7,6 +7,7 @@ import type { ExerciseInfo } from "@/lib/plan/catalog.ts";
 import { sessions } from "@/lib/plan/progress.ts";
 import { fmtSet, useSets, videoFromInfo } from "./Sets";
 import { useOpenVideo } from "./VideoModal";
+import Pager, { usePage } from "./Pager";
 
 const MUSCLE = new Map(MUSCLES.map((m) => [m.id as string, m]));
 const muscleNames = (ids: string[]) => ids.map((id) => MUSCLE.get(id)?.name ?? id).join(", ");
@@ -18,6 +19,7 @@ export default function LibraryPanel() {
   const [q, setQ] = useState("");
   const [group, setGroup] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [page, setPage] = useState(0);
 
   const shown = useMemo(() => {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
@@ -28,6 +30,7 @@ export default function LibraryPanel() {
       return !group || e.primary_muscles.some((m) => MUSCLE.get(m)?.group === group);
     });
   }, [exercises, q, group]);
+  const list = usePage(shown, 15, page);
 
   return (
     <section className="flex flex-col gap-3">
@@ -39,7 +42,10 @@ export default function LibraryPanel() {
           placeholder={`Search ${exercises.length} exercises or muscles`}
           aria-label="Search exercises"
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setPage(0);
+          }}
           className="input"
         />
         <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 [scrollbar-width:none]" role="group" aria-label="Muscle group">
@@ -48,7 +54,10 @@ export default function LibraryPanel() {
               key={g ?? "all"}
               type="button"
               aria-pressed={group === g}
-              onClick={() => setGroup(g)}
+              onClick={() => {
+                setGroup(g);
+                setPage(0);
+              }}
               className={`min-h-11 flex-none rounded-full border px-3 text-sm font-semibold ${group === g ? "border-ink bg-ink text-bg" : "border-line bg-surface"}`}
             >
               {g ?? "All"}
@@ -63,17 +72,18 @@ export default function LibraryPanel() {
         </button>
       )}
 
-      <article className="card gap-0 p-0">
+      <article id="library-list" className="card scroll-mt-40 gap-0 p-0">
         {shown.length === 0 ? (
           <p className="p-4 text-center text-muted">No exercises match. Try another word, or add it.</p>
         ) : (
           <ul className="flex flex-col divide-y divide-line">
-            {shown.map((e) => (
+            {list.shown.map((e) => (
               <Row key={e.key} e={e} last={sessions(sets, e.key)[0]?.sets} unit={unit} onOpen={() => openHistory(e.key)} onVideo={() => videoFromInfo(e) && openVideo(videoFromInfo(e)!)} />
             ))}
           </ul>
         )}
       </article>
+      <Pager current={list.current} pages={list.pages} label={`${list.from}–${list.to} of ${shown.length}`} onPage={setPage} listId="library-list" />
     </section>
   );
 }

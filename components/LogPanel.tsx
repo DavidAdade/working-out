@@ -5,6 +5,7 @@ import { dayForDate, dayKind, dayTitle, type Week } from "@/lib/plan/generate.ts
 import { duration, pace, parseDuration } from "@/lib/plan/format.ts";
 import { deleteLog, updateLog, type LogInput } from "@/app/actions";
 import { useDock } from "./Dock";
+import Pager, { usePage } from "./Pager";
 import type { LogKind, LogRow } from "@/lib/types";
 import { Chip } from "./DayView";
 import { useDates } from "./DateLabels";
@@ -31,6 +32,8 @@ export default function LogPanel({ weeks, logs, today, painAreas, initialDate }:
   const [state, setState] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, setPending] = useState(false);
   const [formKey, setFormKey] = useState(0);
+  const [page, setPage] = useState(0);
+  const history = usePage(logs, 10, page);
 
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -113,11 +116,14 @@ export default function LogPanel({ weeks, logs, today, painAreas, initialDate }:
       <article className="card">
         <h3 className="font-display text-xl font-bold">History</h3>
         {logs.length ? (
-          <div>
-            {logs.map((l) => (
-              <Entry key={l.id} log={l} painAreas={painAreas} />
-            ))}
-          </div>
+          <>
+            <div id="log-history" className="scroll-mt-16">
+              {history.shown.map((l) => (
+                <Entry key={l.id} log={l} painAreas={painAreas} />
+              ))}
+            </div>
+            <Pager current={history.current} pages={history.pages} label={`${history.from}–${history.to} of ${logs.length}`} onPage={setPage} listId="log-history" />
+          </>
         ) : (
           <div className="rounded-[10px] border border-dashed border-line p-4 text-center text-muted">No sessions yet. Your first one will show here with pace and pain scores.</div>
         )}
