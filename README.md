@@ -13,7 +13,9 @@ Each person signs in with a magic link and only ever sees their own plan and log
 | `lib/plan/templates.ts` | Every strength, upper-body and abs session. Edit exercises here. |
 | `lib/plan/exercises.ts`, `videos.ts`, `muscles.ts` | The exercise catalog: stable keys, demo videos and muscle maps. Synced to the Supabase `exercises` table on every build (`npm run sync-exercises`). See `.claude/skills/add-exercise`. |
 | `supabase/migrations/` | Tables `profiles`, `logs`, `day_overrides`, `set_logs`, `exercises`, all locked down with RLS. |
-| `app/actions.ts` | Server Actions: sign-in, settings, gates, skip days, add/delete logs. |
+| `app/actions.ts` | Server Actions: sign-in, settings, gates, skip days, add/delete logs, tokens, weekly check-in. |
+| `components/Dock.tsx` | Offline outbox, notices and the rest timer. Sets and sessions logged without signal sync later. |
+| `app/cal/[token]`, `app/api/health` | Calendar feed and Apple Health import, each behind a per-person key from Settings → Connections. |
 | `components/` | Today, Plan, Log, Progress panels. |
 
 The plan is never stored. It is regenerated from each person's settings, so changing a date re-plans everything instantly. Only logs, skipped days, gate ticks and settings live in the database.

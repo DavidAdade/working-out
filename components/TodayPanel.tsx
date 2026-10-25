@@ -25,9 +25,11 @@ interface Props {
   warnings: Warning[];
   onLog: (date: string) => void;
   onSkip: (date: string, skip: boolean) => void;
+  /** The weekly AI check-in card */
+  coach?: React.ReactNode;
 }
 
-export default function TodayPanel({ profile, settings, weeks, logs, today, fitness, warnings, onLog, onSkip }: Props) {
+export default function TodayPanel({ profile, settings, weeks, logs, today, fitness, warnings, onLog, onSkip, coach }: Props) {
   const day = dayForDate(weeks, today);
   const next = weeks.flatMap((w) => w.days).find((d) => d.date > today && !d.skipped && d.blocks.length);
   const week = weekForDate(weeks, today);
@@ -121,6 +123,8 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
       {showGates && <GatesCard profile={profile} settings={settings} today={today} />}
 
       <WinsCard logs={logs} today={today} />
+
+      {coach}
 
       {week && (
         <>

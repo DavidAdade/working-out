@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { profileToSettings, type LogRow, type ProfileRow, type SetRow } from "@/lib/types";
 import { builtinRows, type ExerciseInfo } from "@/lib/plan/catalog.ts";
-import { safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
+import { mondayOf, safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
+import type { SavedReview } from "@/components/CoachCard";
 import Dashboard from "@/components/Dashboard";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +34,8 @@ export default async function Home() {
   if (!profile) redirect("/login");
   const settings = profileToSettings(profile);
   if (!settings) redirect("/settings");
+  const today = todayIn(safeTimeZone(profile.timezone));
+  const { data: review } = await supabase.from("ai_reviews").select("content, created_at").eq("week_start", mondayOf(today)).maybeSingle<{ content: SavedReview["review"]; created_at: string }>();
 
   return (
     <Dashboard
@@ -42,7 +45,8 @@ export default async function Home() {
       skips={(skips ?? []).map((s) => s.date)}
       exercises={[...byKey.values()].sort((a, b) => a.name.localeCompare(b.name))}
       sets={(sets ?? []).map((s) => ({ ...s, weight: s.weight == null ? null : Number(s.weight), weight_kg: s.weight_kg == null ? null : Number(s.weight_kg) }))}
-      today={todayIn(safeTimeZone(profile.timezone))}
+      today={today}
+      review={review ? { review: review.content, createdAt: review.created_at } : null}
     />
   );
 }

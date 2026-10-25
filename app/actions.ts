@@ -5,10 +5,13 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createHash } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
-import { parseDuration } from "@/lib/plan/format.ts";
-import { addDays, daysBetween, isMonday, isTimeZone } from "@/lib/plan/dates.ts";
+import { duration, parseDuration } from "@/lib/plan/format.ts";
+import { addDays, daysBetween, isMonday, isTimeZone, mondayOf, safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
+import { planFor } from "@/lib/plan/adapt.ts";
+import { builtinRows } from "@/lib/plan/catalog.ts";
+import { generateReview, type Review } from "@/lib/coach/review";
 import { MIN_RACE_GAP_WEEKS } from "@/lib/plan/generate.ts";
-import type { LogKind, LogRow, Unit } from "@/lib/types";
+import { GATES, profileToSettings, type LogKind, type LogRow, type ProfileRow, type SetRow, type Unit } from "@/lib/types";
 import { exerciseByKey } from "@/lib/plan/exercises.ts";
 import { customKey, youtubeId } from "@/lib/plan/catalog.ts";
 import { MUSCLES } from "@/lib/plan/muscles.ts";
@@ -340,4 +343,45 @@ export async function revokeToken(purpose: TokenPurpose): Promise<ActionResult> 
   if (error) return { ok: false, error: "Couldn't turn it off. Try again." };
   revalidatePath("/settings");
   return { ok: true };
+}
+
+/* ---------- weekly AI check-in ---------- */
+export type ReviewResult = { ok: true; review: Review; createdAt: string } | { ok: false; error: string };
+
+/** This week's check-in: cached per week, refreshable twice a day at most, so it costs about one call a week. */
+export async function weeklyReview(refresh = false): Promise<ReviewResult> {
+  const { supabase, user } = await requireUser();
+  const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single<ProfileRow>();
+  const settings = profile ? profileToSettings(profile) : null;
+  if (!profile || !settings) return { ok: false, error: "Set up your plan first." };
+  const today = todayIn(safeTimeZone(profile.timezone));
+  const week = mondayOf(today);
+  const { data: cached } = await supabase.from("ai_reviews").select("content, created_at").eq("user_id", user.id).eq("week_start", week).maybeSingle<{ content: Review; created_at: string }>();
+  if (cached && (!refresh || Date.now() - Date.parse(cached.created_at) < 12 * 3600e3)) return { ok: true, review: cached.content, createdAt: cached.created_at };
+  // On Vercel the AI Gateway signs in with the deployment's OIDC token; elsewhere it needs a key
+  if (!process.env.AI_GATEWAY_API_KEY && !process.env.VERCEL) return { ok: false, error: "The AI check-in isn't set up yet: add AI_GATEWAY_API_KEY." };
+
+  const from = addDays(today, -60);
+  const [{ data: logs }, { data: sets }, { data: skips }, { data: exercises }] = await Promise.all([
+    supabase.from("logs").select("*").gte("date", from).order("date", { ascending: false }).returns<LogRow[]>(),
+    supabase.from("set_logs").select("id, date, exercise_key, set_no, weight, unit, weight_kg, reps, duration_sec, light_week, plan_date").gte("date", from).returns<SetRow[]>(),
+    supabase.from("day_overrides").select("date").eq("status", "skipped").returns<{ date: string }[]>(),
+    supabase.from("exercises").select("key, name").returns<{ key: string; name: string }[]>(),
+  ]);
+  const cleanLogs = (logs ?? []).map((l) => ({ ...l, km: l.km == null ? null : Number(l.km) }));
+  const cleanSets = (sets ?? []).map((s) => ({ ...s, weight_kg: s.weight_kg == null ? null : Number(s.weight_kg) }));
+  const gatesPending = settings.returningFromInjury && GATES.some((g) => !profile.gates?.[g.key]);
+  const { weeks, fitness, warnings } = planFor({ settings, logs: cleanLogs, skips: (skips ?? []).map((s) => s.date), gatesPending, today });
+  const names = new Map([...builtinRows().map((e) => [e.key, e.name] as const), ...(exercises ?? []).map((e) => [e.key, e.name] as const)]);
+
+  let review: Review;
+  try {
+    review = await generateReview({ name: profile.display_name, weeks, logs: cleanLogs, sets: cleanSets, names, warnings, fitness: duration(fitness.sec), goal: duration(settings.goal5kSec), today });
+  } catch (e) {
+    console.error("weeklyReview", e instanceof Error ? e.message : e);
+    return { ok: false, error: "Couldn't reach the coach just now. Try again later." };
+  }
+  const createdAt = new Date().toISOString();
+  await supabase.from("ai_reviews").upsert({ user_id: user.id, week_start: week, content: review, created_at: createdAt }, { onConflict: "user_id,week_start" });
+  return { ok: true, review, createdAt };
 }

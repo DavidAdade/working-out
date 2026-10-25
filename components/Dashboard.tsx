@@ -3,15 +3,15 @@
 import Link from "next/link";
 import { useEffect, useMemo, useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { generatePlan, weekForDate, PHASE_NAMES, type PlanSettings, type Week } from "@/lib/plan/generate.ts";
+import { weekForDate, PHASE_NAMES, type PlanSettings, type Week } from "@/lib/plan/generate.ts";
 import { daysBetween, fmtShort, safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
 import { duration, pace, parseDuration, predict } from "@/lib/plan/format.ts";
-import { fitness5k, goalPace } from "@/lib/plan/paces.ts";
-import { painWarnings } from "@/lib/plan/warnings.ts";
-import { adaptPlan } from "@/lib/plan/adapt.ts";
+import { goalPace } from "@/lib/plan/paces.ts";
+import { planFor } from "@/lib/plan/adapt.ts";
 import { toggleSkip, type LogInput } from "@/app/actions";
 import { GATES, type LogRow, type ProfileRow, type SetRow } from "@/lib/types";
 import { DockProvider, useDock } from "./Dock";
+import CoachCard, { type SavedReview } from "./CoachCard";
 import type { ExerciseInfo } from "@/lib/plan/catalog.ts";
 import TodayPanel from "./TodayPanel";
 import PlanPanel from "./PlanPanel";
@@ -39,6 +39,8 @@ export interface DashboardProps {
   sets: SetRow[];
   exercises: ExerciseInfo[];
   today: string;
+  /** This week's AI check-in, if one was made */
+  review: SavedReview | null;
 }
 
 export default function Dashboard(props: DashboardProps) {
@@ -72,7 +74,7 @@ function queuedLog(i: LogInput): LogRow {
   };
 }
 
-function DashboardInner({ profile, settings, logs: serverLogs, skips, sets, exercises, today }: DashboardProps) {
+function DashboardInner({ profile, settings, logs: serverLogs, skips, sets, exercises, today, review }: DashboardProps) {
   const [tab, setTab] = useState<Tab>("today");
   const [logDate, setLogDate] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -103,12 +105,10 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, sets, exer
     };
   }, [profile.timezone, today, router]);
 
-  const fitness = useMemo(() => fitness5k(settings.current5kSec, logs, today), [settings.current5kSec, logs, today]);
-  const warnings = useMemo(() => painWarnings(logs, today), [logs, today]);
   const gatesPending = settings.returningFromInjury && GATES.some((g) => !profile.gates?.[g.key]);
-  const weeks = useMemo(
-    () => adaptPlan(generatePlan(settings, { skips: optimisticSkips, fitness5kSec: fitness.sec }), { today, gatesPending, warnings }),
-    [settings, optimisticSkips, fitness.sec, today, gatesPending, warnings],
+  const { weeks, fitness, warnings } = useMemo(
+    () => planFor({ settings, logs, skips: optimisticSkips, gatesPending, today }),
+    [settings, logs, optimisticSkips, gatesPending, today],
   );
   const thisWeek = weekForDate(weeks, today);
   const daysToTT = daysBetween(today, settings.timeTrialDate);
@@ -154,7 +154,18 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, sets, exer
           </nav>
 
           {tab === "today" && (
-            <TodayPanel profile={profile} settings={settings} weeks={weeks} logs={logs} today={today} fitness={fitness} warnings={warnings} onLog={openLog} onSkip={onSkip} />
+            <TodayPanel
+              profile={profile}
+              settings={settings}
+              weeks={weeks}
+              logs={logs}
+              today={today}
+              fitness={fitness}
+              warnings={warnings}
+              onLog={openLog}
+              onSkip={onSkip}
+              coach={<CoachCard initial={review} onSkip={onSkip} skipped={new Set(optimisticSkips)} />}
+            />
           )}
           {tab === "plan" && <PlanPanel weeks={weeks} logs={logs} today={today} onSkip={onSkip} />}
           {tab === "log" && <LogPanel weeks={weeks} logs={logs} today={today} painAreas={profile.pain_areas} initialDate={logDate ?? today} />}

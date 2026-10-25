@@ -3,8 +3,9 @@
 
 import { addDays, type ISODate } from "./dates.ts";
 import type { Block } from "./templates.ts";
-import type { Day, Week } from "./generate.ts";
-import type { Warning } from "./warnings.ts";
+import { generatePlan, type Day, type PlanSettings, type Week } from "./generate.ts";
+import { painWarnings, type LogLike, type Warning } from "./warnings.ts";
+import { fitness5k, type Fitness, type TestLike } from "./paces.ts";
 
 export interface AdaptInput {
   today: ISODate;
@@ -47,4 +48,12 @@ export function adaptPlan(weeks: Week[], { today, gatesPending, warnings }: Adap
 
   if (!gatesPending && !code) return weeks;
   return weeks.map((w) => (w.days.some((d) => d.date >= today && d.date < end) ? { ...w, days: w.days.map((d) => change(d, w)) } : w));
+}
+
+/** The plan as the app shows it: paces from the latest test, skips folded in, pain and gates applied to the coming week. */
+export function planFor(o: { settings: PlanSettings; logs: (LogLike & TestLike)[]; skips: Iterable<ISODate>; gatesPending: boolean; today: ISODate }): { weeks: Week[]; fitness: Fitness; warnings: Warning[] } {
+  const fitness = fitness5k(o.settings.current5kSec, o.logs, o.today);
+  const warnings = painWarnings(o.logs, o.today);
+  const weeks = adaptPlan(generatePlan(o.settings, { skips: o.skips, fitness5kSec: fitness.sec }), { today: o.today, gatesPending: o.gatesPending, warnings });
+  return { weeks, fitness, warnings };
 }

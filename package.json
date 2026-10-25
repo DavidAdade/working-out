@@ -7,7 +7,7 @@
     "build": "npm run sync-exercises && next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --no-warnings --test lib/plan/plan.test.ts",
+    "test": "node --experimental-strip-types --no-warnings --test lib/plan/plan.test.ts lib/coach/review.test.ts",
     "check-videos": "node --experimental-strip-types --no-warnings scripts/check-videos.ts",
     "sync-exercises": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/sync-exercises.ts",
     "seed:test": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/seed-test-user.ts"
@@ -18,9 +18,11 @@
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.49.4",
+    "ai": "7.0.137",
     "next": "^15.3.3",
     "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "react-dom": "^19.1.0",
+    "zod": "4.6.5"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
