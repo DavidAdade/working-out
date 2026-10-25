@@ -60,7 +60,7 @@ Or paste this in the SQL editor after you've signed in once:
 update public.profiles set
   start_date = '2026-11-16', recovery_start = '2026-10-19', returning_from_injury = true,
   time_trial_date = '2027-03-26', race_date = '2027-05-02', race_name = 'Toronto Marathon: half',
-  current_5k_sec = 2100, goal_5k_sec = 1800, half_goal_min_sec = 9000, half_goal_max_sec = 9900,
+  current_5k_sec = 2100, goal_5k_sec = 1799, half_goal_min_sec = 9000, half_goal_max_sec = 9900,
   pain_areas = '{knee,foot,heel}'
 where id = (select id from auth.users where email = 'YOUR-EMAIL');
 ```

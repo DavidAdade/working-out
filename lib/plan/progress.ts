@@ -52,22 +52,46 @@ export interface Change {
 /** Below this, a lighter session counts as a real drop rather than rounding (e.g. 20 kg → 19 kg is 5%). */
 export const DROP_PCT = 5;
 
+const notUp = (cur: Session, prev: Session) =>
+  // 0.25 kg tolerance covers kg/lb rounding
+  cur.topKg! <= prev.topKg! + 0.25 && (cur.topKg! < prev.topKg! - 0.25 || (cur.topReps ?? 0) <= (prev.topReps ?? 0));
+
 /**
  * Compares the session on `date` with the last full (non-light) session before it.
- * Stalled: not heavier, and no extra reps at the same weight. Dropped: 5% or more lighter.
- * Returns null for first sessions, light sessions, or when the weight went up.
+ * Dropped: 5% or more lighter. Stalled: not heavier and no extra reps at the same weight, two sessions in a
+ * row, so one off day doesn't cry wolf. Returns null for first sessions, light sessions, or progress.
  */
 export function compareSession(all: Session[], date: ISODate): Change | null {
   const i = all.findIndex((s) => s.date === date);
   if (i < 0) return null;
   const current = all[i];
   if (current.light || current.topKg == null) return null;
-  const previous = all.slice(i + 1).find((s) => !s.light && s.topKg != null);
-  if (!previous || previous.topKg == null) return null;
-  const pct = ((current.topKg - previous.topKg) / previous.topKg) * 100;
+  const full = all.slice(i + 1).filter((s) => !s.light && s.topKg != null);
+  const previous = full[0];
+  if (!previous) return null;
+  const pct = ((current.topKg - previous.topKg!) / previous.topKg!) * 100;
   if (pct <= -DROP_PCT) return { kind: "dropped", pct, current, previous };
-  // 0.25 kg tolerance covers kg/lb rounding
-  if (current.topKg <= previous.topKg + 0.25 && (current.topReps ?? 0) <= (previous.topReps ?? 0)) return { kind: "stalled", pct, current, previous };
+  if (notUp(current, previous) && full[1] && notUp(previous, full[1])) return { kind: "stalled", pct, current, previous };
+  return null;
+}
+
+export type Best = "weight" | "reps";
+
+/** A new best on `date`: heaviest top set ever, or more reps than ever at that weight. Null for first sessions. */
+export function bestOn(all: Session[], date: ISODate): Best | null {
+  const i = all.findIndex((s) => s.date === date);
+  if (i < 0) return null;
+  const current = all[i];
+  const earlier = all.slice(i + 1);
+  if (!earlier.length) return null;
+  if (current.topKg != null) {
+    const heaviest = Math.max(...earlier.map((s) => s.topKg ?? 0));
+    if (current.topKg > heaviest + 0.25) return "weight";
+    const atWeight = earlier.filter((s) => s.topKg != null && Math.abs(s.topKg - current.topKg!) <= 0.25);
+    if (atWeight.length && (current.topReps ?? 0) > Math.max(...atWeight.map((s) => s.topReps ?? 0))) return "reps";
+    return null;
+  }
+  if (current.best != null && current.best > Math.max(0, ...earlier.map((s) => s.best ?? 0))) return "reps";
   return null;
 }
 

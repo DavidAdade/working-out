@@ -53,7 +53,7 @@ const BASE: Record<string, number> = {
   "db-ohp": 12, "lateral-raise": 6, "triceps-ext": 12, "db-row": 20, "rear-delt-fly": 6, "hammer-curl": 12,
   "skull-crusher": 10, "cable-crunch": 25, "pallof-press": 10, "russian-twist": 6,
 };
-const STALLED = "lat-pulldown"; // last session same weight and reps as the one before
+const STALLED = "lat-pulldown"; // last two sessions same weight and reps as the one before
 const DROPPED = "db-ohp"; // last session ~15% lighter
 
 async function main() {
@@ -93,6 +93,8 @@ async function main() {
   const sets: Record<string, unknown>[] = [];
   const sessionsByKey = new Map<string, number>();
   const lastByKey = new Map<string, { kg: number; reps: number | null }>();
+  // The most recent run scores knee 3/10, so the "hold volume" warning shows
+  const lastRun = days.filter(({ d }) => d.blocks.some((b) => b.kind === "run")).at(-1)?.d.date;
   let easyPace = 7 * 60 + 40; // sec/km, improves a little each week
 
   for (const { d, w } of days) {
@@ -103,7 +105,7 @@ async function main() {
         const min = Number(b.title.match(/(\d+) min/)?.[1] ?? 0);
         const km = isTest ? 5 : b.km ?? (Math.round(((min * 60) / easyPace) * 10) / 10 || 5);
         const sec = isTest ? 34 * 60 + 5 : Math.round(km * (easyPace + (rand() * 20 - 10)));
-        const knee = d.date === addDays(today, -9) ? 3 : rand() < 0.25 ? 1 : 0;
+        const knee = d.date === lastRun ? 3 : rand() < 0.25 ? 1 : 0;
         logs.push({ user_id: uid, date: d.date, kind: isTest ? "test" : "run", title: b.title, km, duration_sec: sec, rpe: isTest ? 9 : 3 + Math.round(rand() * 3), pain: { knee, foot: rand() < 0.15 ? 1 : 0 }, notes: isTest ? "Windy, went out a bit fast" : null, auto: false });
       }
     }
@@ -118,21 +120,24 @@ async function main() {
         // Cutback sessions don't count as a step up in weight
         const n = (sessionsByKey.get(ex.key) ?? 0) + 1;
         if (!light) sessionsByKey.set(ex.key, n);
-        const isLast = !days.some((x) => x.d.date > d.date && x.d.blocks.some((bb) => bb.items.some((l) => parseLine(l)?.exercise.key === ex.key)));
+        const left = days.filter((x) => x.d.date > d.date && x.d.blocks.some((bb) => bb.items.some((l) => parseLine(l)?.exercise.key === ex.key))).length;
+        const isLast = left === 0;
+        // A stall shows after two flat sessions in a row
+        const stallNow = ex.key === STALLED && left <= 1 && !light;
         let kg = 0;
         if (ex.load === "weight") {
           const base = BASE[ex.key] ?? 10;
           const step = base >= 20 ? 2.5 : 1;
           kg = base + step * (n - 1);
           const prev = lastByKey.get(ex.key);
-          if (isLast && ex.key === STALLED && prev) kg = prev.kg;
+          if (stallNow && prev) kg = prev.kg;
           if (isLast && ex.key === DROPPED && prev) kg = Math.round(prev.kg * 0.85 * 2) / 2;
           if (light) kg = Math.round(kg * 0.8 * 2) / 2;
         }
         const reps = target.reps ?? 12;
         const count = light ? Math.min(target.sets, 2) : target.sets;
         for (let s = 1; s <= count; s++) {
-          const r = ex.key === STALLED && isLast ? lastByKey.get(ex.key)?.reps ?? reps : s === count && rand() < 0.4 ? reps - 1 : reps;
+          const r = stallNow ? lastByKey.get(ex.key)?.reps ?? reps : s === count && rand() < 0.4 ? reps - 1 : reps;
           sets.push({
             user_id: uid,
             date: d.date,
