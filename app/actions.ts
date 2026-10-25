@@ -5,7 +5,8 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { parseDuration } from "@/lib/plan/format.ts";
-import type { LogKind } from "@/lib/types";
+import type { LogKind, Unit } from "@/lib/types";
+import { exerciseByKey } from "@/lib/plan/exercises.ts";
 
 export type ActionResult = { ok: true } | { ok: false, error: string };
 
@@ -66,6 +67,8 @@ export async function saveSettings(_: unknown, form: FormData): Promise<ActionRe
     start_date: str("start_date"),
     recovery_start: injury ? str("recovery_start") : null,
     returning_from_injury: injury,
+    hide_dates: form.get("hide_dates") === "on",
+    weight_unit: form.get("weight_unit") === "lb" ? "lb" : "kg",
     time_trial_date: str("time_trial_date"),
     race_date: str("race_date"),
     race_name: str("race_name"),
@@ -156,8 +159,62 @@ export async function addLog(_: unknown, form: FormData): Promise<ActionResult> 
 
 export async function deleteLog(id: string): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
+  const { data: log } = await supabase.from("logs").select("date, auto").eq("id", id).single<{ date: string; auto: boolean }>();
+  // An auto entry stands for that day's sets, so deleting it removes them too
+  if (log?.auto) await supabase.from("set_logs").delete().eq("user_id", user.id).eq("date", log.date);
   const { error } = await supabase.from("logs").delete().eq("id", id).eq("user_id", user.id);
   if (error) return { ok: false, error: "Couldn't delete. Try again." };
   revalidatePath("/");
+  return { ok: true };
+}
+
+/* ---------- sets ---------- */
+export interface SetInput {
+  date: string;
+  exerciseKey: string;
+  setNo: number;
+  weight: number | null;
+  unit: Unit;
+  reps: number | null;
+  durationSec: number | null;
+  light: boolean;
+  /** Title for the day's Log entry, created with the first set */
+  dayTitle: string;
+}
+
+const num = (v: number | null, max: number) => (v == null || !Number.isFinite(v) || v < 0 || v > max ? null : v);
+
+export async function upsertSet(input: SetInput): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  if (!exerciseByKey(input.exerciseKey)) return { ok: false, error: "Unknown exercise." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date) || input.setNo < 1 || input.setNo > 20) return { ok: false, error: "Couldn't save that set." };
+  const reps = num(input.reps, 200);
+  const duration_sec = num(input.durationSec, 3600);
+  if (reps == null && duration_sec == null) return { ok: false, error: "Add reps or seconds." };
+  const { error } = await supabase.from("set_logs").upsert(
+    {
+      user_id: user.id,
+      date: input.date,
+      exercise_key: input.exerciseKey,
+      set_no: input.setNo,
+      weight: num(input.weight, 9999),
+      unit: input.unit === "lb" ? "lb" : "kg",
+      reps,
+      duration_sec,
+      light_week: input.light,
+    },
+    { onConflict: "user_id,date,exercise_key,set_no" },
+  );
+  if (error) return { ok: false, error: "Couldn't save that set. Try again." };
+  // First set of the day: add one "strength" entry to the Log tab. A unique index makes repeats a no-op.
+  const { error: logError } = await supabase.from("logs").insert({ user_id: user.id, date: input.date, kind: "strength", auto: true, title: input.dayTitle });
+  if (!logError) revalidatePath("/");
+  return { ok: true };
+}
+
+export async function deleteSet(date: string, exerciseKey: string, setNo: number): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  const { error } = await supabase.from("set_logs").delete().eq("user_id", user.id).eq("date", date).eq("exercise_key", exerciseKey).eq("set_no", setNo);
+  if (error) return { ok: false, error: "Couldn't remove that set." };
   return { ok: true };
 }

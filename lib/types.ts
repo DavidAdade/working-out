@@ -16,6 +16,24 @@ export interface ProfileRow {
   half_goal_max_sec: number | null;
   pain_areas: string[];
   gates: Record<string, boolean>;
+  /** Show the plan by week and weekday instead of calendar dates */
+  hide_dates: boolean;
+  weight_unit: Unit;
+}
+
+export type Unit = "kg" | "lb";
+
+export interface SetRow {
+  id: string;
+  date: string;
+  exercise_key: string;
+  set_no: number;
+  weight: number | null;
+  unit: Unit;
+  weight_kg: number | null;
+  reps: number | null;
+  duration_sec: number | null;
+  light_week: boolean;
 }
 
 export type LogKind = "run" | "test" | "strength" | "walk";
@@ -32,6 +50,8 @@ export interface LogRow {
   pain: Record<string, number>;
   notes: string | null;
   created_at: string;
+  /** Created by set logging */
+  auto: boolean;
 }
 
 /** A profile is ready once the required plan fields are filled in. */

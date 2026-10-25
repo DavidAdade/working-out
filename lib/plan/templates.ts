@@ -13,6 +13,8 @@ export interface Block {
   carry?: boolean;
   /** True when this block was moved here from a skipped day */
   foldedFrom?: string;
+  /** Light week: 2 sets, so weight comparisons skip it */
+  light?: boolean;
 }
 
 type Template = Omit<Block, "kind"> & { kind?: BlockKind };
@@ -128,5 +130,5 @@ export const ABS = {
 export const LIGHT_NOTE = "Light week: 2 sets each, nothing to failure.";
 
 export function light(b: Block): Block {
-  return { ...b, note: LIGHT_NOTE };
+  return { ...b, note: LIGHT_NOTE, light: true };
 }

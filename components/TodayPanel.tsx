@@ -2,11 +2,12 @@
 
 import { useTransition } from "react";
 import { dayForDate, dayKind, dayTitle, weekForDate, PHASE_NAMES, type PlanSettings, type Week } from "@/lib/plan/generate.ts";
-import { addDays, fmtDay, fmtShort, mondayOf } from "@/lib/plan/dates.ts";
+import { addDays, daysBetween, fmtDay, fmtShort, mondayOf } from "@/lib/plan/dates.ts";
 import { painWarnings } from "@/lib/plan/warnings.ts";
 import { setGate, setStartDate } from "@/app/actions";
 import { GATES, type LogRow, type ProfileRow } from "@/lib/types";
 import { Chip, DayBlocks } from "./DayView";
+import { useDates } from "./DateLabels";
 import WeekCard from "./WeekCard";
 
 interface Props {
@@ -25,6 +26,7 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, onLo
   const week = weekForDate(weeks, today);
   const warnings = painWarnings(logs);
   const loggedToday = logs.some((l) => l.date === today);
+  const dates = useDates();
 
   return (
     <section className="flex flex-col gap-3.5">
@@ -39,13 +41,13 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, onLo
           <div className="flex flex-wrap items-start justify-between gap-2.5">
             <div>
               <div className="label">
-                Today · {fmtDay(today)} · {week ? PHASE_NAMES[week.phase] : ""}
+                Today · {dates.day(today)} · {week ? PHASE_NAMES[week.phase] : ""}
               </div>
               <h2 className="font-display text-2xl font-bold">{dayTitle(day)}</h2>
             </div>
             <Chip kind={dayKind(day)} />
           </div>
-          <DayBlocks day={day} onSkip={onSkip} />
+          <DayBlocks day={day} onSkip={onSkip} logOpen />
           <div className="flex flex-wrap items-center gap-2">
             {loggedToday && <span className="font-bold text-good">✓ Logged</span>}
             <button className="btn" onClick={() => onLog(today)}>
@@ -55,10 +57,10 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, onLo
         </article>
       ) : (
         <article className="card">
-          <div className="label">Today · {fmtDay(today)}</div>
+          <div className="label">Today · {dates.day(today)}</div>
           <h2 className="font-display text-2xl font-bold">{day?.skipped ? "Skipped" : "Rest day"}</h2>
           <p className="text-muted">
-            Walk, stretch, sleep.{next ? ` Next up ${fmtDay(next.date)}: ${dayTitle(next)}.` : ""}
+            Walk, stretch, sleep.{next ? ` Next up ${dates.day(next.date)}: ${dayTitle(next)}.` : ""}
           </p>
           {day?.skipped && (
             <div>
@@ -87,6 +89,7 @@ function GatesCard({ profile, settings, today }: { profile: ProfileRow; settings
   const g = profile.gates ?? {};
   const passed = GATES.filter((x) => g[x.key]).length;
   const all = passed === GATES.length;
+  const dates = useDates();
   // The next six Mondays, plus the current start if it's further out
   const firstMonday = mondayOf(addDays(today, 7));
   const options = [...new Set([...[0, 1, 2, 3, 4, 5].map((n) => addDays(firstMonday, n * 7)), settings.startDate])].sort();
@@ -97,7 +100,7 @@ function GatesCard({ profile, settings, today }: { profile: ProfileRow; settings
         <div>
           <div className="label">Return-to-running gates</div>
           <h3 className="font-display text-xl font-bold">
-            Running starts {fmtDay(settings.startDate)}
+            Running starts {dates.hide ? "week 1" : fmtDay(settings.startDate)}
             {all ? "" : " if all three pass"}
           </h3>
         </div>
@@ -130,7 +133,7 @@ function GatesCard({ profile, settings, today }: { profile: ProfileRow; settings
         >
           {options.map((d) => (
             <option key={d} value={d}>
-              Mon {fmtShort(d)}
+              {d === settings.startDate ? "Current start" : `In ${daysBetween(mondayOf(today), d) / 7} week${daysBetween(mondayOf(today), d) === 7 ? "" : "s"}`}{dates.hide ? "" : ` · Mon ${fmtShort(d)}`}
             </option>
           ))}
         </select>

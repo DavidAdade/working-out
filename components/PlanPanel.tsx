@@ -4,6 +4,7 @@ import { PHASE_NAMES, weekForDate, type Phase, type Week } from "@/lib/plan/gene
 import { addDays, fmtShort } from "@/lib/plan/dates.ts";
 import type { LogRow } from "@/lib/types";
 import WeekCard from "./WeekCard";
+import { useDates } from "./DateLabels";
 
 const PHASE_COLOR: Record<Phase, string> = {
   recovery: "bg-muted",
@@ -21,12 +22,13 @@ export default function PlanPanel({ weeks, logs, today, onSkip }: { weeks: Week[
   const current = weekForDate(weeks, today);
   const phases = [...new Set(weeks.map((w) => w.phase))];
   const last = weeks[weeks.length - 1];
+  const dates = useDates();
 
   return (
     <section className="flex flex-col gap-3.5">
       <article className="card">
         <div className="label">
-          {weeks.length} weeks · {fmtShort(weeks[0].start)} to {fmtShort(addDays(last.start, 6))}
+          {weeks.length} weeks{dates.hide ? "" : ` · ${fmtShort(weeks[0].start)} to ${fmtShort(addDays(last.start, 6))}`}
         </div>
         <div className="flex h-2.5 gap-0.5 overflow-hidden rounded">
           {weeks.map((w) => (

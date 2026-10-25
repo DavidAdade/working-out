@@ -5,6 +5,8 @@ import { painWarnings } from "./warnings.ts";
 import { parseDuration, duration, pace } from "./format.ts";
 import { weekday } from "./dates.ts";
 import { videoFor, VIDEOS } from "./videos.ts";
+import { EXERCISES, parseLine } from "./exercises.ts";
+import { compareSession, sessions, type SetLike } from "./progress.ts";
 
 const david: PlanSettings = {
   startDate: "2026-11-16",
@@ -117,4 +119,48 @@ test("video matching picks the specific variation", () => {
   assert.equal(videoFor("DB skull crushers or close-grip push-ups, 3×12")!.key, "skull");
   assert.equal(videoFor("Hammer curls, 3×12")!.key, "hammer");
   assert.ok(VIDEOS.every((v) => v.ids.length >= 2 && v.ids.every((id) => /^[\w-]{11}$/.test(id))));
+});
+
+test("every lift line maps to a stable exercise", () => {
+  const unmapped = new Set<string>();
+  for (const wk of generatePlan(david)) for (const d of wk.days) for (const b of d.blocks) {
+    if (b.kind !== "legs" && b.kind !== "upper" && b.kind !== "abs" && b.kind !== "mobility") continue;
+    for (const line of b.items) if (/\d+\s*(×|sets?\b)/.test(line) && !parseLine(line)) unmapped.add(line);
+  }
+  assert.deepEqual([...unmapped], []);
+  const keys = EXERCISES.map((e) => e.key);
+  assert.equal(new Set(keys).size, keys.length);
+  const lines = EXERCISES.flatMap((e) => e.lines.map((l) => l.toLowerCase()));
+  assert.equal(new Set(lines).size, lines.length);
+});
+
+test("parseLine reads targets", () => {
+  assert.deepEqual(parseLine("Romanian deadlift, 3×6–8, moderate-heavy")!.target, { sets: 3, reps: 6, sec: null, each: false });
+  assert.equal(parseLine("Romanian deadlift, light, 3×8")!.exercise.key, "rdl");
+  assert.deepEqual(parseLine("Side plank, 3×30s each side")!.target, { sets: 3, reps: null, sec: 30, each: true });
+  assert.deepEqual(parseLine("Push-ups, 3 sets, stop 2 reps short of failure")!.target, { sets: 3, reps: null, sec: null, each: false });
+  assert.equal(parseLine("30 min flat walk"), null);
+});
+
+const set = (date: string, kg: number, reps: number, light = false): SetLike => ({ date, exercise_key: "rdl", set_no: 1, weight: kg, unit: "kg", weight_kg: kg, reps, duration_sec: null, light_week: light });
+
+test("progression: stalled, dropped, improved, light weeks skipped", () => {
+  const s = sessions([set("2026-11-02", 40, 8), set("2026-11-09", 40, 8)], "rdl");
+  assert.equal(compareSession(s, "2026-11-09")?.kind, "stalled");
+  assert.equal(compareSession(sessions([set("2026-11-02", 40, 8), set("2026-11-09", 40, 10)], "rdl"), "2026-11-09"), null, "more reps is progress");
+  assert.equal(compareSession(sessions([set("2026-11-02", 40, 8), set("2026-11-09", 37.5, 8)], "rdl"), "2026-11-09")?.kind, "dropped");
+  assert.equal(compareSession(sessions([set("2026-11-02", 40, 8), set("2026-11-09", 39, 8)], "rdl"), "2026-11-09")?.kind, "stalled");
+  assert.equal(compareSession(sessions([set("2026-11-02", 40, 8), set("2026-11-09", 42.5, 8)], "rdl"), "2026-11-09"), null);
+  assert.equal(compareSession(sessions([set("2026-11-02", 40, 8), set("2026-11-09", 30, 8, true)], "rdl"), "2026-11-09"), null, "light week");
+  const skipLight = sessions([set("2026-11-02", 40, 8), set("2026-11-09", 30, 8, true), set("2026-11-16", 40, 8)], "rdl");
+  assert.equal(compareSession(skipLight, "2026-11-16")?.previous.date, "2026-11-02");
+  assert.equal(compareSession(sessions([set("2026-11-02", 40, 8)], "rdl"), "2026-11-02"), null, "first session");
+});
+
+test("auto strength logs don't hide a run's pain warning", () => {
+  const w = painWarnings([
+    { date: "2026-11-18", kind: "run", pain: { knee: 4 } },
+    { date: "2026-11-19", kind: "strength", pain: {}, auto: true },
+  ]);
+  assert.equal(w[0]?.level, "warn");
 });

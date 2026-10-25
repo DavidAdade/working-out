@@ -42,6 +42,25 @@ export default function SettingsForm({ profile, firstRun }: { profile: ProfileRo
         </label>
         {injury && <Field label="Strength-only phase starts" name="recovery_start" type="date" defaultValue={profile.recovery_start ?? ""} />}
 
+        <div className="flex min-w-0 flex-col gap-1">
+          <label className="label" htmlFor="weight_unit">
+            Weights in
+          </label>
+          <select id="weight_unit" name="weight_unit" defaultValue={profile.weight_unit} className="input">
+            <option value="kg">kg</option>
+            <option value="lb">lb</option>
+          </select>
+        </div>
+
+        <label className="flex items-start gap-2.5 sm:col-span-2">
+          <input type="checkbox" name="hide_dates" defaultChecked={profile.hide_dates} className="mt-1 h-5 w-5 accent-[rgb(var(--accent))]" />
+          <span>
+            <b>Hide calendar dates</b>
+            <br />
+            <span className="text-sm text-muted">Show the plan as Week 1, Week 2… and weekdays only. The dates above still set the schedule.</span>
+          </span>
+        </label>
+
         <div className="label mt-2 sm:col-span-2">Optional half marathon after the time trial</div>
         <Field label="Race name" name="race_name" defaultValue={profile.race_name ?? ""} placeholder="Toronto Marathon: half" />
         <Field label="Race date" name="race_date" type="date" defaultValue={profile.race_date ?? ""} />

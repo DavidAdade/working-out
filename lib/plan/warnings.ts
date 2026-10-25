@@ -4,6 +4,8 @@ export interface LogLike {
   date: ISODate;
   kind: string;
   pain: Record<string, number>;
+  /** Created automatically from set logging; it carries no pain scores */
+  auto?: boolean;
 }
 
 export interface Warning {
@@ -16,7 +18,7 @@ const worstArea = (l: LogLike) => Object.entries(l.pain ?? {}).sort((a, b) => b[
 
 /** Back-off rules: 3/10 = hold volume, 4+/10 = ease off, 4+ on two runs in a row = stop and see a physio. */
 export function painWarnings(logs: LogLike[]): Warning[] {
-  const sorted = [...logs].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  const sorted = logs.filter((l) => !l.auto).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
   const runs = sorted.filter((l) => l.kind === "run" || l.kind === "test");
   if (runs.length >= 2) {
     const [a, b] = runs;

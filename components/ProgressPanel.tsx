@@ -1,14 +1,19 @@
 "use client";
 
-import { fmtShort, mondayOf } from "@/lib/plan/dates.ts";
+import { mondayOf } from "@/lib/plan/dates.ts";
 import { duration, pace } from "@/lib/plan/format.ts";
 import type { PlanSettings } from "@/lib/plan/generate.ts";
 import type { LogRow } from "@/lib/types";
 import { BarChart, LineChart } from "./charts";
+import { useDates } from "./DateLabels";
+import { ChangeBanner, fmtWeight, useSets } from "./Sets";
+import { EXERCISES } from "@/lib/plan/exercises.ts";
+import { compareSession, sessions } from "@/lib/plan/progress.ts";
 
 const AREA_COLORS = ["rgb(var(--area1))", "rgb(var(--area2))", "rgb(var(--area3))"];
 
 export default function ProgressPanel({ logs, settings, painAreas }: { logs: LogRow[]; settings: PlanSettings; painAreas: string[] }) {
+  const { short: fmtShort } = useDates();
   const asc = [...logs].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   const isDist = (l: LogRow, km: number, tol: number) => l.kind === "test" && l.km != null && Math.abs(l.km - km) <= tol && !!l.duration_sec;
   const t5 = asc.filter((l) => isDist(l, 5, 0.3));
@@ -24,7 +29,7 @@ export default function ProgressPanel({ logs, settings, painAreas }: { logs: Log
   for (const l of asc) if (l.km && l.kind !== "strength") weekly.set(mondayOf(l.date), (weekly.get(mondayOf(l.date)) ?? 0) + l.km);
   const wks = [...weekly.keys()].sort().slice(-12);
 
-  const painLogs = asc.slice(-24);
+  const painLogs = asc.filter((l) => !l.auto).slice(-24);
   const easy = asc.filter((l) => l.kind === "run" && l.km && l.duration_sec && /easy|long/i.test(l.title ?? "")).slice(-20);
   const easyPaces = easy.map((l) => l.duration_sec! / l.km! / 60);
 
@@ -59,6 +64,8 @@ export default function ProgressPanel({ logs, settings, painAreas }: { logs: Log
           <Empty>Kilometres per week appear here once you log runs with a distance.</Empty>
         )}
       </article>
+
+      <LiftsCard />
 
       {painAreas.length > 0 && (
         <article className="card">
@@ -109,4 +116,59 @@ export default function ProgressPanel({ logs, settings, painAreas }: { logs: Log
 
 function Empty({ children }: { children: React.ReactNode }) {
   return <div className="rounded-[10px] border border-dashed border-line p-4 text-center text-muted">{children}</div>;
+}
+
+/** Every exercise you've logged: latest top set, change vs the session before, tap for full history. */
+function LiftsCard() {
+  const { sets, unit, openHistory } = useSets();
+  const dates = useDates();
+  const rows = EXERCISES.map((ex) => {
+    const all = sessions(sets, ex.key);
+    const latest = all[0];
+    if (!latest) return null;
+    const prev = all.slice(1).find((s) => !s.light);
+    const change = ex.load === "weight" ? compareSession(all, latest.date) : null;
+    return { ex, latest, prev, change };
+  }).filter((r) => r !== null).sort((a, b) => (a.latest.date < b.latest.date ? 1 : -1));
+
+  return (
+    <article className="card">
+      <div className="label">Lifts</div>
+      {rows.length === 0 ? (
+        <Empty>Tick sets on a lifting day and each exercise shows its trend here.</Empty>
+      ) : (
+        <>
+          {rows.filter((r) => r.change).map((r) => (
+            <ChangeBanner key={r.ex.key} change={r.change!} exerciseKey={r.ex.key} name={r.ex.name} />
+          ))}
+          <ul className="flex flex-col">
+            {rows.map(({ ex, latest, prev }) => {
+              const weighted = ex.load === "weight" && latest.topKg != null;
+              const now = weighted ? latest.topKg! : latest.best ?? 0;
+              const before = prev ? (weighted ? prev.topKg : prev.best) : null;
+              const diff = before == null ? null : now - before;
+              return (
+                <li key={ex.key} className="border-t border-line first:border-t-0">
+                  <button type="button" onClick={() => openHistory(ex.key)} className="flex min-h-12 w-full items-center justify-between gap-3 py-2 text-left">
+                    <span className="min-w-0">
+                      <b className="block truncate">{ex.name}</b>
+                      <span className="text-xs text-muted">{dates.day(latest.date)}</span>
+                    </span>
+                    <span className="flex items-center gap-2 font-mono text-sm">
+                      {weighted ? `${fmtWeight(now, unit)} ${unit}` : `${now}${ex.load === "time" ? "s" : " reps"}`}
+                      {diff != null && (
+                        <span className={diff > 0 ? "text-good" : diff < 0 ? "text-bad" : "text-muted"}>
+                          {diff > 0 ? "▲" : diff < 0 ? "▼" : "="}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
+    </article>
+  );
 }

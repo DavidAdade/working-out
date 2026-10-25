@@ -53,7 +53,7 @@ export function LineChart({
         )}
         {labels.map((lb, i) =>
           (i % step === 0 && n - 1 - i >= step / 2) || i === n - 1 ? (
-            <text key={i} x={x(i)} y={H - 6} textAnchor="middle" fontSize={13} fill="rgb(var(--muted))">
+            <text key={i} x={x(i)} y={H - 6} textAnchor={n > 1 && i === 0 ? "start" : n > 1 && i === n - 1 ? "end" : "middle"} fontSize={13} fill="rgb(var(--muted))">
               {lb}
             </text>
           ) : null,

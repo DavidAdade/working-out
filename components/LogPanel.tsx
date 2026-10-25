@@ -2,11 +2,13 @@
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { dayForDate, dayKind, dayTitle, type Week } from "@/lib/plan/generate.ts";
-import { fmtDay } from "@/lib/plan/dates.ts";
 import { duration, pace } from "@/lib/plan/format.ts";
 import { addLog, deleteLog, type ActionResult } from "@/app/actions";
 import type { LogKind, LogRow } from "@/lib/types";
 import { Chip } from "./DayView";
+import { useDates } from "./DateLabels";
+import { fmtSet, useSets } from "./Sets";
+import { exerciseByKey } from "@/lib/plan/exercises.ts";
 
 interface Props {
   weeks: Week[];
@@ -18,6 +20,9 @@ interface Props {
 
 export default function LogPanel({ weeks, logs, today, painAreas, initialDate }: Props) {
   const [date, setDate] = useState(initialDate);
+  const dates = useDates();
+  // With dates hidden, pick a plan day ("W3 Wed · Easy 30 min") instead of a calendar date
+  const pastDays = dates.hide ? weeks.flatMap((w) => w.days).filter((d) => d.date <= today && !d.skipped).reverse() : [];
   const planned = dayForDate(weeks, date);
   const plannedKind = planned ? dayKind(planned) : "run";
   const defaultKind: LogKind = plannedKind === "test" ? "test" : plannedKind === "legs" || plannedKind === "upper" ? "strength" : plannedKind === "walk" || plannedKind === "gate" ? "walk" : "run";
@@ -35,7 +40,18 @@ export default function LogPanel({ weeks, logs, today, painAreas, initialDate }:
         <h3 className="font-display text-xl font-bold">Log a session</h3>
         <form key={`${date}-${formKey}`} ref={formRef} action={action} className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
           <Field label="Date" id="date">
-            <input id="date" name="date" type="date" required value={date} max={today} onChange={(e) => setDate(e.target.value)} className="input" />
+            {dates.hide && pastDays.length ? (
+              <select id="date" name="date" required value={date} onChange={(e) => setDate(e.target.value)} className="input">
+                {!pastDays.some((d) => d.date === date) && <option value={date}>{date === today ? "Today" : dates.day(date)}</option>}
+                {pastDays.map((d) => (
+                  <option key={d.date} value={d.date}>
+                    {d.date === today ? "Today" : dates.day(d.date)} · {dayTitle(d)}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input id="date" name="date" type="date" required value={date} max={today} onChange={(e) => setDate(e.target.value)} className="input" />
+            )}
           </Field>
           <Field label="Type" id="kind">
             <select id="kind" name="kind" defaultValue={defaultKind} className="input">
@@ -123,6 +139,7 @@ function Entry({ log }: { log: LogRow }) {
   const [pending, startTransition] = useTransition();
   const p = log.duration_sec && log.km ? `${pace(log.duration_sec / log.km)}/km` : null;
   const kind = log.kind === "strength" ? "legs" : log.kind;
+  const dates = useDates();
 
   return (
     <div className="grid grid-cols-[1fr_auto] gap-x-2.5 gap-y-1 border-t border-line py-2.5 first:border-t-0">
@@ -131,7 +148,7 @@ function Entry({ log }: { log: LogRow }) {
           {log.title || log.kind} <Chip kind={kind} />
         </div>
         <div className="text-sm text-muted">
-          {[fmtDay(log.date), log.km != null ? `${log.km} km` : null, log.duration_sec ? duration(log.duration_sec) : null, p, log.rpe ? `effort ${log.rpe}` : null].filter(Boolean).join(" · ")}
+          {[dates.day(log.date), log.km != null ? `${log.km} km` : null, log.duration_sec ? duration(log.duration_sec) : null, p, log.rpe ? `effort ${log.rpe}` : null].filter(Boolean).join(" · ")}
         </div>
         {Object.keys(log.pain ?? {}).length > 0 && (
           <div className="mt-1 flex flex-wrap gap-1.5 text-xs">
@@ -142,6 +159,7 @@ function Entry({ log }: { log: LogRow }) {
             ))}
           </div>
         )}
+        {log.auto && <DaySets date={log.date} />}
         {log.notes && <div className="text-sm text-muted">{log.notes}</div>}
       </div>
       <button
@@ -156,8 +174,27 @@ function Entry({ log }: { log: LogRow }) {
           startTransition(() => void deleteLog(log.id));
         }}
       >
-        {armed ? "Tap again to delete" : "Delete"}
+        {armed ? (log.auto ? "Tap again: deletes all sets" : "Tap again to delete") : "Delete"}
       </button>
     </div>
+  );
+}
+
+function DaySets({ date }: { date: string }) {
+  const { sets, unit, openHistory } = useSets();
+  const byEx = new Map<string, typeof sets>();
+  for (const s of sets.filter((x) => x.date === date).sort((a, b) => a.set_no - b.set_no)) byEx.set(s.exercise_key, [...(byEx.get(s.exercise_key) ?? []), s]);
+  if (!byEx.size) return null;
+  return (
+    <ul className="mt-1 flex flex-col gap-0.5 text-sm">
+      {[...byEx.entries()].map(([key, rows]) => (
+        <li key={key}>
+          <button type="button" className="text-left underline decoration-dotted underline-offset-[3px]" onClick={() => openHistory(key, date)}>
+            {exerciseByKey(key)?.name ?? key}
+          </button>{" "}
+          <span className="font-mono text-muted">{rows.map((r) => fmtSet(r, unit)).join(", ")}</span>
+        </li>
+      ))}
+    </ul>
   );
 }

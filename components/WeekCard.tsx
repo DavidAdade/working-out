@@ -1,9 +1,10 @@
 "use client";
 
 import { dayTitle, PHASE_NAMES, weekLongRunKm, type Week } from "@/lib/plan/generate.ts";
-import { addDays, dowName, fmtShort } from "@/lib/plan/dates.ts";
+import { dowName, fmtShort } from "@/lib/plan/dates.ts";
 import type { LogRow } from "@/lib/types";
 import { DayBlocks } from "./DayView";
+import { useDates } from "./DateLabels";
 
 export default function WeekCard({ week, logs, today, onSkip, open = false }: { week: Week; logs: LogRow[]; today: string; onSkip: (d: string, s: boolean) => void; open?: boolean }) {
   const logged = new Set(logs.map((l) => l.date));
@@ -11,6 +12,7 @@ export default function WeekCard({ week, logs, today, onSkip, open = false }: { 
   const past = active.filter((d) => d.date <= today);
   const done = active.filter((d) => logged.has(d.date)).length;
   const km = weekLongRunKm(week);
+  const dates = useDates();
 
   return (
     <details open={open} className="group rounded-[10px] border border-line bg-surface open:border-ink">
@@ -23,8 +25,7 @@ export default function WeekCard({ week, logs, today, onSkip, open = false }: { 
           </b>
           <br />
           <span className="text-[0.82rem] text-muted">
-            {fmtShort(week.start)} – {fmtShort(addDays(week.start, 6))}
-            {km ? ` · long run ${km} km` : ""} · {active.length} days
+            {[dates.range(week.start), km ? `long run ${km} km` : null, `${active.length} days`].filter(Boolean).join(" · ")}
           </span>
         </span>
         {past.length ? (
@@ -47,7 +48,7 @@ export default function WeekCard({ week, logs, today, onSkip, open = false }: { 
           <div key={d.date} className={`grid grid-cols-[3.2em_1fr] gap-2.5 border-t border-line px-3.5 py-2.5 first:border-t-0 ${d.date === today ? "bg-accent/[0.08]" : ""} ${d.skipped ? "opacity-60" : ""}`}>
             <div className="text-[0.78rem] leading-tight text-muted">
               <b className="block text-[0.9rem] text-ink">{dowName(d.date)}</b>
-              {fmtShort(d.date)}
+              {!dates.hide && fmtShort(d.date)}
             </div>
             <div className="min-w-0">
               <div className="mb-1 font-semibold">
