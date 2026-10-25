@@ -7,7 +7,6 @@ import type { LogRow } from "@/lib/types";
 import { BarChart, LineChart } from "./charts";
 import { useDates } from "./DateLabels";
 import { ChangeBanner, fmtWeight, useSets } from "./Sets";
-import { EXERCISES } from "@/lib/plan/exercises.ts";
 import { compareSession, sessions } from "@/lib/plan/progress.ts";
 
 const AREA_COLORS = ["rgb(var(--area1))", "rgb(var(--area2))", "rgb(var(--area3))"];
@@ -120,9 +119,9 @@ function Empty({ children }: { children: React.ReactNode }) {
 
 /** Every exercise you've logged: latest top set, change vs the session before, tap for full history. */
 function LiftsCard() {
-  const { sets, unit, openHistory } = useSets();
+  const { sets, unit, openHistory, exercises } = useSets();
   const dates = useDates();
-  const rows = EXERCISES.map((ex) => {
+  const rows = exercises.map((ex) => {
     const all = sessions(sets, ex.key);
     const latest = all[0];
     if (!latest) return null;

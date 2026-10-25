@@ -4,14 +4,15 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "npm run sync-exercises && next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --no-warnings --test lib/plan/plan.test.ts",
-    "check-videos": "node --experimental-strip-types --no-warnings scripts/check-videos.ts"
+    "check-videos": "node --experimental-strip-types --no-warnings scripts/check-videos.ts",
+    "sync-exercises": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/sync-exercises.ts"
   },
   "engines": {
-    "node": ">=22.6"
+    "node": ">=22.9"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

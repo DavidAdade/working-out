@@ -5,7 +5,9 @@ import { painWarnings } from "./warnings.ts";
 import { parseDuration, duration, pace } from "./format.ts";
 import { weekday } from "./dates.ts";
 import { videoFor, VIDEOS } from "./videos.ts";
-import { EXERCISES, parseLine } from "./exercises.ts";
+import { EXERCISES, parseLine, videoOf, videoForLine } from "./exercises.ts";
+import { builtinRows, customKey, youtubeId } from "./catalog.ts";
+import { MUSCLES } from "./muscles.ts";
 import { compareSession, sessions, type SetLike } from "./progress.ts";
 
 const david: PlanSettings = {
@@ -163,4 +165,28 @@ test("auto strength logs don't hide a run's pain warning", () => {
     { date: "2026-11-19", kind: "strength", pain: {}, auto: true },
   ]);
   assert.equal(w[0]?.level, "warn");
+});
+
+test("exercise database: every built-in has a video and muscles", () => {
+  const muscleIds = new Set<string>(MUSCLES.map((m) => m.id));
+  for (const e of EXERCISES) {
+    assert.ok(videoOf(e), `${e.key} has no video (add \`video:\` pointing at a VIDEOS key)`);
+  }
+  for (const r of builtinRows()) {
+    assert.match(r.key, /^[a-z0-9-]{1,40}$/);
+    assert.ok(r.primary_muscles.length > 0, `${r.key} has no muscles in EXERCISE_MUSCLES`);
+    for (const m of [...r.primary_muscles, ...r.secondary_muscles]) assert.ok(muscleIds.has(m), `${r.key}: unknown muscle ${m}`);
+    assert.ok(r.video_ids.length > 0);
+  }
+  // Plan lines get their video through the catalog
+  assert.equal(videoForLine("Romanian deadlift, light, 3×8")!.key, "rdl");
+});
+
+test("custom exercise helpers", () => {
+  assert.equal(youtubeId("https://www.youtube.com/watch?v=KN5vN3JskqI&t=3"), "KN5vN3JskqI");
+  assert.equal(youtubeId("https://youtu.be/KN5vN3JskqI"), "KN5vN3JskqI");
+  assert.equal(youtubeId("https://youtube.com/shorts/KN5vN3JskqI"), "KN5vN3JskqI");
+  assert.equal(youtubeId("not a link"), null);
+  assert.equal(customKey("Goblet Squat (heavy)!", "8cd36a"), "goblet-squat-heavy-8cd36a");
+  assert.match(customKey("x".repeat(100), "abcdef"), /^[a-z0-9-]{1,40}$/);
 });

@@ -11,7 +11,8 @@ Each person signs in with a magic link and only ever sees their own plan and log
 | --- | --- |
 | `lib/plan/` | The plan engine. Pure TypeScript, no dependencies. `generatePlan(settings, { skips })` returns weeks → days → blocks. |
 | `lib/plan/templates.ts` | Every strength, upper-body and abs session. Edit exercises here. |
-| `supabase/migrations/0001_init.sql` | Tables `profiles`, `logs`, `day_overrides`, all locked to their owner with RLS. |
+| `lib/plan/exercises.ts`, `videos.ts`, `muscles.ts` | The exercise catalog: stable keys, demo videos and muscle maps. Synced to the Supabase `exercises` table on every build (`npm run sync-exercises`). See `.claude/skills/add-exercise`. |
+| `supabase/migrations/` | Tables `profiles`, `logs`, `day_overrides`, `set_logs`, `exercises`, all locked down with RLS. |
 | `app/actions.ts` | Server Actions: sign-in, settings, gates, skip days, add/delete logs. |
 | `components/` | Today, Plan, Log, Progress panels. |
 
@@ -30,7 +31,7 @@ The plan is never stored. It is regenerated from each person's settings, so chan
    npm test        # plan engine tests (Node 22.6+)
    npm run dev
    ```
-7. **Deploy.** Import the repo into Vercel and add the same three env vars, with `NEXT_PUBLIC_SITE_URL` set to the Vercel URL. `vercel.json` handles the rest.
+7. **Deploy.** Import the repo into Vercel and add the same three env vars, with `NEXT_PUBLIC_SITE_URL` set to the Vercel URL, plus `SUPABASE_SERVICE_ROLE_KEY` (server-only) so each build syncs the exercise library. `vercel.json` handles the rest.
 
 ## On your phone
 

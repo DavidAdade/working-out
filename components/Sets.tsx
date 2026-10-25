@@ -3,13 +3,16 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { deleteSet, upsertSet } from "@/app/actions";
 import { weekForDate, type Week } from "@/lib/plan/generate.ts";
-import { exerciseByKey, parseLine, type Exercise, type Target } from "@/lib/plan/exercises.ts";
+import { parseLine, videoForLine, type Exercise, type Target } from "@/lib/plan/exercises.ts";
+import { asExercise, type ExerciseInfo } from "@/lib/plan/catalog.ts";
+import type { ExerciseVideo } from "@/lib/plan/videos.ts";
+import { deleteExercise } from "@/app/actions";
+import MuscleMap, { MuscleChips } from "./MuscleMap";
 import { compareSession, sessions, toUnit, type Change, type Session } from "@/lib/plan/progress.ts";
 import type { SetRow, Unit } from "@/lib/types";
 import { useDates } from "./DateLabels";
 import { LineChart } from "./charts";
 import { useOpenVideo } from "./VideoModal";
-import { videoFor } from "@/lib/plan/videos.ts";
 
 /* ---------- shared state: every logged set, saved optimistically ---------- */
 interface SetsCtx {
@@ -22,6 +25,10 @@ interface SetsCtx {
   remove: (date: string, key: string, setNo: number) => void;
   openHistory: (key: string, focusDate?: string) => void;
   error: string | null;
+  /** Built-in and custom exercises, from the exercises table */
+  exercises: ExerciseInfo[];
+  info: (key: string) => ExerciseInfo | undefined;
+  weeks: Week[];
 }
 
 const Ctx = createContext<SetsCtx | null>(null);
@@ -36,7 +43,21 @@ const id = (date: string, key: string, setNo: number) => `${date}|${key}|${setNo
 const same = (a: Pick<SetRow, "date" | "exercise_key" | "set_no">, date: string, key: string, setNo: number) =>
   a.date === date && a.exercise_key === key && a.set_no === setNo;
 
-export function SetsProvider({ initial, unit, today, weeks, children }: { initial: SetRow[]; unit: Unit; today: string; weeks: Week[]; children: React.ReactNode }) {
+export function SetsProvider({
+  initial,
+  unit,
+  today,
+  weeks,
+  exercises,
+  children,
+}: {
+  initial: SetRow[];
+  unit: Unit;
+  today: string;
+  weeks: Week[];
+  exercises: ExerciseInfo[];
+  children: React.ReactNode;
+}) {
   const [sets, setSets] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<{ key: string; focus?: string } | null>(null);
@@ -117,7 +138,12 @@ export function SetsProvider({ initial, unit, today, weeks, children }: { initia
 
   const openHistory = useCallback((key: string, focus?: string) => setHistory({ key, focus }), []);
 
-  const value = useMemo(() => ({ sets, unit, today, isLightDate, save, remove, openHistory, error }), [sets, unit, today, isLightDate, save, remove, openHistory, error]);
+  const byKey = useMemo(() => new Map(exercises.map((e) => [e.key, e])), [exercises]);
+  const info = useCallback((key: string) => byKey.get(key), [byKey]);
+  const value = useMemo(
+    () => ({ sets, unit, today, isLightDate, save, remove, openHistory, error, exercises, info, weeks }),
+    [sets, unit, today, isLightDate, save, remove, openHistory, error, exercises, info, weeks],
+  );
   return (
     <Ctx.Provider value={value}>
       {children}
@@ -129,7 +155,7 @@ export function SetsProvider({ initial, unit, today, weeks, children }: { initia
           </button>
         </div>
       )}
-      {history && <HistorySheet exerciseKey={history.key} focus={history.focus} onClose={() => setHistory(null)} />}
+      {history && <ExerciseSheet key={history.key} exerciseKey={history.key} focus={history.focus} onClose={() => setHistory(null)} />}
     </Ctx.Provider>
   );
 }
@@ -166,7 +192,7 @@ export function ExerciseRow({ anchorId, line, logDate: planLogDate, light, dayTi
   const { sets, unit, today, openHistory } = useSets();
   const dates = useDates();
   const openVideo = useOpenVideo();
-  const video = videoFor(line);
+  const video = videoForLine(line);
   // Far-off days open read-only; "Log it today" switches this row to logging under today
   const [logToday, setLogToday] = useState(false);
   if (!parsed) {
@@ -263,7 +289,9 @@ function SetTable({
   done,
   onCollapse,
   onComplete,
+  inset = true,
 }: {
+  inset?: boolean;
   exercise: Exercise;
   target: Target;
   date: string;
@@ -295,7 +323,7 @@ function SetTable({
   const cols = exercise.load === "weight" ? "grid-cols-[1.25rem_5rem_4rem_2.75rem]" : "grid-cols-[1.25rem_5rem_2.75rem]";
 
   return (
-    <div className="mb-2 ml-11 flex max-w-sm flex-col gap-1.5">
+    <div className={`mb-2 flex max-w-sm flex-col gap-1.5 ${inset ? "ml-11" : ""}`}>
       {prev && (
         <button type="button" onClick={() => openHistory(exercise.key, prev.date)} className="text-left text-xs text-muted">
           Last ({dates.day(prev.date)}): <span className="font-mono">{prev.sets.map((x) => fmtSet(x, unit)).join(", ")}</span>
@@ -463,14 +491,26 @@ export function ChangeBanner({ change, exerciseKey, name }: { change: Change; ex
   );
 }
 
-/* ---------- per-exercise history sheet ---------- */
-function HistorySheet({ exerciseKey, focus, onClose }: { exerciseKey: string; focus?: string; onClose: () => void }) {
-  const { sets, unit } = useSets();
+/* ---------- one exercise: muscles, video, logging and history in one sheet ---------- */
+export const videoFromInfo = (x: ExerciseInfo): ExerciseVideo | null =>
+  x.video_ids.length ? { key: x.key, name: x.name, match: /$^/, ids: x.video_ids, query: x.video_query ?? x.name } : null;
+
+function ExerciseSheet({ exerciseKey, focus, onClose }: { exerciseKey: string; focus?: string; onClose: () => void }) {
+  const { sets, unit, today, info, weeks } = useSets();
   const dates = useDates();
-  const ex = exerciseByKey(exerciseKey);
+  const openVideo = useOpenVideo();
+  const item = info(exerciseKey);
+  const ex = item ? asExercise(item) : undefined;
   const all = useMemo(() => sessions(sets, exerciseKey), [sets, exerciseKey]);
   const focusRef = useRef<HTMLLIElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const [logging, setLogging] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  // Which plan sessions use it: "Legs: rebuild (gym)", …
+  const usedIn = useMemo(
+    () => [...new Set(weeks.flatMap((w) => w.days.flatMap((d) => d.blocks.filter((b) => b.items.some((l) => parseLine(l)?.exercise.key === exerciseKey)).map((b) => b.title))))],
+    [weeks, exerciseKey],
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -501,19 +541,65 @@ function HistorySheet({ exerciseKey, focus, onClose }: { exerciseKey: string; fo
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={`${ex.name} history`}
+        aria-label={ex.name}
         onClick={(e) => e.stopPropagation()}
         className="flex max-h-[85dvh] w-full max-w-[720px] flex-col gap-3 overflow-y-auto rounded-t-2xl border border-line bg-surface p-4 pb-[max(16px,env(safe-area-inset-bottom,0px))] sm:rounded-2xl"
       >
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="label">History</div>
+            <div className="label">{item!.owner ? "Your exercise" : "Exercise"}</div>
             <h3 className="font-display text-2xl font-bold">{ex.name}</h3>
           </div>
           <button ref={closeRef} className="btn-ghost" onClick={onClose}>
             Close
           </button>
         </div>
+
+        {item!.primary_muscles.length > 0 && <MuscleChips primary={item!.primary_muscles} secondary={item!.secondary_muscles} />}
+
+        <div className="flex flex-wrap gap-1.5">
+          {videoFromInfo(item!) && (
+            <button type="button" className="btn-ghost" onClick={() => openVideo(videoFromInfo(item!)!)}>
+              ▶ Video
+            </button>
+          )}
+          {!logging && (
+            <button type="button" className="btn-ghost" onClick={() => setLogging(true)}>
+              Log today
+            </button>
+          )}
+          {item!.owner &&
+            (confirmDelete ? (
+              <button type="button" className="btn-ghost ml-auto border-bad text-bad" onClick={() => void deleteExercise(ex.key).then((r) => r.ok && onClose())}>
+                Delete for good
+              </button>
+            ) : (
+              <button type="button" className="btn-ghost ml-auto" onClick={() => setConfirmDelete(true)}>
+                Delete
+              </button>
+            ))}
+        </div>
+        {logging && (
+          <SetTable
+            exercise={ex}
+            target={sheetTarget(ex, all.find((s) => s.date < today))}
+            date={today}
+            light={false}
+            dayTitle={ex.name}
+            done={sets.filter((s) => s.date === today && s.exercise_key === ex.key).sort((a, b) => a.set_no - b.set_no)}
+            onCollapse={() => setLogging(false)}
+            onComplete={() => {}}
+            inset={false}
+          />
+        )}
+        {item!.primary_muscles.length > 0 && (
+          <div className="mx-auto w-full max-w-[260px] border-t border-line pt-2.5">
+            <MuscleMap primary={item!.primary_muscles} secondary={item!.secondary_muscles} size="sm" />
+          </div>
+        )}
+        {usedIn.length > 0 && <p className="text-sm text-muted">In your plan: {usedIn.join(" · ")}</p>}
+
+        <div className="label mt-1">History</div>
         {all.length === 0 ? (
           <p className="text-muted">Nothing logged yet. Tick a set and it shows up here.</p>
         ) : (
@@ -556,4 +642,15 @@ function HistorySheet({ exerciseKey, focus, onClose }: { exerciseKey: string; fo
       </div>
     </div>
   );
+}
+
+/** Logging from the library: the previous session's shape, or 3 × 10 the first time. */
+function sheetTarget(ex: Exercise, last: Session | undefined): Target {
+  const top = last?.sets[0];
+  return {
+    sets: last ? last.sets.length : 3,
+    reps: ex.load === "time" ? null : top?.reps ?? 10,
+    sec: ex.load === "time" ? top?.duration_sec ?? 30 : null,
+    each: false,
+  };
 }

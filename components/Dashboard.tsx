@@ -7,20 +7,23 @@ import { daysBetween, fmtShort } from "@/lib/plan/dates.ts";
 import { duration, pace, predict } from "@/lib/plan/format.ts";
 import { toggleSkip } from "@/app/actions";
 import type { LogRow, ProfileRow, SetRow } from "@/lib/types";
+import type { ExerciseInfo } from "@/lib/plan/catalog.ts";
 import TodayPanel from "./TodayPanel";
 import PlanPanel from "./PlanPanel";
 import LogPanel from "./LogPanel";
 import ProgressPanel from "./ProgressPanel";
+import LibraryPanel from "./LibraryPanel";
 import { VideoProvider } from "./VideoModal";
 import { DateLabelsProvider, useDates } from "./DateLabels";
 import { SetsProvider } from "./Sets";
 
-type Tab = "today" | "plan" | "log" | "progress";
+type Tab = "today" | "plan" | "log" | "progress" | "library";
 const TABS: { id: Tab; label: string }[] = [
   { id: "today", label: "Today" },
   { id: "plan", label: "Plan" },
   { id: "log", label: "Log" },
   { id: "progress", label: "Progress" },
+  { id: "library", label: "Library" },
 ];
 
 export interface DashboardProps {
@@ -29,10 +32,11 @@ export interface DashboardProps {
   logs: LogRow[];
   skips: string[];
   sets: SetRow[];
+  exercises: ExerciseInfo[];
   today: string;
 }
 
-export default function Dashboard({ profile, settings, logs, skips, sets, today }: DashboardProps) {
+export default function Dashboard({ profile, settings, logs, skips, sets, exercises, today }: DashboardProps) {
   const [tab, setTab] = useState<Tab>("today");
   const [logDate, setLogDate] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -58,11 +62,11 @@ export default function Dashboard({ profile, settings, logs, skips, sets, today 
 
   return (
     <DateLabelsProvider hide={profile.hide_dates} weeks={weeks}>
-      <SetsProvider initial={sets} unit={profile.weight_unit} today={today} weeks={weeks}>
-        <VideoProvider>
+      <VideoProvider>
+        <SetsProvider initial={sets} unit={profile.weight_unit} today={today} weeks={weeks} exercises={exercises}>
           <GoalHeader settings={settings} thisWeek={thisWeek} daysToTT={daysToTT} />
 
-          <nav className="sticky top-[env(safe-area-inset-top,0px)] z-10 grid grid-cols-4 gap-1 bg-bg py-1.5" role="tablist">
+          <nav className="sticky top-[env(safe-area-inset-top,0px)] z-10 grid grid-cols-5 gap-1 bg-bg py-1.5" role="tablist">
             {TABS.map((t) => (
               <button
                 key={t.id}
@@ -72,7 +76,7 @@ export default function Dashboard({ profile, settings, logs, skips, sets, today 
                   setTab(t.id);
                   window.scrollTo({ top: 0 });
                 }}
-                className={`min-h-11 rounded-full border px-1 py-2 text-sm font-semibold ${tab === t.id ? "border-ink bg-ink text-bg" : "border-line bg-surface"}`}
+                className={`min-h-11 rounded-full border px-0.5 py-2 text-[0.8rem] font-semibold sm:text-sm ${tab === t.id ? "border-ink bg-ink text-bg" : "border-line bg-surface"}`}
               >
                 {t.label}
               </button>
@@ -82,9 +86,10 @@ export default function Dashboard({ profile, settings, logs, skips, sets, today 
           {tab === "today" && <TodayPanel profile={profile} settings={settings} weeks={weeks} logs={logs} today={today} onLog={openLog} onSkip={onSkip} />}
           {tab === "plan" && <PlanPanel weeks={weeks} logs={logs} today={today} onSkip={onSkip} />}
           {tab === "log" && <LogPanel weeks={weeks} logs={logs} today={today} painAreas={profile.pain_areas} initialDate={logDate ?? today} />}
+          {tab === "library" && <LibraryPanel />}
           {tab === "progress" && <ProgressPanel logs={logs} settings={settings} painAreas={profile.pain_areas} />}
-        </VideoProvider>
-      </SetsProvider>
+        </SetsProvider>
+      </VideoProvider>
     </DateLabelsProvider>
   );
 }

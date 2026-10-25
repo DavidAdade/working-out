@@ -8,7 +8,6 @@ import type { LogKind, LogRow } from "@/lib/types";
 import { Chip } from "./DayView";
 import { useDates } from "./DateLabels";
 import { fmtSet, useSets } from "./Sets";
-import { exerciseByKey } from "@/lib/plan/exercises.ts";
 
 interface Props {
   weeks: Week[];
@@ -181,7 +180,7 @@ function Entry({ log }: { log: LogRow }) {
 }
 
 function DaySets({ date }: { date: string }) {
-  const { sets, unit, openHistory } = useSets();
+  const { sets, unit, openHistory, info } = useSets();
   const byEx = new Map<string, typeof sets>();
   for (const s of sets.filter((x) => x.date === date).sort((a, b) => a.set_no - b.set_no)) byEx.set(s.exercise_key, [...(byEx.get(s.exercise_key) ?? []), s]);
   if (!byEx.size) return null;
@@ -190,7 +189,7 @@ function DaySets({ date }: { date: string }) {
       {[...byEx.entries()].map(([key, rows]) => (
         <li key={key}>
           <button type="button" className="text-left underline decoration-dotted underline-offset-[3px]" onClick={() => openHistory(key, date)}>
-            {exerciseByKey(key)?.name ?? key}
+            {info(key)?.name ?? key}
           </button>{" "}
           <span className="font-mono text-muted">{rows.map((r) => fmtSet(r, unit)).join(", ")}</span>
         </li>

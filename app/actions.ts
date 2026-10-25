@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/server";
 import { parseDuration } from "@/lib/plan/format.ts";
 import type { LogKind, Unit } from "@/lib/types";
 import { exerciseByKey } from "@/lib/plan/exercises.ts";
+import { customKey, youtubeId } from "@/lib/plan/catalog.ts";
+import { MUSCLES } from "@/lib/plan/muscles.ts";
 
 export type ActionResult = { ok: true } | { ok: false, error: string };
 
@@ -186,7 +188,11 @@ const num = (v: number | null, max: number) => (v == null || !Number.isFinite(v)
 
 export async function upsertSet(input: SetInput): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
-  if (!exerciseByKey(input.exerciseKey)) return { ok: false, error: "Unknown exercise." };
+  if (!exerciseByKey(input.exerciseKey)) {
+    // Not a built-in: it has to be one of this person's own exercises (RLS hides everyone else's)
+    const { data } = await supabase.from("exercises").select("key").eq("key", input.exerciseKey).maybeSingle();
+    if (!data) return { ok: false, error: "Unknown exercise." };
+  }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date) || input.setNo < 1 || input.setNo > 20) return { ok: false, error: "Couldn't save that set." };
   const reps = num(input.reps, 200);
   const duration_sec = num(input.durationSec, 3600);
@@ -216,5 +222,44 @@ export async function deleteSet(date: string, exerciseKey: string, setNo: number
   const { supabase, user } = await requireUser();
   const { error } = await supabase.from("set_logs").delete().eq("user_id", user.id).eq("date", date).eq("exercise_key", exerciseKey).eq("set_no", setNo);
   if (error) return { ok: false, error: "Couldn't remove that set." };
+  return { ok: true };
+}
+
+/* ---------- exercise library ---------- */
+const MUSCLE_IDS = new Set<string>(MUSCLES.map((m) => m.id));
+
+export async function addExercise(_: unknown, form: FormData): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  const name = String(form.get("name") ?? "").trim().replace(/\s+/g, " ");
+  if (name.length < 2 || name.length > 80) return { ok: false, error: "Give it a name." };
+  const load = String(form.get("load"));
+  if (!["weight", "bodyweight", "time"].includes(load)) return { ok: false, error: "Pick how it's measured." };
+  const primary = form.getAll("primary").map(String).filter((m) => MUSCLE_IDS.has(m));
+  const secondary = form.getAll("secondary").map(String).filter((m) => MUSCLE_IDS.has(m) && !primary.includes(m));
+  if (!primary.length) return { ok: false, error: "Pick at least one main muscle." };
+  const videoRaw = String(form.get("video") ?? "").trim();
+  const video = videoRaw ? youtubeId(videoRaw) : null;
+  if (videoRaw && !video) return { ok: false, error: "That doesn't look like a YouTube link." };
+  const { error } = await supabase.from("exercises").insert({
+    key: customKey(name, user.id.slice(0, 6)),
+    name,
+    load,
+    primary_muscles: primary,
+    secondary_muscles: secondary,
+    video_ids: video ? [video] : [],
+    video_query: name,
+    owner: user.id,
+  });
+  if (error) return { ok: false, error: error.code === "23505" ? "You already have an exercise with that name." : "Couldn't save. Try again." };
+  revalidatePath("/");
+  return { ok: true };
+}
+
+export async function deleteExercise(key: string): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  // Built-ins have no owner, so this only ever removes your own. Logged sets stay in your history.
+  const { error } = await supabase.from("exercises").delete().eq("key", key).eq("owner", user.id);
+  if (error) return { ok: false, error: "Couldn't delete. Try again." };
+  revalidatePath("/");
   return { ok: true };
 }
