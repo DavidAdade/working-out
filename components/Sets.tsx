@@ -146,11 +146,14 @@ export function fmtSet(s: Pick<SetRow, "weight_kg" | "reps" | "duration_sec">, u
 }
 
 /* ---------- one exercise's set table ---------- */
-export function ExerciseSets({ line, date, light, dayTitle, startOpen }: { line: string; date: string; light: boolean; dayTitle: string; startOpen: boolean }) {
+export function ExerciseSets({ line, date: planDate, light, dayTitle, startOpen }: { line: string; date: string; light: boolean; dayTitle: string; startOpen: boolean }) {
   const parsed = parseLine(line);
   const { sets, today } = useSets();
   const [open, setOpen] = useState(startOpen);
-  if (!parsed || date > today) return null;
+  if (!parsed) return null;
+  // A future day's workout done early is logged under today, so history stays in the order you lifted
+  const early = planDate > today;
+  const date = early ? today : planDate;
   const { exercise, target } = parsed;
   const done = sets.filter((s) => s.date === date && s.exercise_key === exercise.key).sort((a, b) => a.set_no - b.set_no);
 
@@ -158,10 +161,15 @@ export function ExerciseSets({ line, date, light, dayTitle, startOpen }: { line:
     return (
       <button type="button" onClick={() => setOpen(true)} className="mt-1 flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-dashed border-line px-3 text-left text-sm">
         <SetSummary rows={done} />
-        <span className="font-semibold text-accent-ink">{done.length ? "Edit" : "Log sets"}</span>
+        <span className="font-semibold text-accent-ink">{done.length ? "Edit" : early ? "Log today" : "Log sets"}</span>
       </button>
     );
-  return <SetTable exercise={exercise} target={light ? { ...target, sets: Math.min(target.sets, 2) } : target} date={date} light={light} dayTitle={dayTitle} done={done} />;
+  return (
+    <>
+      {early && <p className="mt-1 text-xs text-muted">Doing this early: sets save under today.</p>}
+      <SetTable exercise={exercise} target={light ? { ...target, sets: Math.min(target.sets, 2) } : target} date={date} light={light} dayTitle={dayTitle} done={done} />
+    </>
+  );
 }
 
 function SetSummary({ rows }: { rows: SetRow[] }) {
