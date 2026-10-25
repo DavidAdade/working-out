@@ -43,10 +43,8 @@ export default function WeekCard({
             {PHASE_NAMES[week.phase]}
             {week.cutback ? " · cutback" : ""}
           </b>
-          <br />
-          <span className="text-[0.82rem] text-muted">
-            {[dates.range(week.start), km ? `long run ${km} km` : null, `${active.length} days`].filter(Boolean).join(" · ")}
-          </span>
+          <span className="block text-[0.82rem] font-medium text-ink/80">{dates.range(week.start)}</span>
+          <span className="block text-[0.82rem] text-muted">{[km ? `Long run ${km} km` : null, `${active.length} days`].filter(Boolean).join(" · ")}</span>
         </span>
         {past.length ? (
           <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${done >= past.length ? "bg-good/15 text-good" : "bg-sunk"}`}>
