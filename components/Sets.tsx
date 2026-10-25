@@ -161,11 +161,14 @@ export interface RowProps {
   onComplete: () => void;
 }
 
-export function ExerciseRow({ anchorId, line, logDate, light, dayTitle, open, onToggle, onComplete }: RowProps) {
+export function ExerciseRow({ anchorId, line, logDate: planLogDate, light, dayTitle, open, onToggle, onComplete }: RowProps) {
   const parsed = parseLine(line);
-  const { sets, unit } = useSets();
+  const { sets, unit, today, openHistory } = useSets();
+  const dates = useDates();
   const openVideo = useOpenVideo();
   const video = videoFor(line);
+  // Far-off days open read-only; "Log it today" switches this row to logging under today
+  const [logToday, setLogToday] = useState(false);
   if (!parsed) {
     return (
       <li id={anchorId} className="flex min-h-11 items-center gap-1 py-1 text-[0.92rem]">
@@ -174,6 +177,7 @@ export function ExerciseRow({ anchorId, line, logDate, light, dayTitle, open, on
       </li>
     );
   }
+  const logDate = planLogDate ?? (logToday ? today : null);
   const { exercise, target, name } = parsed;
   const sized = light ? { ...target, sets: Math.min(target.sets, 2) } : target;
   const done = logDate ? sets.filter((s) => s.date === logDate && s.exercise_key === exercise.key).sort((a, b) => a.set_no - b.set_no) : [];
@@ -181,35 +185,28 @@ export function ExerciseRow({ anchorId, line, logDate, light, dayTitle, open, on
   // The weight warning stays visible after the row closes
   const change = logDate && complete && !open && exercise.load === "weight" ? compareSession(sessions(sets, exercise.key), logDate) : null;
   const targetText = `${sized.sets}×${target.sec ? `${target.sec}s` : target.reps ?? "max"}${target.each ? " each" : ""}`;
+  const last = logDate ? null : sessions(sets, exercise.key)[0];
 
   return (
     <li id={anchorId} className={`flex scroll-mt-20 flex-col ${complete && !open ? "opacity-70" : ""}`}>
       <div className="flex min-h-11 items-center gap-1">
         {video ? <VideoButton onClick={() => openVideo(video)} label={video.name} /> : <span className="w-11 flex-none" />}
-        <button
-          type="button"
-          disabled={!logDate}
-          aria-expanded={logDate ? open : undefined}
-          onClick={onToggle}
-          className="flex min-h-11 min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-default"
-        >
+        <button type="button" aria-expanded={open} onClick={onToggle} className="flex min-h-11 min-w-0 flex-1 items-center gap-2 text-left">
           <span className="min-w-0 flex-1">
             <span className="font-medium">{name}</span> <span className="whitespace-nowrap font-mono text-[0.8rem] text-muted">{targetText}</span>
           </span>
           {logDate && (
-            <>
-              <span
-                className={`whitespace-nowrap rounded-full px-2 py-0.5 font-mono text-xs font-semibold ${
-                  complete ? "bg-good/15 text-good" : done.length ? "bg-warn/15 text-warn" : "bg-sunk text-muted"
-                }`}
-              >
-                {complete ? `✓ ${fmtSet(topOf(done), unit)}` : `${done.length}/${sized.sets}`}
-              </span>
-              <span aria-hidden className={`w-4 text-center text-muted transition-transform ${open ? "rotate-180" : ""}`}>
-                ▾
-              </span>
-            </>
+            <span
+              className={`whitespace-nowrap rounded-full px-2 py-0.5 font-mono text-xs font-semibold ${
+                complete ? "bg-good/15 text-good" : done.length ? "bg-warn/15 text-warn" : "bg-sunk text-muted"
+              }`}
+            >
+              {complete ? `✓ ${fmtSet(topOf(done), unit)}` : `${done.length}/${sized.sets}`}
+            </span>
           )}
+          <span aria-hidden className={`w-4 text-center text-muted transition-transform ${open ? "rotate-180" : ""}`}>
+            ▾
+          </span>
         </button>
       </div>
       {change && (
@@ -219,6 +216,27 @@ export function ExerciseRow({ anchorId, line, logDate, light, dayTitle, open, on
       )}
       {open && logDate && (
         <SetTable exercise={exercise} target={sized} date={logDate} light={light} dayTitle={dayTitle} done={done} onCollapse={onToggle} onComplete={onComplete} />
+      )}
+      {open && !logDate && (
+        <div className="mb-2 ml-11 flex flex-col gap-1.5 text-sm">
+          <p className="text-muted">
+            {last ? (
+              <>
+                Last ({dates.day(last.date)}): <span className="font-mono text-ink">{last.sets.map((x) => fmtSet(x, unit)).join(", ")}</span>
+              </>
+            ) : (
+              "Not logged yet."
+            )}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            <button type="button" className="btn-ghost px-3 text-xs" onClick={() => setLogToday(true)}>
+              Log it today
+            </button>
+            <button type="button" className="btn-ghost px-3 text-xs" onClick={() => openHistory(exercise.key)}>
+              History
+            </button>
+          </div>
+        </div>
       )}
     </li>
   );
