@@ -33,6 +33,36 @@ const BY_ID = new Map<string, Muscle>(MUSCLES.map((m) => [m.id, m]));
 export const muscleById = (id: MuscleId): Muscle => BY_ID.get(id)!;
 export const muscleName = (id: MuscleId): string => BY_ID.get(id)?.name ?? id;
 
+/** The standard three-way split for filtering: upper body, lower body, core. */
+export const REGIONS = ["Upper", "Lower", "Core"] as const;
+export type Region = (typeof REGIONS)[number];
+const REGION_OF: Record<MuscleGroup, Region> = {
+  Chest: "Upper",
+  Back: "Upper",
+  Shoulders: "Upper",
+  Arms: "Upper",
+  Legs: "Lower",
+  Glutes: "Lower",
+  Calves: "Lower",
+  Core: "Core",
+};
+// Lower back is drawn with the back but trained as core (bird dog, planks), as most apps file it
+const MUSCLE_REGION: Partial<Record<MuscleId, Region>> = { "lower-back": "Core" };
+
+/** Where an exercise mostly works, from its main muscles (the first one breaks a tie). */
+export function regionOf(primary: readonly string[]): Region | null {
+  const counts = new Map<Region, number>();
+  for (const id of primary) {
+    const m = BY_ID.get(id as MuscleId);
+    if (!m) continue;
+    const r = MUSCLE_REGION[m.id] ?? REGION_OF[m.group];
+    counts.set(r, (counts.get(r) ?? 0) + 1);
+  }
+  let best: Region | null = null;
+  for (const [r, n] of counts) if (!best || n > counts.get(best)!) best = r;
+  return best;
+}
+
 export interface MuscleTargets {
   primary: MuscleId[];
   secondary: MuscleId[];

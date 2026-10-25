@@ -7,7 +7,7 @@ import { weekday } from "./dates.ts";
 import { videoFor, VIDEOS } from "./videos.ts";
 import { EXERCISES, parseLine, videoOf, videoForLine } from "./exercises.ts";
 import { builtinRows, customKey, youtubeId } from "./catalog.ts";
-import { MUSCLES } from "./muscles.ts";
+import { MUSCLES, regionOf } from "./muscles.ts";
 import { compareSession, sessions, type SetLike } from "./progress.ts";
 
 const david: PlanSettings = {
@@ -189,4 +189,12 @@ test("custom exercise helpers", () => {
   assert.equal(youtubeId("not a link"), null);
   assert.equal(customKey("Goblet Squat (heavy)!", "8cd36a"), "goblet-squat-heavy-8cd36a");
   assert.match(customKey("x".repeat(100), "abcdef"), /^[a-z0-9-]{1,40}$/);
+});
+
+test("every built-in falls in upper, lower or core", () => {
+  for (const r of builtinRows()) assert.ok(regionOf(r.primary_muscles), `${r.key} has no region`);
+  assert.equal(regionOf(["hamstrings", "glutes"]), "Lower");
+  assert.equal(regionOf(["delts-front"]), "Upper");
+  assert.equal(regionOf(["obliques", "abs"]), "Core");
+  assert.equal(regionOf(["lower-back", "glutes"]), "Core", "bird dog");
 });

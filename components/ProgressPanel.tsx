@@ -8,6 +8,8 @@ import { BarChart, LineChart } from "./charts";
 import { useDates } from "./DateLabels";
 import { ChangeBanner, fmtWeight, useSets } from "./Sets";
 import { compareSession, sessions } from "@/lib/plan/progress.ts";
+import { REGIONS, regionOf, type Region } from "@/lib/plan/muscles.ts";
+import { useState } from "react";
 
 const AREA_COLORS = ["rgb(var(--area1))", "rgb(var(--area2))", "rgb(var(--area3))"];
 
@@ -117,31 +119,62 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <div className="rounded-[10px] border border-dashed border-line p-4 text-center text-muted">{children}</div>;
 }
 
+const PAGE = 8;
+
 /** Every exercise you've logged: latest top set, change vs the session before, tap for full history. */
 function LiftsCard() {
   const { sets, unit, openHistory, exercises } = useSets();
   const dates = useDates();
-  const rows = exercises.map((ex) => {
-    const all = sessions(sets, ex.key);
-    const latest = all[0];
-    if (!latest) return null;
-    const prev = all.slice(1).find((s) => !s.light);
-    const change = ex.load === "weight" ? compareSession(all, latest.date) : null;
-    return { ex, latest, prev, change };
-  }).filter((r) => r !== null).sort((a, b) => (a.latest.date < b.latest.date ? 1 : -1));
+  const [region, setRegion] = useState<Region | null>(null);
+  const [page, setPage] = useState(0);
+  const all = exercises
+    .map((ex) => {
+      const history = sessions(sets, ex.key);
+      const latest = history[0];
+      if (!latest) return null;
+      const prev = history.slice(1).find((s) => !s.light);
+      const change = ex.load === "weight" ? compareSession(history, latest.date) : null;
+      return { ex, latest, prev, change, region: regionOf(ex.primary_muscles) };
+    })
+    .filter((r) => r !== null)
+    .sort((a, b) => (a.latest.date < b.latest.date ? 1 : a.latest.date > b.latest.date ? -1 : a.ex.name.localeCompare(b.ex.name)));
+  const rows = region ? all.filter((r) => r.region === region) : all;
+  const pages = Math.max(1, Math.ceil(rows.length / PAGE));
+  const current = Math.min(page, pages - 1);
+  const shown = rows.slice(current * PAGE, current * PAGE + PAGE);
+  const pick = (r: Region | null) => {
+    setRegion(r);
+    setPage(0);
+  };
 
   return (
     <article className="card">
       <div className="label">Lifts</div>
-      {rows.length === 0 ? (
+      {all.length === 0 ? (
         <Empty>Tick sets on a lifting day and each exercise shows its trend here.</Empty>
       ) : (
         <>
           {rows.filter((r) => r.change).map((r) => (
             <ChangeBanner key={r.ex.key} change={r.change!} exerciseKey={r.ex.key} name={r.ex.name} />
           ))}
+          <div className="flex gap-1.5" role="group" aria-label="Body region">
+            {[null, ...REGIONS].map((r) => {
+              const n = r ? all.filter((x) => x.region === r).length : all.length;
+              return (
+                <button
+                  key={r ?? "all"}
+                  type="button"
+                  aria-pressed={region === r}
+                  onClick={() => pick(r)}
+                  className={`min-h-9 flex-1 rounded-full border px-2 text-sm font-semibold ${region === r ? "border-ink bg-ink text-bg" : "border-line bg-surface"}`}
+                >
+                  {r ?? "All"} <span className="font-normal opacity-70">{n}</span>
+                </button>
+              );
+            })}
+          </div>
           <ul className="flex flex-col">
-            {rows.map(({ ex, latest, prev }) => {
+            {shown.map(({ ex, latest, prev }) => {
               const weighted = ex.load === "weight" && latest.topKg != null;
               const now = weighted ? latest.topKg! : latest.best ?? 0;
               const before = prev ? (weighted ? prev.topKg : prev.best) : null;
@@ -156,9 +189,7 @@ function LiftsCard() {
                     <span className="flex items-center gap-2 font-mono text-sm">
                       {weighted ? `${fmtWeight(now, unit)} ${unit}` : `${now}${ex.load === "time" ? "s" : " reps"}`}
                       {diff != null && (
-                        <span className={diff > 0 ? "text-good" : diff < 0 ? "text-bad" : "text-muted"}>
-                          {diff > 0 ? "▲" : diff < 0 ? "▼" : "="}
-                        </span>
+                        <span className={diff > 0 ? "text-good" : diff < 0 ? "text-bad" : "text-muted"}>{diff > 0 ? "▲" : diff < 0 ? "▼" : "="}</span>
                       )}
                     </span>
                   </button>
@@ -166,6 +197,19 @@ function LiftsCard() {
               );
             })}
           </ul>
+          {pages > 1 && (
+            <nav className="flex items-center justify-between gap-2" aria-label="Lifts pages">
+              <button type="button" className="btn-ghost" disabled={current === 0} onClick={() => setPage(current - 1)}>
+                ‹ Prev
+              </button>
+              <span className="text-sm text-muted">
+                {current * PAGE + 1}–{current * PAGE + shown.length} of {rows.length}
+              </span>
+              <button type="button" className="btn-ghost" disabled={current >= pages - 1} onClick={() => setPage(current + 1)}>
+                Next ›
+              </button>
+            </nav>
+          )}
         </>
       )}
     </article>
