@@ -12,6 +12,7 @@ import { bestOn, compareSession, sessions, suggestWeight, type SetLike } from ".
 import { fitness5k, goalPace } from "./paces.ts";
 import { adaptPlan } from "./adapt.ts";
 import { onTrack, wins } from "./ontrack.ts";
+import { planToIcs } from "./ics.ts";
 import { addDays } from "./dates.ts";
 
 const david: PlanSettings = {
@@ -350,4 +351,13 @@ test("suggested weight: only after every set hit the top of the range", () => {
   assert.equal(suggestWeight(three(10, [8, 8, 8]), t, "kg"), 11, "light dumbbells step by 1 kg");
   assert.equal(suggestWeight(three(40, [8, 8, 8]), t, "lb"), 93, "88 lb + 5");
   assert.equal(suggestWeight(undefined, t, "kg"), null);
+});
+
+test("calendar feed: one event per training day, valid lines", () => {
+  const ics = planToIcs(generatePlan(david, { skips: ["2027-02-11"] }), { name: "Road to Sub-30", uidSeed: "abc", now: new Date("2026-10-25T12:00:00Z") });
+  assert.ok(ics.startsWith("BEGIN:VCALENDAR\r\n") && ics.endsWith("END:VCALENDAR\r\n"));
+  assert.ok(ics.includes("DTSTART;VALUE=DATE:20270326"));
+  assert.ok(!ics.includes("UID:2027-02-11-abc"), "skipped days are left out");
+  for (const line of ics.split("\r\n")) assert.ok(new TextEncoder().encode(line).length <= 75, line);
+  assert.ok(/SUMMARY:W19 · 5K TIME TRIAL/.test(ics.replace(/\r\n /g, "")));
 });

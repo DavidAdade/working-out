@@ -8,7 +8,7 @@ import type { ProfileRow } from "@/lib/types";
 
 const t = (s: number | null) => (s ? duration(s) : "");
 
-export default function SettingsForm({ profile, firstRun, zones }: { profile: ProfileRow; firstRun: boolean; zones: string[] }) {
+export default function SettingsForm({ profile, firstRun, zones, children }: { profile: ProfileRow; firstRun: boolean; zones: string[]; children?: React.ReactNode }) {
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(saveSettings, null);
   const [injury, setInjury] = useState(profile.returning_from_injury);
 
@@ -96,6 +96,8 @@ export default function SettingsForm({ profile, firstRun, zones }: { profile: Pr
           </button>
         </div>
       </form>
+
+      {children}
 
       <form action={signOut}>
         <button className="btn-ghost">Sign out</button>

@@ -16,7 +16,7 @@ export default async function Home() {
 
   const [{ data: profile }, { data: logs }, { data: skips }, { data: sets }, { data: exercises }] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).single<ProfileRow>(),
-    supabase.from("logs").select("*").order("date", { ascending: false }).limit(1000).returns<LogRow[]>(),
+    supabase.from("logs").select("*").order("date", { ascending: false }).order("created_at", { ascending: false }).limit(1000).returns<LogRow[]>(),
     supabase.from("day_overrides").select("date").eq("status", "skipped").returns<{ date: string }[]>(),
     supabase
       .from("set_logs")
