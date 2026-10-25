@@ -19,7 +19,7 @@ Next.js 15 (App Router, Server Actions) + Supabase (Postgres, Auth, RLS) + Tailw
   - `ontrack.ts`: the Today verdict, consistency, pain trend, wins. `ics.ts`: the calendar feed
 - **Offline:** `components/Dock.tsx` is a per-user outbox (localStorage). Set, unset and session writes go through `send()`, which saves them on the phone with no signal and replays them in order. New write paths that run mid-workout should go through it too; anything else must catch network errors rather than throw.
 - **Token routes:** `/cal/<token>.ics` and `/api/health` use the anon key and call security-definer SQL functions (`calendar_feed`, `ingest_workout`) that look up a hashed per-user token from `user_tokens`. Never use the service role for them.
-- **AI check-in:** `lib/coach/review.ts` via the AI Gateway (`anthropic/claude-sonnet-5.5`, string model id). Needs `AI_GATEWAY_API_KEY` locally; on Vercel it uses OIDC. Advice only: suggestions are filtered against the plan and applied by the person. Cached per week in `ai_reviews`.
+- **AI check-in:** `lib/coach/review.ts` via the AI Gateway (`anthropic/claude-sonnet-5.5`, string model id). Turned off (card hidden, action refuses) unless `AI_GATEWAY_API_KEY` is set, locally and on Vercel. Advice only: suggestions are filtered against the plan and applied by the person. Cached per week in `ai_reviews`.
 - **UI**: `components/Dashboard.tsx` tabs → `TodayPanel`, `PlanPanel`/`WeekCard`/`DayView`, `LogPanel`, `ProgressPanel`, `LibraryPanel`. `components/Sets.tsx` holds set logging and the exercise sheet (muscle map + video + history), opened anywhere with `openHistory(key)`.
 
 ## Testing

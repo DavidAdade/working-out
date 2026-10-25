@@ -9,7 +9,7 @@ import { duration, parseDuration } from "@/lib/plan/format.ts";
 import { addDays, daysBetween, isMonday, isTimeZone, mondayOf, safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
 import { planFor } from "@/lib/plan/adapt.ts";
 import { builtinRows } from "@/lib/plan/catalog.ts";
-import { generateReview, type Review } from "@/lib/coach/review";
+import { aiEnabled, generateReview, type Review } from "@/lib/coach/review";
 import { MIN_RACE_GAP_WEEKS } from "@/lib/plan/generate.ts";
 import { GATES, profileToSettings, type LogKind, type LogRow, type ProfileRow, type SetRow, type Unit } from "@/lib/types";
 import { exerciseByKey } from "@/lib/plan/exercises.ts";
@@ -358,8 +358,7 @@ export async function weeklyReview(refresh = false): Promise<ReviewResult> {
   const week = mondayOf(today);
   const { data: cached } = await supabase.from("ai_reviews").select("content, created_at").eq("user_id", user.id).eq("week_start", week).maybeSingle<{ content: Review; created_at: string }>();
   if (cached && (!refresh || Date.now() - Date.parse(cached.created_at) < 12 * 3600e3)) return { ok: true, review: cached.content, createdAt: cached.created_at };
-  // On Vercel the AI Gateway signs in with the deployment's OIDC token; elsewhere it needs a key
-  if (!process.env.AI_GATEWAY_API_KEY && !process.env.VERCEL) return { ok: false, error: "The AI check-in isn't set up yet: add AI_GATEWAY_API_KEY." };
+  if (!aiEnabled()) return { ok: false, error: "The AI check-in is turned off." };
 
   const from = addDays(today, -60);
   const [{ data: logs }, { data: sets }, { data: skips }, { data: exercises }] = await Promise.all([

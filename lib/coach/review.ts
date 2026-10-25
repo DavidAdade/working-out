@@ -12,6 +12,9 @@ import type { LogRow, SetRow } from "../types.ts";
 
 export const REVIEW_MODEL = "anthropic/claude-sonnet-5.5";
 
+/** The check-in exists only when an AI Gateway key is set; without one the card isn't shown at all. */
+export const aiEnabled = () => !!process.env.AI_GATEWAY_API_KEY;
+
 const schema = z.object({
   summary: z.string().describe("2 to 4 short sentences: how the last week went and what matters this week. Plain words."),
   flags: z.array(z.string()).max(3).describe("Concerns worth acting on, e.g. a rising pain trend or missed long runs. Empty if none."),

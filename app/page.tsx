@@ -4,6 +4,7 @@ import { profileToSettings, type LogRow, type ProfileRow, type SetRow } from "@/
 import { builtinRows, type ExerciseInfo } from "@/lib/plan/catalog.ts";
 import { mondayOf, safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
 import type { SavedReview } from "@/components/CoachCard";
+import { aiEnabled } from "@/lib/coach/review";
 import Dashboard from "@/components/Dashboard";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +36,7 @@ export default async function Home() {
   const settings = profileToSettings(profile);
   if (!settings) redirect("/settings");
   const today = todayIn(safeTimeZone(profile.timezone));
+  const ai = aiEnabled();
   const { data: review } = await supabase.from("ai_reviews").select("content, created_at").eq("week_start", mondayOf(today)).maybeSingle<{ content: SavedReview["review"]; created_at: string }>();
 
   return (
@@ -46,7 +48,8 @@ export default async function Home() {
       exercises={[...byKey.values()].sort((a, b) => a.name.localeCompare(b.name))}
       sets={(sets ?? []).map((s) => ({ ...s, weight: s.weight == null ? null : Number(s.weight), weight_kg: s.weight_kg == null ? null : Number(s.weight_kg) }))}
       today={today}
-      review={review ? { review: review.content, createdAt: review.created_at } : null}
+      ai={ai}
+      review={ai && review ? { review: review.content, createdAt: review.created_at } : null}
     />
   );
 }

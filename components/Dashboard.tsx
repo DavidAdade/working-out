@@ -39,6 +39,8 @@ export interface DashboardProps {
   sets: SetRow[];
   exercises: ExerciseInfo[];
   today: string;
+  /** Whether the AI check-in is available (an AI Gateway key is set) */
+  ai: boolean;
   /** This week's AI check-in, if one was made */
   review: SavedReview | null;
 }
@@ -74,7 +76,7 @@ function queuedLog(i: LogInput): LogRow {
   };
 }
 
-function DashboardInner({ profile, settings, logs: serverLogs, skips, sets, exercises, today, review }: DashboardProps) {
+function DashboardInner({ profile, settings, logs: serverLogs, skips, sets, exercises, today, ai, review }: DashboardProps) {
   const [tab, setTab] = useState<Tab>("today");
   const [logDate, setLogDate] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -164,7 +166,7 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, sets, exer
               warnings={warnings}
               onLog={openLog}
               onSkip={onSkip}
-              coach={<CoachCard initial={review} onSkip={onSkip} skipped={new Set(optimisticSkips)} />}
+              coach={ai ? <CoachCard initial={review} onSkip={onSkip} skipped={new Set(optimisticSkips)} /> : null}
             />
           )}
           {tab === "plan" && <PlanPanel weeks={weeks} logs={logs} today={today} onSkip={onSkip} />}
