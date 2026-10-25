@@ -147,10 +147,10 @@ function VideoModal({ video, onClose }: { video: ExerciseVideo; onClose: () => v
 
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
           {index > 0 && !failed && <span>Main video unavailable, showing the backup.</span>}
-          <a className="underline underline-offset-2" href={youtubeWatchUrl(currentId)} target="_blank" rel="noreferrer">
+          <a className="inline-flex min-h-11 items-center underline underline-offset-2" href={youtubeWatchUrl(currentId)} target="_blank" rel="noreferrer">
             Open in YouTube
           </a>
-          <a className="underline underline-offset-2" href={youtubeSearchUrl(video.query)} target="_blank" rel="noreferrer">
+          <a className="inline-flex min-h-11 items-center underline underline-offset-2" href={youtubeSearchUrl(video.query)} target="_blank" rel="noreferrer">
             Find a different video
           </a>
         </div>

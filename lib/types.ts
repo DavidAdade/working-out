@@ -19,6 +19,8 @@ export interface ProfileRow {
   /** Show the plan by week and weekday instead of calendar dates */
   hide_dates: boolean;
   weight_unit: Unit;
+  /** Start a rest countdown when a set is ticked */
+  rest_timer: boolean;
 }
 
 export type Unit = "kg" | "lb";
@@ -34,9 +36,12 @@ export interface SetRow {
   reps: number | null;
   duration_sec: number | null;
   light_week: boolean;
+  /** The plan day these sets were for, when done early */
+  plan_date: string | null;
 }
 
-export type LogKind = "run" | "test" | "strength" | "walk";
+/** "check" is a morning check-in: pain scores only */
+export type LogKind = "run" | "test" | "strength" | "walk" | "check";
 
 export interface LogRow {
   id: string;
@@ -52,6 +57,12 @@ export interface LogRow {
   created_at: string;
   /** Created by set logging */
   auto: boolean;
+  /** "health" when imported from Apple Health */
+  source: "manual" | "health";
+  external_id: string | null;
+  avg_hr: number | null;
+  /** Saved on this phone, waiting for a connection */
+  queued?: boolean;
 }
 
 /** A profile is ready once the required plan fields are filled in. */

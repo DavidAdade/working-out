@@ -5,7 +5,7 @@ import type { Block, BlockKind } from "@/lib/plan/templates.ts";
 import { dayTitle, type Day } from "@/lib/plan/generate.ts";
 import { daysBetween } from "@/lib/plan/dates.ts";
 import { parseLine } from "@/lib/plan/exercises.ts";
-import { ExerciseRow, useSets } from "./Sets";
+import { ExerciseRow, planDayOf, useSets } from "./Sets";
 
 const CHIP: Record<BlockKind, { label: string; cls: string }> = {
   run: { label: "Run", cls: "bg-accent text-on-accent" },
@@ -20,9 +20,9 @@ const CHIP: Record<BlockKind, { label: string; cls: string }> = {
 
 const LIFT_KINDS: BlockKind[] = ["legs", "upper", "abs", "mobility"];
 
-export function Chip({ kind }: { kind: BlockKind }) {
+export function Chip({ kind, label }: { kind: BlockKind; label?: string }) {
   const c = CHIP[kind];
-  return <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ${c.cls}`}>{c.label}</span>;
+  return <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ${c.cls}`}>{label ?? c.label}</span>;
 }
 
 /** Runs, walks and gate checks: a title and one line of instructions. */
@@ -60,8 +60,8 @@ export function DayBlocks({ day, onSkip, today, logOpen = false }: { day: Day; o
     [day.blocks],
   );
   const unfinished = useCallback(
-    (x: { key: string; sets: number }) => !logDate || sets.filter((s) => s.date === logDate && s.exercise_key === x.key).length < x.sets,
-    [sets, logDate],
+    (x: { key: string; sets: number }) => !logDate || sets.filter((s) => planDayOf(s) === day.date && s.exercise_key === x.key).length < x.sets,
+    [sets, logDate, day.date],
   );
   const [openId, setOpenId] = useState<string | null>(null);
   // On the Today tab, start on the first exercise you haven't finished
@@ -81,7 +81,7 @@ export function DayBlocks({ day, onSkip, today, logOpen = false }: { day: Day; o
   if (day.skipped)
     return (
       <div className="flex items-center justify-between gap-2">
-        <p className="text-sm text-muted">Skipped this week. Upper-body work moved to another day.</p>
+        <p className="text-sm text-muted">Skipped this week.{day.blocks.some((b) => b.carry) ? " Upper-body work moved to another day." : ""}</p>
         {onSkip && day.skippable && (
           <button className="btn-ghost" onClick={() => onSkip(day.date, false)}>
             Restore
@@ -97,7 +97,7 @@ export function DayBlocks({ day, onSkip, today, logOpen = false }: { day: Day; o
           {a}
         </div>
       ))}
-      {early && order.length > 0 && <p className="text-xs text-muted">Doing this early? Sets save under today.</p>}
+      {early && order.length > 0 && <p className="text-xs text-muted">Doing this early? Sets save under today and tick off this day.</p>}
       {day.blocks.map((b, bi) =>
         LIFT_KINDS.includes(b.kind) ? (
           <div key={b.title + bi} className="flex flex-col">
@@ -113,6 +113,7 @@ export function DayBlocks({ day, onSkip, today, logOpen = false }: { day: Day; o
                       anchorId={`ex-${day.date}-${id}`}
                       line={line}
                       logDate={logDate}
+                      planDate={day.date}
                       light={!!b.light || !!b.foldedFrom}
                       dayTitle={title}
                       open={openId === id}

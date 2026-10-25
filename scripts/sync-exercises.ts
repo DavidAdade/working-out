@@ -10,6 +10,11 @@ const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const strict = process.argv.includes("--strict");
 
 async function main() {
+  // Preview deploys share the production database, so only production (or a local run) may rewrite the catalog
+  if (process.env.VERCEL_ENV && process.env.VERCEL_ENV !== "production") {
+    console.log(`sync-exercises: ${process.env.VERCEL_ENV} build, skipping (only production syncs)`);
+    return;
+  }
   if (!url || !key) {
     console.log("sync-exercises: SUPABASE_SERVICE_ROLE_KEY not set, skipping");
     return;

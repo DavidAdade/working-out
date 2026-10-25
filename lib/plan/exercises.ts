@@ -84,13 +84,15 @@ export interface Target {
   sets: number;
   /** Lower end of the rep range, e.g. 8 for "3×8–10" */
   reps: number | null;
+  /** Upper end of the range, e.g. 10 for "3×8–10"; null for a single number */
+  repsMax: number | null;
   sec: number | null;
   /** "each" or "each side": log one side's numbers */
   each: boolean;
 }
 
 // "3×10", "3×8–10", "3×40s", "3 sets"
-const SETS_RE = /,\s*(\d+)\s*(?:×\s*(\d+)(?:\s*[–-]\s*\d+)?(s)?|sets?)\b/;
+const SETS_RE = /,\s*(\d+)\s*(?:×\s*(\d+)(?:\s*[–-]\s*(\d+))?(s)?|sets?)\b/;
 
 /** The exercise and its target for a template line, or null if it isn't loggable (walks, gate checks, free text). */
 export function parseLine(line: string): { exercise: Exercise; target: Target; name: string } | null {
@@ -106,8 +108,9 @@ export function parseLine(line: string): { exercise: Exercise; target: Target; n
     name,
     target: {
       sets: Number(m[1]),
-      reps: m[3] || Number.isNaN(n) ? null : n,
-      sec: m[3] ? n : null,
+      reps: m[4] || Number.isNaN(n) ? null : n,
+      repsMax: m[3] && !m[4] ? Number(m[3]) : null,
+      sec: m[4] ? n : null,
       each: /\beach\b/.test(line.slice(m.index)),
     },
   };

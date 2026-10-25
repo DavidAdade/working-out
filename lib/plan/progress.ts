@@ -96,3 +96,15 @@ export function bestOn(all: Session[], date: ISODate): Best | null {
 }
 
 export const toUnit = (kg: number, unit: "kg" | "lb") => (unit === "lb" ? Math.round((kg / 0.45359237) * 2) / 2 : Math.round(kg * 4) / 4);
+
+/**
+ * Double progression: when every set of the last full session reached the top of the rep range, suggest the
+ * next weight up (in the viewer's unit). Small steps for light weights, so dumbbells move 1 kg / 2.5 lb.
+ */
+export function suggestWeight(prev: Session | undefined, target: { sets: number; reps: number | null; repsMax: number | null }, unit: "kg" | "lb"): number | null {
+  if (!prev || prev.light || prev.topKg == null || target.reps == null) return null;
+  const top = target.repsMax ?? target.reps;
+  if (prev.sets.length < target.sets || !prev.sets.every((s) => (s.reps ?? 0) >= top)) return null;
+  const w = toUnit(prev.topKg, unit);
+  return w + (unit === "kg" ? (w >= 20 ? 2.5 : 1) : w >= 45 ? 5 : 2.5);
+}

@@ -1,6 +1,7 @@
 "use client";
 
-import { mondayOf } from "@/lib/plan/dates.ts";
+import { addDays, mondayOf } from "@/lib/plan/dates.ts";
+import { painTrend, wins } from "@/lib/plan/ontrack.ts";
 import { duration, pace } from "@/lib/plan/format.ts";
 import type { PlanSettings } from "@/lib/plan/generate.ts";
 import type { LogRow } from "@/lib/types";
@@ -13,8 +14,11 @@ import { useState } from "react";
 
 const AREA_COLORS = ["rgb(var(--area1))", "rgb(var(--area2))", "rgb(var(--area3))"];
 
-export default function ProgressPanel({ logs, settings, painAreas }: { logs: LogRow[]; settings: PlanSettings; painAreas: string[] }) {
+export default function ProgressPanel({ logs, settings, painAreas, today }: { logs: LogRow[]; settings: PlanSettings; painAreas: string[]; today: string }) {
   const { short: fmtShort } = useDates();
+  const { sets, nameOf } = useSets();
+  const trend = painTrend(logs, painAreas, today);
+  const recent = wins(logs, sets, nameOf, addDays(today, -27), today);
   const asc = [...logs].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
   const isDist = (l: LogRow, km: number, tol: number) => l.kind === "test" && l.km != null && Math.abs(l.km - km) <= tol && !!l.duration_sec;
   const t5 = asc.filter((l) => isDist(l, 5, 0.3));
@@ -30,7 +34,7 @@ export default function ProgressPanel({ logs, settings, painAreas }: { logs: Log
   for (const l of asc) if (l.km && l.kind !== "strength") weekly.set(mondayOf(l.date), (weekly.get(mondayOf(l.date)) ?? 0) + l.km);
   const wks = [...weekly.keys()].sort().slice(-12);
 
-  const painLogs = asc.filter((l) => !l.auto).slice(-24);
+  const painLogs = asc.filter((l) => !l.auto && Object.keys(l.pain ?? {}).length > 0).slice(-24);
   const easy = asc.filter((l) => l.kind === "run" && l.km && l.duration_sec && /easy|long/i.test(l.title ?? "")).slice(-20);
   const easyPaces = easy.map((l) => l.duration_sec! / l.km! / 60);
 
@@ -66,15 +70,31 @@ export default function ProgressPanel({ logs, settings, painAreas }: { logs: Log
         )}
       </article>
 
+      {recent.length > 0 && (
+        <article className="card gap-1.5">
+          <div className="label">Wins, last 4 weeks</div>
+          <ul className="flex flex-col gap-1">
+            {recent.slice(0, 10).map((w) => (
+              <li key={w.date + w.text} className="flex items-baseline gap-2 text-[0.95rem]">
+                <span aria-hidden className="text-good">▲</span>
+                <span className="min-w-0 flex-1">{w.text}</span>
+                <span className="text-xs text-muted">{fmtShort(w.date)}</span>
+              </li>
+            ))}
+          </ul>
+        </article>
+      )}
+
       <LiftsCard />
 
       {painAreas.length > 0 && (
         <article className="card">
-          <div className="label">Pain scores, last 24 sessions</div>
+          <div className="label">Pain scores, last 24 sessions and check-ins</div>
+          {trend.length > 0 && <p className="text-sm first-letter:uppercase">This week: {trend.join(", ")}</p>}
           {painLogs.length ? (
             <>
               <LineChart
-                series={painAreas.map((a, i) => ({ color: AREA_COLORS[i % 3], values: painLogs.map((l) => l.pain?.[a] ?? 0) }))}
+                series={painAreas.map((a, i) => ({ color: AREA_COLORS[i % 3], values: painLogs.map((l) => l.pain?.[a] ?? null) }))}
                 labels={painLogs.map((l) => fmtShort(l.date))}
                 yMin={0}
                 yMax={10}
@@ -166,7 +186,7 @@ function LiftsCard() {
                   type="button"
                   aria-pressed={region === r}
                   onClick={() => pick(r)}
-                  className={`min-h-9 flex-1 rounded-full border px-2 text-sm font-semibold ${region === r ? "border-ink bg-ink text-bg" : "border-line bg-surface"}`}
+                  className={`min-h-11 flex-1 rounded-full border px-2 text-sm font-semibold ${region === r ? "border-ink bg-ink text-bg" : "border-line bg-surface"}`}
                 >
                   {r ?? "All"} <span className="font-normal opacity-70">{n}</span>
                 </button>

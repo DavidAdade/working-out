@@ -8,7 +8,7 @@ import { videoFor, VIDEOS } from "./videos.ts";
 import { EXERCISES, parseLine, videoOf, videoForLine } from "./exercises.ts";
 import { builtinRows, customKey, youtubeId } from "./catalog.ts";
 import { MUSCLES, regionOf } from "./muscles.ts";
-import { bestOn, compareSession, sessions, type SetLike } from "./progress.ts";
+import { bestOn, compareSession, sessions, suggestWeight, type SetLike } from "./progress.ts";
 import { fitness5k, goalPace } from "./paces.ts";
 import { adaptPlan } from "./adapt.ts";
 import { onTrack, wins } from "./ontrack.ts";
@@ -141,10 +141,10 @@ test("every lift line maps to a stable exercise", () => {
 });
 
 test("parseLine reads targets", () => {
-  assert.deepEqual(parseLine("Romanian deadlift, 3×6–8, moderate-heavy")!.target, { sets: 3, reps: 6, sec: null, each: false });
+  assert.deepEqual(parseLine("Romanian deadlift, 3×6–8, moderate-heavy")!.target, { sets: 3, reps: 6, repsMax: 8, sec: null, each: false });
   assert.equal(parseLine("Romanian deadlift, light, 3×8")!.exercise.key, "rdl");
-  assert.deepEqual(parseLine("Side plank, 3×30s each side")!.target, { sets: 3, reps: null, sec: 30, each: true });
-  assert.deepEqual(parseLine("Push-ups, 3 sets, stop 2 reps short of failure")!.target, { sets: 3, reps: null, sec: null, each: false });
+  assert.deepEqual(parseLine("Side plank, 3×30s each side")!.target, { sets: 3, reps: null, repsMax: null, sec: 30, each: true });
+  assert.deepEqual(parseLine("Push-ups, 3 sets, stop 2 reps short of failure")!.target, { sets: 3, reps: null, repsMax: null, sec: null, each: false });
   assert.equal(parseLine("30 min flat walk"), null);
 });
 
@@ -340,4 +340,14 @@ test("on-track verdict", () => {
   assert.match(ahead.lines[0], /ahead/);
   const behind = onTrack({ ...base, fitness: { sec: 34 * 60, source: "5K test", date: "2027-01-20" }, today: "2027-01-22" });
   assert.equal(behind.status, "hold");
+});
+
+test("suggested weight: only after every set hit the top of the range", () => {
+  const t = { sets: 3, reps: 6, repsMax: 8 };
+  const three = (kg: number, reps: number[]) => sessions(reps.map((r, i) => ({ ...set("2026-11-02", kg, r), set_no: i + 1 })), "rdl")[0];
+  assert.equal(suggestWeight(three(40, [8, 8, 8]), t, "kg"), 42.5);
+  assert.equal(suggestWeight(three(40, [8, 8, 7]), t, "kg"), null);
+  assert.equal(suggestWeight(three(10, [8, 8, 8]), t, "kg"), 11, "light dumbbells step by 1 kg");
+  assert.equal(suggestWeight(three(40, [8, 8, 8]), t, "lb"), 93, "88 lb + 5");
+  assert.equal(suggestWeight(undefined, t, "kg"), null);
 });

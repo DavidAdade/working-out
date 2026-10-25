@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { profileToSettings, type LogRow, type ProfileRow, type SetRow } from "@/lib/types";
 import { builtinRows, type ExerciseInfo } from "@/lib/plan/catalog.ts";
-import { todayIn } from "@/lib/plan/dates.ts";
+import { safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
 import Dashboard from "@/components/Dashboard";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +20,7 @@ export default async function Home() {
     supabase.from("day_overrides").select("date").eq("status", "skipped").returns<{ date: string }[]>(),
     supabase
       .from("set_logs")
-      .select("id, date, exercise_key, set_no, weight, unit, weight_kg, reps, duration_sec, light_week")
+      .select("id, date, exercise_key, set_no, weight, unit, weight_kg, reps, duration_sec, light_week, plan_date")
       .order("date", { ascending: false })
       .limit(5000)
       .returns<SetRow[]>(),
@@ -42,7 +42,7 @@ export default async function Home() {
       skips={(skips ?? []).map((s) => s.date)}
       exercises={[...byKey.values()].sort((a, b) => a.name.localeCompare(b.name))}
       sets={(sets ?? []).map((s) => ({ ...s, weight: s.weight == null ? null : Number(s.weight), weight_kg: s.weight_kg == null ? null : Number(s.weight_kg) }))}
-      today={todayIn(profile.timezone || "America/Toronto")}
+      today={todayIn(safeTimeZone(profile.timezone))}
     />
   );
 }

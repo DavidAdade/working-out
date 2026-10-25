@@ -1,33 +1,40 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { deleteSet, upsertSet } from "@/app/actions";
+import type { SetInput } from "@/app/actions";
+import { useDock, type SendResult } from "./Dock";
 import { weekForDate, type Week } from "@/lib/plan/generate.ts";
 import { parseLine, videoForLine, type Exercise, type Target } from "@/lib/plan/exercises.ts";
 import { asExercise, type ExerciseInfo } from "@/lib/plan/catalog.ts";
 import type { ExerciseVideo } from "@/lib/plan/videos.ts";
 import { deleteExercise } from "@/app/actions";
 import MuscleMap, { MuscleChips } from "./MuscleMap";
-import { compareSession, sessions, toUnit, type Change, type Session } from "@/lib/plan/progress.ts";
+import { compareSession, sessions, suggestWeight, toUnit, type Change, type Session } from "@/lib/plan/progress.ts";
 import type { SetRow, Unit } from "@/lib/types";
 import { useDates } from "./DateLabels";
 import { LineChart } from "./charts";
 import { useOpenVideo } from "./VideoModal";
 
 /* ---------- shared state: every logged set, saved optimistically ---------- */
+export interface SaveOpts {
+  /** The plan day these sets are for, when done early */
+  planDate?: string | null;
+}
+
 interface SetsCtx {
   sets: SetRow[];
   unit: Unit;
   today: string;
   /** Cutback weeks don't count toward weight comparisons */
   isLightDate: (date: string) => boolean;
-  save: (row: Omit<SetRow, "id" | "weight_kg">, dayTitle: string) => void;
+  save: (row: Omit<SetRow, "id" | "weight_kg" | "plan_date">, dayTitle: string, opts?: SaveOpts) => void;
   remove: (date: string, key: string, setNo: number) => void;
   openHistory: (key: string, focusDate?: string) => void;
-  error: string | null;
   /** Built-in and custom exercises, from the exercises table */
   exercises: ExerciseInfo[];
   info: (key: string) => ExerciseInfo | undefined;
+  /** An exercise's name, even after a custom one was deleted */
+  nameOf: (key: string) => string;
   weeks: Week[];
 }
 
@@ -42,6 +49,31 @@ const toKg = (w: number | null, unit: Unit) => (w == null ? null : unit === "lb"
 const id = (date: string, key: string, setNo: number) => `${date}|${key}|${setNo}`;
 const same = (a: Pick<SetRow, "date" | "exercise_key" | "set_no">, date: string, key: string, setNo: number) =>
   a.date === date && a.exercise_key === key && a.set_no === setNo;
+/** The plan day a set counts toward: the day it was done for, or the day it was done */
+export const planDayOf = (s: Pick<SetRow, "date" | "plan_date">) => s.plan_date ?? s.date;
+
+/** "goblet-squat-8cd36a" → "Goblet squat", for history rows whose custom exercise was deleted */
+export const keyLabel = (key: string) => {
+  const words = key.replace(/-[0-9a-f]{6}$/, "").replace(/-/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+};
+
+/** Rest after a set: longer for heavy compound lifts */
+const restFor = (e: Exercise) => (e.load !== "weight" ? 60 : /deadlift|squat|press|row|pulldown|step-up/i.test(e.name) ? 120 : 90);
+
+const rowFromInput = (i: SetInput, unit: Unit): SetRow => ({
+  id: `tmp-${i.date}-${i.exerciseKey}-${i.setNo}`,
+  date: i.date,
+  exercise_key: i.exerciseKey,
+  set_no: i.setNo,
+  weight: i.weight,
+  unit: i.unit ?? unit,
+  weight_kg: toKg(i.weight, i.unit ?? unit),
+  reps: i.reps,
+  duration_sec: i.durationSec,
+  light_week: i.light,
+  plan_date: i.planDate && i.planDate !== i.date ? i.planDate : null,
+});
 
 export function SetsProvider({
   initial,
@@ -58,13 +90,29 @@ export function SetsProvider({
   exercises: ExerciseInfo[];
   children: React.ReactNode;
 }) {
+  const { send, notify, onRejected, queue, rest } = useDock();
   const [sets, setSets] = useState(initial);
-  const [error, setError] = useState<string | null>(null);
+  const setsRef = useRef(sets);
+  setsRef.current = sets;
   const [history, setHistory] = useState<{ key: string; focus?: string } | null>(null);
-  // Local saves and deletes, kept on top of server data until a refresh shows them.
+  // Local saves and deletes, kept on top of server data until a refresh shows them (or, offline, until they sync).
   // A refresh triggered by an earlier set can arrive after later sets were saved, so "action finished" isn't enough.
   const pending = useRef(new Map<string, SetRow | null>());
+  const initialRef = useRef(initial);
+  const [version, setVersion] = useState(0);
+
+  // Writes still waiting from an earlier visit show as done straight away
+  const seeded = useRef(false);
+  if (!seeded.current) {
+    seeded.current = true;
+    for (const op of queue) {
+      if (op.t === "set") pending.current.set(id(op.input.date, op.input.exerciseKey, op.input.setNo), rowFromInput(op.input, unit));
+      if (op.t === "unset") pending.current.set(id(op.date, op.key, op.setNo), null);
+    }
+  }
+
   useEffect(() => {
+    initialRef.current = initial;
     const byId = new Map(initial.map((s) => [id(s.date, s.exercise_key, s.set_no), s]));
     for (const [k, row] of pending.current) {
       const server = byId.get(k);
@@ -74,11 +122,27 @@ export function SetsProvider({
     const out = initial.filter((s) => !pending.current.has(id(s.date, s.exercise_key, s.set_no)));
     for (const row of pending.current.values()) if (row) out.unshift(row);
     setSets(out);
-  }, [initial]);
-  // A failed write is dropped from the overlay so the revert sticks
-  const settle = (k: string, row: SetRow | null) => {
-    if (pending.current.get(k) === row) pending.current.delete(k);
-  };
+  }, [initial, version]);
+
+  // A queued write the server refused once back online: drop its local copy and show the server's
+  useEffect(
+    () =>
+      onRejected((op) => {
+        if (op.t === "set") pending.current.delete(id(op.input.date, op.input.exerciseKey, op.input.setNo));
+        if (op.t === "unset") pending.current.delete(id(op.date, op.key, op.setNo));
+        setVersion((v) => v + 1);
+      }),
+    [onRejected],
+  );
+
+  /** Undo one optimistic change: put back what was there, touching no other row */
+  const revert = useCallback((k: string, prev: SetRow | undefined, date: string, key: string, setNo: number) => {
+    pending.current.delete(k);
+    setSets((cur) => {
+      const rest = cur.filter((s) => !same(s, date, key, setNo));
+      return prev ? [prev, ...rest] : rest;
+    });
+  }, []);
 
   const isLightDate = useCallback(
     (date: string) => {
@@ -88,73 +152,96 @@ export function SetsProvider({
     [weeks],
   );
 
-  const save = useCallback<SetsCtx["save"]>((row, dayTitle) => {
-    const optimistic: SetRow = { ...row, id: `tmp-${row.date}-${row.exercise_key}-${row.set_no}`, weight_kg: toKg(row.weight, row.unit) };
-    const k = id(row.date, row.exercise_key, row.set_no);
-    pending.current.set(k, optimistic);
-    let before: SetRow[] = [];
-    setSets((cur) => {
-      before = cur;
-      return [optimistic, ...cur.filter((s) => !same(s, row.date, row.exercise_key, row.set_no))];
-    });
-    setError(null);
-    upsertSet({
-      date: row.date,
-      exerciseKey: row.exercise_key,
-      setNo: row.set_no,
-      weight: row.weight,
-      unit: row.unit,
-      reps: row.reps,
-      durationSec: row.duration_sec,
-      light: row.light_week,
-      dayTitle,
-    })
-      .then((r) => {
-        if (!r.ok) {
-          settle(k, optimistic);
-          setSets(before);
-          setError(r.error);
-        }
-      })
-      .catch(() => {
-        settle(k, optimistic);
-        setSets(before);
-        setError("No connection. That set wasn't saved.");
-      });
-  }, []);
+  const byKey = useMemo(() => new Map(exercises.map((e) => [e.key, e])), [exercises]);
+  const info = useCallback((key: string) => byKey.get(key), [byKey]);
+  const nameOf = useCallback((key: string) => byKey.get(key)?.name ?? keyLabel(key), [byKey]);
 
-  const remove = useCallback<SetsCtx["remove"]>((date, key, setNo) => {
-    const k = id(date, key, setNo);
-    pending.current.set(k, null);
-    let before: SetRow[] = [];
-    setSets((cur) => {
-      before = cur;
-      return cur.filter((s) => !same(s, date, key, setNo));
-    });
-    deleteSet(date, key, setNo)
-      .then((r) => !r.ok && (settle(k, null), setSets(before), setError(r.error)))
-      .catch(() => (settle(k, null), setSets(before), setError("No connection. That set wasn't removed.")));
-  }, []);
+  const queuedOnce = useRef(false);
+  const afterSend = useCallback(
+    (r: SendResult, undo: () => void) => {
+      if (r === "queued") {
+        if (!queuedOnce.current || !queue.length) notify("No signal. Saved on this phone; it syncs when you're back online.");
+        queuedOnce.current = true;
+      } else if (r !== "sent") {
+        undo();
+        notify({ text: r.error, tone: "error" });
+      }
+    },
+    [notify, queue.length],
+  );
+
+  const save = useCallback<SetsCtx["save"]>(
+    (row, dayTitle, opts = {}) => {
+      const cur = setsRef.current;
+      const input: SetInput = {
+        date: row.date,
+        exerciseKey: row.exercise_key,
+        setNo: row.set_no,
+        weight: row.weight,
+        unit: row.unit,
+        reps: row.reps,
+        durationSec: row.duration_sec,
+        light: row.light_week,
+        dayTitle,
+        planDate: opts.planDate ?? null,
+        firstOfDay: !cur.some((s) => s.date === row.date),
+      };
+      const optimistic = rowFromInput(input, unit);
+      const k = id(row.date, row.exercise_key, row.set_no);
+      const prev = cur.find((s) => same(s, row.date, row.exercise_key, row.set_no));
+      pending.current.set(k, optimistic);
+      setSets((c) => [optimistic, ...c.filter((s) => !same(s, row.date, row.exercise_key, row.set_no))]);
+      const ex = byKey.get(row.exercise_key);
+      // A new heaviest set gets a cheer, once per exercise per day
+      if (row.weight != null && optimistic.weight_kg != null && !prev) {
+        const before = cur.filter((s) => s.exercise_key === row.exercise_key && s.date < row.date && s.weight_kg != null).map((s) => Number(s.weight_kg));
+        const sameDay = cur.some((s) => s.exercise_key === row.exercise_key && s.date === row.date && Number(s.weight_kg) >= optimistic.weight_kg!);
+        if (before.length && !sameDay && optimistic.weight_kg > Math.max(...before) + 0.25) notify({ text: `New best: ${ex?.name ?? keyLabel(row.exercise_key)} ${row.weight} ${row.unit}`, tone: "good" });
+      }
+      if (ex && !prev) rest.start(restFor(asExercise(ex)), `${ex.name} set ${row.set_no}`);
+      void send({ id: crypto.randomUUID(), t: "set", input }).then((r) => afterSend(r, () => revert(k, prev, row.date, row.exercise_key, row.set_no)));
+    },
+    [afterSend, byKey, notify, rest, revert, send, unit],
+  );
+
+  const remove = useCallback<SetsCtx["remove"]>(
+    (date, key, setNo) => {
+      const k = id(date, key, setNo);
+      const prev = setsRef.current.find((s) => same(s, date, key, setNo));
+      pending.current.set(k, null);
+      setSets((cur) => cur.filter((s) => !same(s, date, key, setNo)));
+      rest.stop();
+      void send({ id: crypto.randomUUID(), t: "unset", date, key, setNo }).then((r) => {
+        afterSend(r, () => revert(k, prev, date, key, setNo));
+        // One stray tap shouldn't cost a set
+        if (r !== "sent" && r !== "queued") return;
+        if (prev)
+          notify({
+            text: `Set ${setNo} removed.`,
+            action: {
+              label: "Undo",
+              run: () =>
+                save(
+                  { date, exercise_key: key, set_no: setNo, weight: prev.weight, unit: prev.unit, reps: prev.reps, duration_sec: prev.duration_sec, light_week: prev.light_week },
+                  "",
+                  { planDate: prev.plan_date },
+                ),
+            },
+          });
+      });
+    },
+    [afterSend, notify, rest, revert, save, send],
+  );
 
   const openHistory = useCallback((key: string, focus?: string) => setHistory({ key, focus }), []);
 
-  const byKey = useMemo(() => new Map(exercises.map((e) => [e.key, e])), [exercises]);
-  const info = useCallback((key: string) => byKey.get(key), [byKey]);
   const value = useMemo(
-    () => ({ sets, unit, today, isLightDate, save, remove, openHistory, error, exercises, info, weeks }),
-    [sets, unit, today, isLightDate, save, remove, openHistory, error, exercises, info, weeks],
+    () => ({ sets, unit, today, isLightDate, save, remove, openHistory, exercises, info, nameOf, weeks }),
+    [sets, unit, today, isLightDate, save, remove, openHistory, exercises, info, nameOf, weeks],
   );
   return (
     <Ctx.Provider value={value}>
       {children}
-      {error && (
-        <div role="alert" className="fixed inset-x-3 bottom-[max(12px,env(safe-area-inset-bottom,0px))] z-40 mx-auto flex max-w-[680px] items-center justify-between gap-3 rounded-lg border border-bad bg-surface px-3.5 py-2.5 text-sm shadow-lg">
-          <span>{error}</span>
-          <button className="btn-ghost" onClick={() => setError(null)}>
-            OK
-          </button>
-        </div>
-      )}
       {history && <ExerciseSheet key={history.key} exerciseKey={history.key} focus={history.focus} onClose={() => setHistory(null)} />}
     </Ctx.Provider>
   );
@@ -179,6 +266,8 @@ export interface RowProps {
   line: string;
   /** Date the sets save under, or null when this day can't be logged yet */
   logDate: string | null;
+  /** The plan day this row belongs to; sets done early for it count here, not on the day they were done */
+  planDate: string;
   light: boolean;
   dayTitle: string;
   open: boolean;
@@ -187,7 +276,7 @@ export interface RowProps {
   onComplete: () => void;
 }
 
-export function ExerciseRow({ anchorId, line, logDate: planLogDate, light, dayTitle, open, onToggle, onComplete }: RowProps) {
+export function ExerciseRow({ anchorId, line, logDate: planLogDate, planDate, light, dayTitle, open, onToggle, onComplete }: RowProps) {
   const parsed = parseLine(line);
   const { sets, unit, today, openHistory } = useSets();
   const dates = useDates();
@@ -206,10 +295,10 @@ export function ExerciseRow({ anchorId, line, logDate: planLogDate, light, dayTi
   const logDate = planLogDate ?? (logToday ? today : null);
   const { exercise, target, name } = parsed;
   const sized = light ? { ...target, sets: Math.min(target.sets, 2) } : target;
-  const done = logDate ? sets.filter((s) => s.date === logDate && s.exercise_key === exercise.key).sort((a, b) => a.set_no - b.set_no) : [];
+  const done = logDate ? sets.filter((s) => planDayOf(s) === planDate && s.exercise_key === exercise.key).sort((a, b) => a.set_no - b.set_no) : [];
   const complete = done.length >= sized.sets;
   // The weight warning stays visible after the row closes
-  const change = logDate && complete && !open && exercise.load === "weight" ? compareSession(sessions(sets, exercise.key), logDate) : null;
+  const change = logDate && complete && !open && exercise.load === "weight" ? compareSession(sessions(sets, exercise.key), done[0].date) : null;
   const targetText = `${sized.sets}×${target.sec ? `${target.sec}s` : target.reps ?? "max"}${target.each ? " each" : ""}`;
   const last = logDate ? null : sessions(sets, exercise.key)[0];
 
@@ -241,7 +330,7 @@ export function ExerciseRow({ anchorId, line, logDate: planLogDate, light, dayTi
         </div>
       )}
       {open && logDate && (
-        <SetTable exercise={exercise} target={sized} date={logDate} light={light} dayTitle={dayTitle} done={done} onCollapse={onToggle} onComplete={onComplete} />
+        <SetTable exercise={exercise} target={sized} date={logDate} planDate={planDate} light={light} dayTitle={dayTitle} done={done} onCollapse={onToggle} onComplete={onComplete} />
       )}
       {open && !logDate && (
         <div className="mb-2 ml-11 flex flex-col gap-1.5 text-sm">
@@ -284,6 +373,7 @@ function SetTable({
   exercise,
   target,
   date,
+  planDate = date,
   light,
   dayTitle,
   done,
@@ -295,6 +385,7 @@ function SetTable({
   exercise: Exercise;
   target: Target;
   date: string;
+  planDate?: string;
   light: boolean;
   dayTitle: string;
   done: SetRow[];
@@ -305,10 +396,12 @@ function SetTable({
   const dates = useDates();
   const all = useMemo(() => sessions(sets, exercise.key), [sets, exercise.key]);
   const prev = all.find((s) => s.date < date);
-  const lightSession = light || isLightDate(date);
+  const lightSession = light || isLightDate(planDate);
+  // Every set hit the top of the range last time: the grey numbers move up a step
+  const suggested = lightSession || exercise.load !== "weight" ? null : suggestWeight(all.find((s) => s.date < date && !s.light), target, unit);
   const [extra, setExtra] = useState(0);
   const rowCount = Math.max(target.sets, done.length ? done[done.length - 1].set_no : 0) + extra;
-  const change = done.length >= Math.min(target.sets, prev?.sets.length ?? target.sets) ? compareSession(all, date) : null;
+  const change = done.length >= Math.min(target.sets, prev?.sets.length ?? target.sets) ? compareSession(all, done[0]?.date ?? date) : null;
 
   // Move on once the last planned set is ticked; opening an already-finished exercise doesn't count
   const count = useRef(done.length);
@@ -325,9 +418,16 @@ function SetTable({
   return (
     <div className={`mb-2 flex max-w-sm flex-col gap-1.5 ${inset ? "ml-11" : ""}`}>
       {prev && (
-        <button type="button" onClick={() => openHistory(exercise.key, prev.date)} className="text-left text-xs text-muted">
-          Last ({dates.day(prev.date)}): <span className="font-mono">{prev.sets.map((x) => fmtSet(x, unit)).join(", ")}</span>
+        <button type="button" onClick={() => openHistory(exercise.key, prev.date)} className="flex min-h-11 items-center text-left text-xs text-muted">
+          <span>
+            Last ({dates.day(prev.date)}): <span className="font-mono">{prev.sets.map((x) => fmtSet(x, unit)).join(", ")}</span>
+          </span>
         </button>
+      )}
+      {suggested != null && !done.length && (
+        <p className="text-xs font-semibold text-good">
+          Every rep last time. Try {Number(suggested.toFixed(2))} {unit}.
+        </p>
       )}
       <div className={`grid ${cols} items-center gap-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted`}>
         <span>#</span>
@@ -343,6 +443,7 @@ function SetTable({
           setNo={n}
           logged={done.find((d) => d.set_no === n)}
           last={prev ? prev.sets.find((s) => s.set_no === n) ?? prev.sets[prev.sets.length - 1] : undefined}
+          suggested={suggested}
           target={target}
           onSave={(w, r) =>
             save(
@@ -357,6 +458,7 @@ function SetTable({
                 light_week: lightSession,
               },
               dayTitle,
+              { planDate },
             )
           }
           onRemove={() => remove(date, exercise.key, n)}
@@ -369,7 +471,7 @@ function SetTable({
         <button type="button" className="btn-ghost px-3 text-xs" onClick={() => openHistory(exercise.key)}>
           History
         </button>
-        {target.each && <span className="text-xs text-muted">One side</span>}
+        {target.each && <span className="text-xs text-muted">Log one side&apos;s reps</span>}
         <button type="button" className="btn-ghost ml-auto px-3 text-xs" onClick={onCollapse} aria-label={`Collapse ${exercise.name}`}>
           Collapse ▴
         </button>
@@ -385,6 +487,7 @@ function SetRowView({
   setNo,
   logged,
   last,
+  suggested,
   target,
   onSave,
   onRemove,
@@ -394,6 +497,7 @@ function SetRowView({
   setNo: number;
   logged: SetRow | undefined;
   last: SetRow | undefined;
+  suggested: number | null;
   target: Target;
   onSave: (weight: number | null, repsOrSec: number | null) => void;
   onRemove: () => void;
@@ -405,24 +509,37 @@ function SetRowView({
   const [w, setW] = useState(loggedWeight);
   const [r, setR] = useState(loggedCount);
   const countRef = useRef<HTMLInputElement>(null);
+  const weightRef = useRef<HTMLInputElement>(null);
+  const { notify } = useDock();
+  // Follow the saved numbers when they change (a sync, an undo), but never wipe what's being typed after a failed save
+  const seen = useRef({ loggedWeight, loggedCount });
   useEffect(() => {
+    if (seen.current.loggedWeight === loggedWeight && seen.current.loggedCount === loggedCount) return;
+    const wasLogged = seen.current.loggedCount !== "";
+    seen.current = { loggedWeight, loggedCount };
+    if (loggedCount === "" && wasLogged) return; // unticked or reverted: keep the typed numbers
     setW(loggedWeight);
     setR(loggedCount);
   }, [loggedWeight, loggedCount]);
 
-  // Grey placeholders: last session's numbers, or the plan's target the first time
-  const phW = last?.weight_kg ? fmtWeight(Number(last.weight_kg), unit) : "";
+  // Grey placeholders: the suggested step up, else last session's numbers, else the plan's target
+  const phW = suggested != null ? String(Number(suggested.toFixed(2))) : last?.weight_kg ? fmtWeight(Number(last.weight_kg), unit) : "";
   const phR = String((timed ? last?.duration_sec ?? target.sec : last?.reps ?? target.reps) ?? "");
   const parse = (v: string) => (v.trim() === "" ? null : Number(v.replace(",", ".")));
 
   const commit = () => {
     const weight = parse(w || phW);
     const count = parse(r || phR);
+    if (weight != null && (Number.isNaN(weight) || weight < 0 || weight > 2000)) {
+      notify({ text: "Weight should be a number, like 42.5.", tone: "error" });
+      weightRef.current?.focus();
+      return;
+    }
     if (count == null || Number.isNaN(count)) {
       countRef.current?.focus();
       return;
     }
-    onSave(weight == null || Number.isNaN(weight) ? null : weight, Math.round(count));
+    onSave(weight, Math.round(count));
   };
   // Editing a ticked row saves when you leave the field
   const onBlurEdit = () => logged && (w !== loggedWeight || r !== loggedCount) && commit();
@@ -434,6 +551,7 @@ function SetRowView({
       <span className="font-mono text-sm text-muted">{setNo}</span>
       {exercise.load === "weight" && (
         <input
+          ref={weightRef}
           aria-label={`Set ${setNo} weight (${unit})`}
           inputMode="decimal"
           enterKeyHint="next"
@@ -484,7 +602,7 @@ export function ChangeBanner({ change, exerciseKey, name }: { change: Change; ex
         <b>{name ? `${name}: ` : ""}{dropped ? `Down ${Math.round(-change.pct)}% from last time.` : "No weight increase."}</b>{" "}
         {dropped ? `${prev} → ${cur} ${unit}.` : `Same ${cur} ${unit} as ${dates.day(change.previous.date)}. Add a little next set or next week.`}
       </span>
-      <button type="button" className="self-start font-semibold text-accent-ink underline underline-offset-2" onClick={() => openHistory(exerciseKey, change.previous.date)}>
+      <button type="button" className="min-h-11 self-start font-semibold text-accent-ink underline underline-offset-2" onClick={() => openHistory(exerciseKey, change.previous.date)}>
         See last session →
       </button>
     </div>
@@ -586,7 +704,7 @@ function ExerciseSheet({ exerciseKey, focus, onClose }: { exerciseKey: string; f
             date={today}
             light={false}
             dayTitle={ex.name}
-            done={sets.filter((s) => s.date === today && s.exercise_key === ex.key).sort((a, b) => a.set_no - b.set_no)}
+            done={sets.filter((s) => planDayOf(s) === today && s.exercise_key === ex.key).sort((a, b) => a.set_no - b.set_no)}
             onCollapse={() => setLogging(false)}
             onComplete={() => {}}
             inset={false}
@@ -650,6 +768,7 @@ function sheetTarget(ex: Exercise, last: Session | undefined): Target {
   return {
     sets: last ? last.sets.length : 3,
     reps: ex.load === "time" ? null : top?.reps ?? 10,
+    repsMax: null,
     sec: ex.load === "time" ? top?.duration_sec ?? 30 : null,
     each: false,
   };

@@ -8,7 +8,7 @@ import type { ProfileRow } from "@/lib/types";
 
 const t = (s: number | null) => (s ? duration(s) : "");
 
-export default function SettingsForm({ profile, firstRun }: { profile: ProfileRow; firstRun: boolean }) {
+export default function SettingsForm({ profile, firstRun, zones }: { profile: ProfileRow; firstRun: boolean; zones: string[] }) {
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(saveSettings, null);
   const [injury, setInjury] = useState(profile.returning_from_injury);
 
@@ -26,7 +26,18 @@ export default function SettingsForm({ profile, firstRun }: { profile: ProfileRo
 
       <form action={action} className="card grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="Your name" name="display_name" defaultValue={profile.display_name ?? ""} />
-        <Field label="Time zone" name="timezone" defaultValue={profile.timezone} hint="e.g. America/Toronto" />
+        <div className="flex min-w-0 flex-col gap-1">
+          <label className="label" htmlFor="timezone">
+            Time zone
+          </label>
+          <select id="timezone" name="timezone" defaultValue={profile.timezone} className="input">
+            {zones.map((z) => (
+              <option key={z} value={z}>
+                {z.replace(/_/g, " ")}
+              </option>
+            ))}
+          </select>
+        </div>
         <Field label="Current 5K" name="current_5k" defaultValue={t(profile.current_5k_sec)} placeholder="35:00" required />
         <Field label="Goal 5K" name="goal_5k" defaultValue={t(profile.goal_5k_sec)} placeholder="29:59" required />
         <Field label="Running starts (a Monday)" name="start_date" type="date" defaultValue={profile.start_date ?? ""} required />
@@ -61,7 +72,16 @@ export default function SettingsForm({ profile, firstRun }: { profile: ProfileRo
           </span>
         </label>
 
-        <div className="label mt-2 sm:col-span-2">Optional half marathon after the time trial</div>
+        <label className="flex items-start gap-2.5 sm:col-span-2">
+          <input type="checkbox" name="rest_timer" defaultChecked={profile.rest_timer} className="mt-1 h-5 w-5 accent-[rgb(var(--accent))]" />
+          <span>
+            <b>Rest timer</b>
+            <br />
+            <span className="text-sm text-muted">Counts down after each ticked set (2 min for big lifts, 90 s otherwise) and beeps when it&apos;s time.</span>
+          </span>
+        </label>
+
+        <div className="label mt-2 sm:col-span-2">Optional half marathon, at least 3 weeks after the time trial</div>
         <Field label="Race name" name="race_name" defaultValue={profile.race_name ?? ""} placeholder="Toronto Marathon: half" />
         <Field label="Race date" name="race_date" type="date" defaultValue={profile.race_date ?? ""} />
         <Field label="Half goal, fastest" name="half_goal_min" defaultValue={t(profile.half_goal_min_sec)} placeholder="2:30:00" />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { addExercise, type ActionResult } from "@/app/actions";
 import { MUSCLES, MUSCLE_GROUPS, type MuscleId } from "@/lib/plan/muscles.ts";
 import type { ExerciseInfo } from "@/lib/plan/catalog.ts";
@@ -49,7 +49,7 @@ export default function LibraryPanel() {
               type="button"
               aria-pressed={group === g}
               onClick={() => setGroup(g)}
-              className={`min-h-9 flex-none rounded-full border px-3 text-sm font-semibold ${group === g ? "border-ink bg-ink text-bg" : "border-line bg-surface"}`}
+              className={`min-h-11 flex-none rounded-full border px-3 text-sm font-semibold ${group === g ? "border-ink bg-ink text-bg" : "border-line bg-surface"}`}
             >
               {g ?? "All"}
             </button>
@@ -105,7 +105,20 @@ function Row({ e, last, unit, onOpen, onVideo }: { e: ExerciseInfo; last?: { wei
 }
 
 function AddExercise({ onDone }: { onDone: () => void }) {
-  const [state, action, pending] = useActionState<ActionResult | null, FormData>(addExercise, null);
+  const [state, setState] = useState<ActionResult | null>(null);
+  const [pending, startTransition] = useTransition();
+  // Submitting by hand keeps what was typed when the server says no (a form action would reset it)
+  const submit = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    startTransition(async () => {
+      try {
+        setState(await addExercise(null, form));
+      } catch {
+        setState({ ok: false, error: "No connection. Try again when you have signal." });
+      }
+    });
+  };
   const [primary, setPrimary] = useState<MuscleId[]>([]);
   const [secondary, setSecondary] = useState<MuscleId[]>([]);
   useEffect(() => {
@@ -122,7 +135,7 @@ function AddExercise({ onDone }: { onDone: () => void }) {
   };
 
   return (
-    <form action={action} className="card">
+    <form onSubmit={submit} className="card">
       <h3 className="font-display text-xl font-bold">Add an exercise</h3>
       <label className="label" htmlFor="ex-name">
         Name
@@ -147,7 +160,7 @@ function AddExercise({ onDone }: { onDone: () => void }) {
               type="button"
               onClick={() => cycle(m.id)}
               aria-pressed={p || s}
-              className={`min-h-9 rounded-full border px-3 text-sm ${p ? "border-accent bg-accent font-semibold text-on-accent" : s ? "border-accent/40 bg-accent/15" : "border-line bg-surface"}`}
+              className={`min-h-11 rounded-full border px-3 text-sm ${p ? "border-accent bg-accent font-semibold text-on-accent" : s ? "border-accent/40 bg-accent/15" : "border-line bg-surface"}`}
             >
               {m.name}
             </button>

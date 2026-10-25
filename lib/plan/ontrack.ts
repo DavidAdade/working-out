@@ -127,12 +127,19 @@ export function wins(logs: RunLogLike[], sets: SetLike[], name: (key: string) =>
     const earlier = fives.filter((x) => x.date < l.date);
     if (earlier.length && l.duration_sec! < Math.min(...earlier.map((x) => x.duration_sec!))) out.push({ date: l.date, text: `5K best: ${duration(l.duration_sec!)}` });
   }
+  const lifts: { date: ISODate; name: string; best: string }[] = [];
   for (const key of new Set(sets.filter((x) => x.date >= from && x.date <= to).map((x) => x.exercise_key))) {
     const all = sessions(sets, key);
     for (const sess of all.filter((x) => x.date >= from && x.date <= to)) {
       const b = bestOn(all, sess.date);
-      if (b) out.push({ date: sess.date, text: b === "weight" ? `${name(key)}: heaviest yet` : `${name(key)}: most reps yet` });
+      if (b) lifts.push({ date: sess.date, name: name(key), best: b === "weight" ? "heaviest yet" : "most reps yet" });
     }
+  }
+  // A few lift bests read as their own lines; a whole week of them reads as one
+  if (lifts.length <= 3) out.push(...lifts.map((l) => ({ date: l.date, text: `${l.name}: ${l.best}` })));
+  else {
+    const names = [...new Set(lifts.map((l) => l.name))];
+    out.push({ date: lifts.map((l) => l.date).sort().at(-1)!, text: `${names.length} lifts at new bests: ${names.slice(0, 4).join(", ")}${names.length > 4 ? "…" : ""}` });
   }
   return out.sort((a, b) => (a.date < b.date ? 1 : -1));
 }

@@ -13,5 +13,6 @@ export default async function SettingsPage() {
   if (!user) redirect("/login");
   const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single<ProfileRow>();
   if (!profile) redirect("/login");
-  return <SettingsForm profile={profile} firstRun={!profile.start_date} />;
+  const zones = Intl.supportedValuesOf("timeZone");
+  return <SettingsForm profile={profile} firstRun={!profile.start_date} zones={zones.includes(profile.timezone) ? zones : [profile.timezone, ...zones]} />;
 }

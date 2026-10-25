@@ -40,6 +40,20 @@ export function todayIn(timeZone: string, now: Date = new Date()): ISODate {
   return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
 
+/** True for a valid IANA zone such as "America/Toronto". */
+export function isTimeZone(tz: string | null | undefined): tz is string {
+  if (!tz) return false;
+  try {
+    new Intl.DateTimeFormat("en-CA", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A saved zone that no longer parses falls back instead of breaking every page. */
+export const safeTimeZone = (tz: string | null | undefined) => (isTimeZone(tz) ? tz : "America/Toronto");
+
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 

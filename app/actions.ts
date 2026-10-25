@@ -3,9 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
+import { createHash } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { parseDuration } from "@/lib/plan/format.ts";
-import type { LogKind, Unit } from "@/lib/types";
+import { addDays, daysBetween, isMonday, isTimeZone } from "@/lib/plan/dates.ts";
+import { MIN_RACE_GAP_WEEKS } from "@/lib/plan/generate.ts";
+import type { LogKind, LogRow, Unit } from "@/lib/types";
 import { exerciseByKey } from "@/lib/plan/exercises.ts";
 import { customKey, youtubeId } from "@/lib/plan/catalog.ts";
 import { MUSCLES } from "@/lib/plan/muscles.ts";
@@ -66,6 +69,7 @@ export async function saveSettings(_: unknown, form: FormData): Promise<ActionRe
   const update = {
     display_name: str("display_name"),
     timezone: str("timezone") ?? "America/Toronto",
+    rest_timer: form.get("rest_timer") === "on",
     start_date: str("start_date"),
     recovery_start: injury ? str("recovery_start") : null,
     returning_from_injury: injury,
@@ -88,6 +92,10 @@ export async function saveSettings(_: unknown, form: FormData): Promise<ActionRe
   if (!update.current_5k_sec || !update.goal_5k_sec) return { ok: false, error: "5K times should look like 35:00." };
   if (update.goal_5k_sec >= update.current_5k_sec) return { ok: false, error: "The goal 5K should be faster than your current time." };
   if (update.time_trial_date <= update.start_date) return { ok: false, error: "The time trial has to come after the start date." };
+  if (!isTimeZone(update.timezone)) return { ok: false, error: "Pick a time zone from the list." };
+  if (update.recovery_start && update.recovery_start >= update.start_date) return { ok: false, error: "The strength-only phase has to start before running does." };
+  if (update.race_date && daysBetween(update.time_trial_date, update.race_date) < MIN_RACE_GAP_WEEKS * 7)
+    return { ok: false, error: `Put the race at least ${MIN_RACE_GAP_WEEKS} weeks after the time trial, so it gets its own taper.` };
   const { error } = await supabase.from("profiles").update(update).eq("id", user.id);
   if (error) return { ok: false, error: "Couldn't save settings. Try again." };
   revalidatePath("/");
@@ -95,10 +103,10 @@ export async function saveSettings(_: unknown, form: FormData): Promise<ActionRe
 }
 
 export async function setGate(key: string, value: boolean): Promise<ActionResult> {
-  const { supabase, user } = await requireUser();
-  const { data } = await supabase.from("profiles").select("gates").eq("id", user.id).single();
-  const gates = { ...((data?.gates as Record<string, boolean>) ?? {}), [key]: value };
-  const { error } = await supabase.from("profiles").update({ gates }).eq("id", user.id);
+  const { supabase } = await requireUser();
+  if (!/^[a-z]{1,20}$/.test(key)) return { ok: false, error: "Unknown gate." };
+  // One key at a time in the database, so two devices never overwrite each other's ticks
+  const { error } = await supabase.rpc("set_gate", { p_key: key, p_value: value });
   if (error) return { ok: false, error: "Couldn't save. Try again." };
   revalidatePath("/");
   return { ok: true };
@@ -106,6 +114,9 @@ export async function setGate(key: string, value: boolean): Promise<ActionResult
 
 export async function setStartDate(date: string): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !isMonday(date)) return { ok: false, error: "Pick a Monday." };
+  const { data } = await supabase.from("profiles").select("time_trial_date").eq("id", user.id).single<{ time_trial_date: string | null }>();
+  if (data?.time_trial_date && date > addDays(data.time_trial_date, -7 * 8)) return { ok: false, error: "That leaves less than 8 weeks before the time trial. Move the time trial in Settings first." };
   const { error } = await supabase.from("profiles").update({ start_date: date }).eq("id", user.id);
   if (error) return { ok: false, error: "Couldn't change the start date." };
   revalidatePath("/");
@@ -124,37 +135,73 @@ export async function toggleSkip(date: string, skip: boolean): Promise<ActionRes
 }
 
 /* ---------- logs ---------- */
-const KINDS: LogKind[] = ["run", "test", "strength", "walk"];
+const KINDS: LogKind[] = ["run", "test", "strength", "walk", "check"];
+const ISO = /^\d{4}-\d{2}-\d{2}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export async function addLog(_: unknown, form: FormData): Promise<ActionResult> {
-  const { supabase, user } = await requireUser();
-  const kind = String(form.get("kind")) as LogKind;
-  if (!KINDS.includes(kind)) return { ok: false, error: "Pick a session type." };
-  const date = String(form.get("date") ?? "");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return { ok: false, error: "Pick a date." };
-  const timeRaw = String(form.get("time") ?? "").trim();
+/** A session as typed in the Log form. `id` comes from the phone, so a retry after a dropped connection can't save it twice. */
+export interface LogInput {
+  id: string;
+  date: string;
+  kind: LogKind;
+  title: string;
+  km: string;
+  time: string;
+  rpe: string;
+  pain: Record<string, number>;
+  notes: string;
+}
+
+function cleanLog(input: LogInput) {
+  if (!KINDS.includes(input.kind)) return { error: "Pick a session type." } as const;
+  if (!ISO.test(input.date)) return { error: "Pick a date." } as const;
+  const timeRaw = input.time.trim();
   const duration_sec = timeRaw ? parseDuration(timeRaw) : null;
-  if (timeRaw && duration_sec == null) return { ok: false, error: "Time should look like 34:10 or 1:02:30." };
-  const kmRaw = String(form.get("km") ?? "").trim();
+  if (timeRaw && duration_sec == null) return { error: "Time should look like 34:10 or 1:02:30." } as const;
+  const kmRaw = input.km.trim();
   const km = kmRaw ? Number(kmRaw.replace(",", ".")) : null;
-  if (kmRaw && (km == null || !Number.isFinite(km) || km < 0)) return { ok: false, error: "Distance should be a number, like 5 or 7.5." };
-  const rpeRaw = String(form.get("rpe") ?? "").trim();
+  if (kmRaw && (km == null || !Number.isFinite(km) || km < 0 || km > 1000)) return { error: "Distance should be a number, like 5 or 7.5." } as const;
+  const rpeRaw = input.rpe.trim();
+  const rpe = rpeRaw ? Math.round(Number(rpeRaw)) : null;
+  if (rpeRaw && (rpe == null || !Number.isFinite(rpe) || rpe < 1 || rpe > 10)) return { error: "Effort is 1 to 10." } as const;
   const pain: Record<string, number> = {};
-  for (const [k, v] of form.entries()) {
-    if (k.startsWith("pain_")) pain[k.slice(5)] = Math.max(0, Math.min(10, Number(v) || 0));
-  }
-  const { error } = await supabase.from("logs").insert({
-    user_id: user.id,
-    date,
-    kind,
-    title: String(form.get("title") ?? "").trim() || null,
-    km,
-    duration_sec,
-    rpe: rpeRaw ? Math.max(1, Math.min(10, Number(rpeRaw))) : null,
-    pain,
-    notes: String(form.get("notes") ?? "").trim() || null,
-  });
+  for (const [k, v] of Object.entries(input.pain ?? {}).slice(0, 5)) if (/^[\p{L} -]{1,30}$/u.test(k)) pain[k] = Math.max(0, Math.min(10, Math.round(Number(v) || 0)));
+  return {
+    row: { date: input.date, kind: input.kind, title: input.title.trim().slice(0, 120) || null, km, duration_sec, rpe, pain, notes: input.notes.trim().slice(0, 1000) || null },
+  } as const;
+}
+
+export async function addLog(input: LogInput): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  if (!UUID.test(input.id)) return { ok: false, error: "Couldn't save the session. Try again." };
+  const c = cleanLog(input);
+  if ("error" in c) return { ok: false, error: c.error! };
+  const { error } = await supabase.from("logs").upsert({ id: input.id, user_id: user.id, ...c.row }, { onConflict: "id", ignoreDuplicates: true });
   if (error) return { ok: false, error: "Couldn't save the session. Try again." };
+  revalidatePath("/");
+  return { ok: true };
+}
+
+/** Add effort, pain and notes to a session, e.g. one imported from Apple Health, or mark it as a test. */
+export async function updateLog(id: string, patch: { kind?: LogKind; rpe?: string; pain?: Record<string, number>; notes?: string }): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  const { data: cur } = await supabase.from("logs").select("*").eq("id", id).eq("user_id", user.id).maybeSingle<LogRow>();
+  if (!cur) return { ok: false, error: "That session is gone." };
+  const c = cleanLog({
+    id,
+    date: cur.date,
+    kind: patch.kind ?? cur.kind,
+    title: cur.title ?? "",
+    // distance and time aren't edited here
+    km: "",
+    time: "",
+    rpe: patch.rpe ?? (cur.rpe == null ? "" : String(cur.rpe)),
+    pain: patch.pain ?? cur.pain,
+    notes: patch.notes ?? cur.notes ?? "",
+  });
+  if ("error" in c) return { ok: false, error: c.error! };
+  const { error } = await supabase.from("logs").update({ kind: c.row.kind, rpe: c.row.rpe, pain: c.row.pain, notes: c.row.notes }).eq("id", id).eq("user_id", user.id);
+  if (error) return { ok: false, error: "Couldn't save. Try again." };
   revalidatePath("/");
   return { ok: true };
 }
@@ -182,6 +229,10 @@ export interface SetInput {
   light: boolean;
   /** Title for the day's Log entry, created with the first set */
   dayTitle: string;
+  /** The plan day these sets belong to, when done early (they still save under today) */
+  planDate?: string | null;
+  /** No sets on this date yet, so the day's Log entry needs creating */
+  firstOfDay?: boolean;
 }
 
 const num = (v: number | null, max: number) => (v == null || !Number.isFinite(v) || v < 0 || v > max ? null : v);
@@ -193,7 +244,7 @@ export async function upsertSet(input: SetInput): Promise<ActionResult> {
     const { data } = await supabase.from("exercises").select("key").eq("key", input.exerciseKey).maybeSingle();
     if (!data) return { ok: false, error: "Unknown exercise." };
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date) || input.setNo < 1 || input.setNo > 20) return { ok: false, error: "Couldn't save that set." };
+  if (!ISO.test(input.date) || input.setNo < 1 || input.setNo > 20) return { ok: false, error: "Couldn't save that set." };
   const reps = num(input.reps, 200);
   const duration_sec = num(input.durationSec, 3600);
   if (reps == null && duration_sec == null) return { ok: false, error: "Add reps or seconds." };
@@ -208,13 +259,16 @@ export async function upsertSet(input: SetInput): Promise<ActionResult> {
       reps,
       duration_sec,
       light_week: input.light,
+      plan_date: input.planDate && ISO.test(input.planDate) && input.planDate !== input.date ? input.planDate : null,
     },
     { onConflict: "user_id,date,exercise_key,set_no" },
   );
   if (error) return { ok: false, error: "Couldn't save that set. Try again." };
-  // First set of the day: add one "strength" entry to the Log tab. A unique index makes repeats a no-op.
-  const { error: logError } = await supabase.from("logs").insert({ user_id: user.id, date: input.date, kind: "strength", auto: true, title: input.dayTitle });
-  if (!logError) revalidatePath("/");
+  // First set of the day: add one "strength" entry to the Log tab. A unique index makes a repeat a harmless no-op.
+  if (input.firstOfDay) {
+    const { error: logError } = await supabase.from("logs").insert({ user_id: user.id, date: input.date, kind: "strength", auto: true, title: input.dayTitle.slice(0, 120) });
+    if (!logError) revalidatePath("/");
+  }
   return { ok: true };
 }
 
@@ -261,5 +315,29 @@ export async function deleteExercise(key: string): Promise<ActionResult> {
   const { error } = await supabase.from("exercises").delete().eq("key", key).eq("owner", user.id);
   if (error) return { ok: false, error: "Couldn't delete. Try again." };
   revalidatePath("/");
+  return { ok: true };
+}
+
+/* ---------- calendar feed and Apple Health tokens ---------- */
+export type TokenPurpose = "calendar" | "health";
+
+/** Makes a new token (replacing any old one) and returns it once. Only its hash is stored. */
+export async function createToken(purpose: TokenPurpose): Promise<{ ok: true; token: string } | { ok: false; error: string }> {
+  const { supabase, user } = await requireUser();
+  if (purpose !== "calendar" && purpose !== "health") return { ok: false, error: "Unknown token." };
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  const token = Buffer.from(bytes).toString("base64url");
+  const token_hash = createHash("sha256").update(token).digest("hex");
+  const { error } = await supabase.from("user_tokens").upsert({ user_id: user.id, purpose, token_hash, created_at: new Date().toISOString(), last_used_at: null }, { onConflict: "user_id,purpose" });
+  if (error) return { ok: false, error: "Couldn't create a link. Try again." };
+  revalidatePath("/settings");
+  return { ok: true, token };
+}
+
+export async function revokeToken(purpose: TokenPurpose): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  const { error } = await supabase.from("user_tokens").delete().eq("user_id", user.id).eq("purpose", purpose);
+  if (error) return { ok: false, error: "Couldn't turn it off. Try again." };
+  revalidatePath("/settings");
   return { ok: true };
 }

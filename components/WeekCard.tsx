@@ -6,7 +6,7 @@ import { dowName, fmtShort } from "@/lib/plan/dates.ts";
 import type { LogRow } from "@/lib/types";
 import { DayBlocks } from "./DayView";
 import { useDates } from "./DateLabels";
-import { useSets } from "./Sets";
+import { planDayOf, useSets } from "./Sets";
 
 export default function WeekCard({
   week,
@@ -25,7 +25,7 @@ export default function WeekCard({
   todayAbove?: boolean;
 }) {
   const { sets } = useSets();
-  const logged = new Set([...logs.map((l) => l.date), ...sets.map((s) => s.date)]);
+  const logged = new Set([...logs.filter((l) => l.kind !== "check" && !l.auto).map((l) => l.date), ...sets.map(planDayOf)]);
   const active = week.days.filter((d) => !d.skipped);
   const past = active.filter((d) => d.date <= today);
   const done = active.filter((d) => logged.has(d.date)).length;
