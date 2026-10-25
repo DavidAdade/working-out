@@ -5,6 +5,8 @@ import { cookies } from "next/headers";
 export async function createClient() {
   const cookieStore = await cookies();
   return createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    // Stays signed in for 400 days (the library default); HTTPS-only once deployed
+    cookieOptions: { secure: process.env.NODE_ENV === "production" },
     cookies: {
       getAll() {
         return cookieStore.getAll();
