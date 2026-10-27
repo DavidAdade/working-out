@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { dayForDate, dayKind, dayTitle, weekForDate, PHASE_NAMES, type PlanSettings, type Week } from "@/lib/plan/generate.ts";
+import { catchUp, dayForDate, dayKind, dayTitle, weekForDate, PHASE_NAMES, type Day, type Move, type PlanSettings, type Week } from "@/lib/plan/generate.ts";
 import { addDays, daysBetween, dowName, fmtDay, fmtShort, mondayOf } from "@/lib/plan/dates.ts";
 import type { Warning } from "@/lib/plan/warnings.ts";
 import type { Fitness } from "@/lib/plan/paces.ts";
@@ -13,7 +13,8 @@ import { PainSlider } from "./LogPanel";
 import { GATES, type LogRow, type ProfileRow } from "@/lib/types";
 import { Chip, DayBlocks } from "./DayView";
 import { useDates } from "./DateLabels";
-import WeekCard from "./WeekCard";
+import WeekCard, { loggedDates } from "./WeekCard";
+import { MoveSheet, moveTargets, type OnMoves } from "./DayCard";
 
 interface Props {
   profile: ProfileRow;
@@ -25,11 +26,12 @@ interface Props {
   warnings: Warning[];
   onLog: (date: string) => void;
   onSkip: (date: string, skip: boolean) => void;
+  onMoves: OnMoves;
   /** The weekly AI check-in card */
   coach?: React.ReactNode;
 }
 
-export default function TodayPanel({ profile, settings, weeks, logs, today, fitness, warnings, onLog, onSkip, coach }: Props) {
+export default function TodayPanel({ profile, settings, weeks, logs, today, fitness, warnings, onLog, onSkip, onMoves, coach }: Props) {
   const day = dayForDate(weeks, today);
   const next = weeks.flatMap((w) => w.days).find((d) => d.date > today && !d.skipped && d.blocks.length);
   const week = weekForDate(weeks, today);
@@ -41,6 +43,12 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
   const [early, setEarly] = useState(false);
   // Doable early: within the next week, the same rule the plan uses
   const canStartNext = !!next && daysBetween(today, next.date) < 7;
+  const logged = useMemo(() => loggedDates(logs, sets), [logs, sets]);
+  const [moving, setMoving] = useState(false);
+  const canMove = !!week && !!day && !day.fixed && !logged.has(today) && moveTargets(week, today, today, logged).some((t) => t.moves);
+  // The most recent workout this week that wasn't done or skipped
+  const missed = week?.days.filter((d) => d.date < today && !d.skipped && !d.fixed && d.blocks.length && !logged.has(d.date)).at(-1);
+  const catchMoves = week && missed && !logged.has(today) ? catchUp(week, missed.date, today) : null;
 
   const track = useMemo(
     () =>
@@ -71,6 +79,8 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
 
       {profile.pain_areas.length > 0 && !logs.some((l) => l.date === today && l.kind === "check") && <CheckInCard areas={profile.pain_areas} today={today} />}
 
+      {week && missed && catchMoves && <CatchUpCard week={week} missed={missed.date} day={day && !day.skipped ? day : undefined} moves={catchMoves} today={today} onMoves={onMoves} onSkip={onSkip} onLog={onLog} />}
+
       {day && !day.skipped && day.blocks.length ? (
         <article className="card">
           <div className="flex flex-wrap items-start justify-between gap-2.5">
@@ -82,7 +92,20 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
             </div>
             <Chip kind={dayKind(day)} />
           </div>
-          <DayBlocks day={day} onSkip={onSkip} today={today} logOpen />
+          <DayBlocks day={day} onSkip={onSkip} onMove={canMove ? () => setMoving(true) : undefined} today={today} logOpen />
+          {moving && week && (
+            <MoveSheet
+              week={week}
+              day={day}
+              today={today}
+              logged={logged}
+              onClose={() => setMoving(false)}
+              onPick={(moves) => {
+                setMoving(false);
+                onMoves(week.start, moves);
+              }}
+            />
+          )}
           <div className="flex flex-wrap items-center gap-2">
             {loggedToday && <span className="font-bold text-good">✓ Logged</span>}
             <button className="btn" onClick={() => onLog(today)}>
@@ -129,10 +152,57 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
       {week && (
         <>
           <div className="label">This week</div>
-          <WeekCard week={week} logs={logs} today={today} onSkip={onSkip} open todayAbove={!!day && !day.skipped} />
+          <WeekCard week={week} logs={logs} today={today} onSkip={onSkip} onMoves={onMoves} open todayAbove={!!day && !day.skipped} />
         </>
       )}
     </section>
+  );
+}
+
+/** A workout earlier this week that wasn't logged: do it today, log it, or let it go. */
+function CatchUpCard({
+  week,
+  missed,
+  day,
+  moves,
+  today,
+  onMoves,
+  onSkip,
+  onLog,
+}: {
+  week: Week;
+  missed: string;
+  day?: Day;
+  moves: Move[];
+  today: string;
+  onMoves: OnMoves;
+  onSkip: (date: string, skip: boolean) => void;
+  onLog: (date: string) => void;
+}) {
+  const m = week.days.find((d) => d.date === missed)!;
+  // Where today's own workout ends up
+  const to = day ? moves.find((x) => x.from === (day.movedFrom ?? day.date))?.to : undefined;
+  return (
+    <article className="card gap-2">
+      <div className="label">Missed {dowName(missed)}</div>
+      <p>
+        <b>{dayTitle(m)}</b> isn&apos;t logged.
+        {day && to ? <span className="text-muted">{to > today ? ` Doing it today moves today's ${dayTitle(day)} to ${dowName(to)}.` : ` Doing it today takes the place of today's ${dayTitle(day)}.`}</span> : null}
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <button className="btn" onClick={() => onMoves(week.start, moves)}>
+          Do it today
+        </button>
+        <button className="btn-ghost" onClick={() => onLog(missed)}>
+          I did it: log it
+        </button>
+        {m.skippable && (
+          <button className="min-h-11 px-1 text-sm text-muted underline underline-offset-2" onClick={() => onSkip(missed, true)}>
+            Skip it
+          </button>
+        )}
+      </div>
+    </article>
   );
 }
 

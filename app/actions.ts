@@ -10,7 +10,7 @@ import { addDays, daysBetween, isMonday, isTimeZone, mondayOf, safeTimeZone, tod
 import { planFor } from "@/lib/plan/adapt.ts";
 import { builtinRows } from "@/lib/plan/catalog.ts";
 import { aiEnabled, generateReview, type Review } from "@/lib/coach/review";
-import { MIN_RACE_GAP_WEEKS } from "@/lib/plan/generate.ts";
+import { MIN_RACE_GAP_WEEKS, type Move } from "@/lib/plan/generate.ts";
 import { GATES, profileToSettings, type LogKind, type LogRow, type ProfileRow, type SetRow, type Unit } from "@/lib/types";
 import { exerciseByKey } from "@/lib/plan/exercises.ts";
 import { customKey, youtubeId } from "@/lib/plan/catalog.ts";
@@ -139,9 +139,24 @@ export async function toggleSkip(date: string, skip: boolean): Promise<ActionRes
   return { ok: true };
 }
 
+/* ---------- move days within a week ---------- */
+const ISO = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Replaces one week's moves; the list comes from moveDay/catchUp, which already checked it against the plan. */
+export async function setWeekMoves(week: string, moves: Move[]): Promise<ActionResult> {
+  const { supabase } = await requireUser();
+  const end = ISO.test(week) && isMonday(week) ? addDays(week, 7) : null;
+  const inWeek = (d: unknown): d is string => typeof d === "string" && ISO.test(d) && !!end && d >= week && d < end;
+  const ok = Array.isArray(moves) && moves.length <= 7 && moves.every((m) => inWeek(m?.from) && inWeek(m?.to) && m.from !== m.to);
+  if (!ok || new Set(moves.map((m) => m.from)).size !== moves.length || new Set(moves.map((m) => m.to)).size !== moves.length) return { ok: false, error: "That move doesn't fit this week." };
+  const { error } = await supabase.rpc("set_week_moves", { p_week: week, p_moves: moves.map(({ from, to }) => ({ from, to })) });
+  if (error) return { ok: false, error: "Couldn't move that day." };
+  revalidatePath("/");
+  return { ok: true };
+}
+
 /* ---------- logs ---------- */
 const KINDS: LogKind[] = ["run", "test", "strength", "walk", "check"];
-const ISO = /^\d{4}-\d{2}-\d{2}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** A session as typed in the Log form. `id` comes from the phone, so a retry after a dropped connection can't save it twice. */
@@ -363,16 +378,17 @@ export async function weeklyReview(refresh = false): Promise<ReviewResult> {
   if (!aiEnabled()) return { ok: false, error: "The AI check-in is turned off." };
 
   const from = addDays(today, -60);
-  const [{ data: logs }, { data: sets }, { data: skips }, { data: exercises }] = await Promise.all([
+  const [{ data: logs }, { data: sets }, { data: skips }, { data: moves }, { data: exercises }] = await Promise.all([
     supabase.from("logs").select("*").gte("date", from).order("date", { ascending: false }).returns<LogRow[]>(),
     supabase.from("set_logs").select("id, date, exercise_key, set_no, weight, unit, weight_kg, reps, duration_sec, light_week, plan_date").gte("date", from).returns<SetRow[]>(),
     supabase.from("day_overrides").select("date").eq("status", "skipped").returns<{ date: string }[]>(),
+    supabase.from("day_moves").select("from:from_date, to:to_date").returns<Move[]>(),
     supabase.from("exercises").select("key, name").returns<{ key: string; name: string }[]>(),
   ]);
   const cleanLogs = (logs ?? []).map((l) => ({ ...l, km: l.km == null ? null : Number(l.km) }));
   const cleanSets = (sets ?? []).map((s) => ({ ...s, weight_kg: s.weight_kg == null ? null : Number(s.weight_kg) }));
   const gatesPending = settings.returningFromInjury && GATES.some((g) => !profile.gates?.[g.key]);
-  const { weeks, fitness, warnings } = planFor({ settings, logs: cleanLogs, skips: (skips ?? []).map((s) => s.date), gatesPending, today });
+  const { weeks, fitness, warnings } = planFor({ settings, logs: cleanLogs, skips: (skips ?? []).map((s) => s.date), moves: moves ?? [], gatesPending, today });
   const names = new Map([...builtinRows().map((e) => [e.key, e.name] as const), ...(exercises ?? []).map((e) => [e.key, e.name] as const)]);
 
   let review: Review;

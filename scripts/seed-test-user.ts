@@ -83,7 +83,7 @@ async function main() {
       weight_unit: "kg",
     }),
   });
-  for (const t of ["set_logs", "logs", "day_overrides"]) await api(`/rest/v1/${t}?user_id=eq.${uid}`, { method: "DELETE" });
+  for (const t of ["set_logs", "logs", "day_overrides", "day_moves"]) await api(`/rest/v1/${t}?user_id=eq.${uid}`, { method: "DELETE" });
 
   const skipDate = addDays(start, 7 + 1); // week 2 Tuesday
   const weeks = generatePlan(settings, { skips: [skipDate] });

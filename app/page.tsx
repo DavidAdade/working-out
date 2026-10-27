@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { profileToSettings, type LogRow, type ProfileRow, type SetRow } from "@/lib/types";
 import { builtinRows, type ExerciseInfo } from "@/lib/plan/catalog.ts";
 import { mondayOf, safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
+import type { Move } from "@/lib/plan/generate.ts";
 import type { SavedReview } from "@/components/CoachCard";
 import { aiEnabled } from "@/lib/coach/review";
 import Dashboard from "@/components/Dashboard";
@@ -16,10 +17,11 @@ export default async function Home() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: profile }, { data: logs }, { data: skips }, { data: sets }, { data: exercises }] = await Promise.all([
+  const [{ data: profile }, { data: logs }, { data: skips }, { data: moves }, { data: sets }, { data: exercises }] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).single<ProfileRow>(),
     supabase.from("logs").select("*").order("date", { ascending: false }).order("created_at", { ascending: false }).limit(1000).returns<LogRow[]>(),
     supabase.from("day_overrides").select("date").eq("status", "skipped").returns<{ date: string }[]>(),
+    supabase.from("day_moves").select("from:from_date, to:to_date").returns<Move[]>(),
     supabase
       .from("set_logs")
       .select("id, date, exercise_key, set_no, weight, unit, weight_kg, reps, duration_sec, light_week, plan_date")
@@ -45,6 +47,7 @@ export default async function Home() {
       settings={settings}
       logs={(logs ?? []).map((l) => ({ ...l, km: l.km == null ? null : Number(l.km) }))}
       skips={(skips ?? []).map((s) => s.date)}
+      moves={moves ?? []}
       exercises={[...byKey.values()].sort((a, b) => a.name.localeCompare(b.name))}
       sets={(sets ?? []).map((s) => ({ ...s, weight: s.weight == null ? null : Number(s.weight), weight_kg: s.weight_kg == null ? null : Number(s.weight_kg) }))}
       today={today}

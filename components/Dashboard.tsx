@@ -3,12 +3,12 @@
 import Link from "next/link";
 import { useEffect, useMemo, useOptimistic, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { weekForDate, PHASE_NAMES, type PlanSettings, type Week } from "@/lib/plan/generate.ts";
-import { daysBetween, fmtShort, safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
+import { weekForDate, PHASE_NAMES, type Move, type PlanSettings, type Week } from "@/lib/plan/generate.ts";
+import { addDays, daysBetween, fmtShort, safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
 import { duration, pace, parseDuration, predict } from "@/lib/plan/format.ts";
 import { goalPace } from "@/lib/plan/paces.ts";
 import { planFor } from "@/lib/plan/adapt.ts";
-import { toggleSkip, type LogInput } from "@/app/actions";
+import { setWeekMoves, toggleSkip, type LogInput } from "@/app/actions";
 import { GATES, type LogRow, type ProfileRow, type SetRow } from "@/lib/types";
 import { DockProvider, useDock } from "./Dock";
 import CoachCard, { type SavedReview } from "./CoachCard";
@@ -36,6 +36,8 @@ export interface DashboardProps {
   settings: PlanSettings;
   logs: LogRow[];
   skips: string[];
+  /** Workouts moved to another day of their week */
+  moves: Move[];
   sets: SetRow[];
   exercises: ExerciseInfo[];
   today: string;
@@ -76,7 +78,7 @@ function queuedLog(i: LogInput): LogRow {
   };
 }
 
-function DashboardInner({ profile, settings, logs: serverLogs, skips, sets, exercises, today, ai, review }: DashboardProps) {
+function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, sets, exercises, today, ai, review }: DashboardProps) {
   const [tab, setTab] = useState<Tab>("today");
   const [logDate, setLogDate] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -85,6 +87,11 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, sets, exer
   const [optimisticSkips, applySkip] = useOptimistic(skips, (cur: string[], { date, skip }: { date: string; skip: boolean }) =>
     skip ? [...cur, date] : cur.filter((d) => d !== date),
   );
+  // Each change replaces one week's moves
+  const [optimisticMoves, applyMoves] = useOptimistic(moves, (cur: Move[], { week, list }: { week: string; list: Move[] }) => [
+    ...cur.filter((m) => m.from < week || m.from >= addDays(week, 7)),
+    ...list,
+  ]);
 
   // Sessions still waiting to sync show in the list straight away
   const logs = useMemo(() => {
@@ -109,8 +116,8 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, sets, exer
 
   const gatesPending = settings.returningFromInjury && GATES.some((g) => !profile.gates?.[g.key]);
   const { weeks, fitness, warnings } = useMemo(
-    () => planFor({ settings, logs, skips: optimisticSkips, gatesPending, today }),
-    [settings, logs, optimisticSkips, gatesPending, today],
+    () => planFor({ settings, logs, skips: optimisticSkips, moves: optimisticMoves, gatesPending, today }),
+    [settings, logs, optimisticSkips, optimisticMoves, gatesPending, today],
   );
   const thisWeek = weekForDate(weeks, today);
   const daysToTT = daysBetween(today, settings.timeTrialDate);
@@ -123,6 +130,17 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, sets, exer
         if (!r.ok) notify({ text: r.error, tone: "error" });
       } catch {
         notify({ text: "No connection. That day wasn't changed.", tone: "error" });
+      }
+    });
+
+  const onMoves = (week: string, list: Move[]) =>
+    startTransition(async () => {
+      applyMoves({ week, list });
+      try {
+        const r = await setWeekMoves(week, list);
+        if (!r.ok) notify({ text: r.error, tone: "error" });
+      } catch {
+        notify({ text: "No connection. That day wasn't moved.", tone: "error" });
       }
     });
 
@@ -166,10 +184,11 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, sets, exer
               warnings={warnings}
               onLog={openLog}
               onSkip={onSkip}
+              onMoves={onMoves}
               coach={ai ? <CoachCard initial={review} onSkip={onSkip} skipped={new Set(optimisticSkips)} /> : null}
             />
           )}
-          {tab === "plan" && <PlanPanel weeks={weeks} logs={logs} today={today} onSkip={onSkip} />}
+          {tab === "plan" && <PlanPanel weeks={weeks} logs={logs} today={today} onSkip={onSkip} onMoves={onMoves} />}
           {tab === "log" && <LogPanel weeks={weeks} logs={logs} today={today} painAreas={profile.pain_areas} initialDate={logDate ?? today} />}
           {tab === "library" && <LibraryPanel />}
           {tab === "progress" && <ProgressPanel logs={logs} settings={settings} painAreas={profile.pain_areas} today={today} />}

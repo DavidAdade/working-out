@@ -3,7 +3,7 @@
 
 import { addDays, type ISODate } from "./dates.ts";
 import type { Block } from "./templates.ts";
-import { generatePlan, type Day, type PlanSettings, type Week } from "./generate.ts";
+import { generatePlan, isHard, type Day, type Move, type PlanSettings, type Week } from "./generate.ts";
 import { painWarnings, type LogLike, type Warning } from "./warnings.ts";
 import { fitness5k, type Fitness, type TestLike } from "./paces.ts";
 
@@ -15,8 +15,6 @@ export interface AdaptInput {
 }
 
 const isRun = (b: Block) => b.kind === "run" || b.kind === "test";
-/** Hard sessions: tests, intervals and tempos. Easy, long, run-walk and shakeouts are not. */
-const isHard = (b: Block) => b.kind === "test" || (b.kind === "run" && !/^(easy|long run|run-walk|shakeout)/i.test(b.title));
 
 const walk = (title: string, note: string): Block => ({ kind: "walk", title, items: ["30 min easy walk or bike, no impact"], note });
 const easy = (from: Block): Block => ({ kind: "run", title: "Easy 20 min", items: ["Very easy, flat", "Stop if pain goes above 2/10"], note: `Swapped for "${from.title}" because of pain.` });
@@ -50,10 +48,10 @@ export function adaptPlan(weeks: Week[], { today, gatesPending, warnings }: Adap
   return weeks.map((w) => (w.days.some((d) => d.date >= today && d.date < end) ? { ...w, days: w.days.map((d) => change(d, w)) } : w));
 }
 
-/** The plan as the app shows it: paces from the latest test, skips folded in, pain and gates applied to the coming week. */
-export function planFor(o: { settings: PlanSettings; logs: (LogLike & TestLike)[]; skips: Iterable<ISODate>; gatesPending: boolean; today: ISODate }): { weeks: Week[]; fitness: Fitness; warnings: Warning[] } {
+/** The plan as the app shows it: paces from the latest test, moves and skips folded in, pain and gates applied to the coming week. */
+export function planFor(o: { settings: PlanSettings; logs: (LogLike & TestLike)[]; skips: Iterable<ISODate>; moves: Iterable<Move>; gatesPending: boolean; today: ISODate }): { weeks: Week[]; fitness: Fitness; warnings: Warning[] } {
   const fitness = fitness5k(o.settings.current5kSec, o.logs, o.today);
   const warnings = painWarnings(o.logs, o.today);
-  const weeks = adaptPlan(generatePlan(o.settings, { skips: o.skips, fitness5kSec: fitness.sec }), { today: o.today, gatesPending: o.gatesPending, warnings });
+  const weeks = adaptPlan(generatePlan(o.settings, { skips: o.skips, moves: o.moves, fitness5kSec: fitness.sec }), { today: o.today, gatesPending: o.gatesPending, warnings });
   return { weeks, fitness, warnings };
 }

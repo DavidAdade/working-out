@@ -39,7 +39,20 @@ function SimpleBlock({ block }: { block: Block }) {
 }
 
 /** All blocks for one day. Lifts are compact rows; one opens at a time and the next opens when you finish. */
-export function DayBlocks({ day, onSkip, today, logOpen = false }: { day: Day; onSkip?: (date: string, skip: boolean) => void; today: string; logOpen?: boolean }) {
+export function DayBlocks({
+  day,
+  onSkip,
+  onMove,
+  today,
+  logOpen = false,
+}: {
+  day: Day;
+  onSkip?: (date: string, skip: boolean) => void;
+  /** Opens the move sheet; left out when the day can't move */
+  onMove?: () => void;
+  today: string;
+  logOpen?: boolean;
+}) {
   const { sets } = useSets();
   // Past days and today log on their own date; the next week's workouts can be done early and log under today
   const early = day.date > today && daysBetween(today, day.date) < 7;
@@ -129,10 +142,19 @@ export function DayBlocks({ day, onSkip, today, logOpen = false }: { day: Day; o
           <SimpleBlock key={b.title + bi} block={b} />
         ),
       )}
-      {onSkip && day.skippable && (
-        <button className="min-h-11 self-start text-sm text-muted underline underline-offset-2" onClick={() => onSkip(day.date, true)}>
-          Skip this day (4-day week)
-        </button>
+      {(onMove || (onSkip && day.skippable)) && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+          {onMove && (
+            <button className="btn-ghost" onClick={onMove}>
+              Move to another day
+            </button>
+          )}
+          {onSkip && day.skippable && (
+            <button className="min-h-11 text-sm text-muted underline underline-offset-2" onClick={() => onSkip(day.date, true)}>
+              Skip this day (4-day week)
+            </button>
+          )}
+        </div>
       )}
     </div>
   );

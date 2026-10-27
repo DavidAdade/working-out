@@ -5,6 +5,7 @@ import { addDays, dowName, fmtShort } from "@/lib/plan/dates.ts";
 import type { LogRow } from "@/lib/types";
 import { useState } from "react";
 import WeekCard from "./WeekCard";
+import type { OnMoves } from "./DayCard";
 import Pager, { usePage } from "./Pager";
 import { useDates } from "./DateLabels";
 
@@ -20,7 +21,7 @@ const PHASE_COLOR: Record<Phase, string> = {
   race: "bg-ink",
 };
 
-export default function PlanPanel({ weeks, logs, today, onSkip }: { weeks: Week[]; logs: LogRow[]; today: string; onSkip: (d: string, s: boolean) => void }) {
+export default function PlanPanel({ weeks, logs, today, onSkip, onMoves }: { weeks: Week[]; logs: LogRow[]; today: string; onSkip: (d: string, s: boolean) => void; onMoves: OnMoves }) {
   const current = weekForDate(weeks, today);
   const phases = [...new Set(weeks.map((w) => w.phase))];
   const last = weeks[weeks.length - 1];
@@ -72,14 +73,14 @@ export default function PlanPanel({ weeks, logs, today, onSkip }: { weeks: Week[
                 </li>
               ))}
             </ul>
-            <p className="pt-2 text-xs text-muted">Doing 4 days one week? Skip a day and its upper-body work moves to another lift day.</p>
+            <p className="pt-2 text-xs text-muted">Need a different day? Open a day and move it anywhere in its week. Doing 4 days one week? Skip a day and its upper-body work moves to another lift day.</p>
           </details>
         )}
       </article>
       <Pager current={cur} pages={pages} label={range(shown)} onPage={setPage} />
       <div id="plan-weeks" className="flex scroll-mt-16 flex-col gap-3.5">
         {shown.map((w) => (
-          <WeekCard key={w.start} week={w} logs={logs} today={today} onSkip={onSkip} open={w === current} />
+          <WeekCard key={w.start} week={w} logs={logs} today={today} onSkip={onSkip} onMoves={onMoves} open={w === current} />
         ))}
       </div>
       <Pager current={cur} pages={pages} label={range(shown)} onPage={setPage} listId="plan-weeks" />

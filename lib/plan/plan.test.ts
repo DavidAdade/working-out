@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { generatePlan, dayTitle, weekForDate, type PlanSettings } from "./generate.ts";
+import { generatePlan, dayTitle, weekForDate, moveDay, catchUp, type PlanSettings, type Week } from "./generate.ts";
 import { painWarnings } from "./warnings.ts";
 import { parseDuration, duration, pace } from "./format.ts";
 import { weekday } from "./dates.ts";
@@ -360,4 +360,82 @@ test("calendar feed: one event per training day, valid lines", () => {
   assert.ok(!ics.includes("UID:2027-02-11-abc"), "skipped days are left out");
   for (const line of ics.split("\r\n")) assert.ok(new TextEncoder().encode(line).length <= 75, line);
   assert.ok(/SUMMARY:W19 · 5K TIME TRIAL/.test(ics.replace(/\r\n /g, "")));
+});
+
+/* ---------- moving days within a week ---------- */
+const at = (w: Week, offset: number) => addDays(w.start, offset);
+const titles = (w: Week) => w.days.map((d) => `${d.date} ${d.blocks.map((b) => b.title).join(" + ")}`);
+
+test("moving days: swap two days, or move to a free day, every profile", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const wk = generatePlan(p).find((w) => w.phase === "build" && !w.cutback)!;
+    // Swap Mon and Fri
+    const swap = moveDay(wk, at(wk, 0), at(wk, 4))!;
+    assert.equal(swap.length, 2, name);
+    const sw = weekForDate(generatePlan(p, { moves: swap }), wk.start)!;
+    assert.deepEqual(sw.days.map((d) => d.date), [...sw.days.map((d) => d.date)].sort(), `${name}: days stay in date order`);
+    assert.equal(sw.days[0].movedFrom, at(wk, 4), name);
+    assert.equal(sw.days[0].blocks[0].title, wk.days[4].blocks[0].title, `${name}: Friday's workout is on Monday`);
+    assert.deepEqual([...titles(wk).map((t) => t.slice(11))].sort(), [...titles(sw).map((t) => t.slice(11))].sort(), `${name}: same workouts`);
+    // Move Fri to Sat: Fri is rest
+    const sat = weekForDate(generatePlan(p, { moves: moveDay(wk, at(wk, 4), at(wk, 5))! }), wk.start)!;
+    assert.ok(!sat.days.some((d) => d.date === at(wk, 4)), name);
+    assert.ok(sat.days.find((d) => d.date === at(wk, 5))!.blocks.some((b) => b.km), `${name}: long run on Saturday`);
+    // Moving it back undoes it
+    const back = moveDay(sat, at(wk, 5), at(wk, 4))!;
+    assert.deepEqual(back, [], name);
+  }
+});
+
+test("moving days: time trial, race, other weeks and run-walk clashes are refused", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const plan = generatePlan(p);
+    const tt = plan.find((w) => w.phase === "tt")!;
+    const ttDay = tt.days.find((d) => d.blocks.some((b) => b.title === "5K TIME TRIAL"))!;
+    assert.equal(moveDay(tt, ttDay.date, at(tt, 5)), null, `${name}: time trial stays`);
+    assert.equal(moveDay(tt, at(tt, 0), ttDay.date), null, `${name}: nothing lands on the time trial`);
+    assert.equal(moveDay(tt, at(tt, 0), at(tt, 7)), null, `${name}: not into next week`);
+    const race = plan.find((w) => w.phase === "race");
+    if (race) assert.equal(moveDay(race, race.days.find((d) => !d.skippable)!.date, at(race, 5)), null, `${name}: race day stays`);
+    // Stored moves that don't fit are ignored, not an error
+    const across = generatePlan(p, { moves: [{ from: at(tt, 0), to: at(tt, 7) }, { from: ttDay.date, to: at(tt, 5) }] });
+    assert.deepEqual(titles(weekForDate(across, tt.start)!), titles(tt), name);
+    const rw = plan.find((w) => w.phase === "return");
+    // Tue run-walk onto Wed would put runs on Wed and Fri: fine. Onto Thu: back to back with Fri
+    if (rw) assert.equal(moveDay(rw, at(rw, 1), at(rw, 3)), null, `${name}: run-walk days stay apart`);
+  }
+});
+
+test("moving days: back-to-back hard days get a note, and skips fold onto the new days", () => {
+  const wk = generatePlan(david).find((w) => w.phase === "build" && !w.cutback && w.days[2].blocks[0].note?.includes("One hard session"))!;
+  // Wednesday's intervals onto Thursday, next to Friday's long run
+  const moved = weekForDate(generatePlan(david, { moves: moveDay(wk, at(wk, 2), at(wk, 3))! }), wk.start)!;
+  assert.match(moved.days.find((d) => d.date === at(wk, 3))!.alerts.join(" "), /Two hard days in a row/);
+  // Swap Mon and Tue, then skip Tuesday (now Monday's lifting): its upper body folds onto another lift day
+  const moves = moveDay(wk, at(wk, 0), at(wk, 1))!;
+  const skipped = weekForDate(generatePlan(david, { moves, skips: [at(wk, 1)] }), wk.start)!;
+  assert.ok(skipped.days.find((d) => d.date === at(wk, 1))!.skipped);
+  assert.ok(skipped.days.some((d) => d.blocks.some((b) => b.foldedFrom === "Tue" && b.kind === "upper")));
+});
+
+test("catch up: a missed workout moves to today, today's goes to a free day", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const wk = generatePlan(p).find((w) => w.phase === "build" && !w.cutback)!;
+    // Missed Tuesday's easy run; today is Wednesday
+    const moves = catchUp(wk, at(wk, 1), at(wk, 2))!;
+    const w = weekForDate(generatePlan(p, { moves }), wk.start)!;
+    assert.equal(w.days.find((d) => d.date === at(wk, 2))!.blocks[0].title, wk.days[1].blocks[0].title, name);
+    assert.equal(w.days.find((d) => d.date === at(wk, 5))?.blocks[0].title, wk.days[2].blocks[0].title, `${name}: Wednesday's workout goes to Saturday`);
+    assert.equal(w.days.length, wk.days.length, name);
+  }
+});
+
+test("moved days: pain changes and the calendar follow the new date", () => {
+  const wk = generatePlan(david).find((w) => w.phase === "build" && !w.cutback && w.days[2].blocks[0].note?.includes("One hard session"))!;
+  const moves = moveDay(wk, at(wk, 2), at(wk, 5))!;
+  const plan = generatePlan(david, { moves });
+  const ease = adaptPlan(plan, { today: wk.start, gatesPending: false, warnings: [{ level: "warn", code: "ease", message: "" }] });
+  assert.equal(ease.flatMap((x) => x.days).find((d) => d.date === at(wk, 5))!.blocks[0].title, "Easy 20 min");
+  const ics = planToIcs(plan, { name: "WorkoutFlex", uidSeed: "abc", now: new Date("2026-10-25T12:00:00Z") });
+  assert.ok(ics.includes(`UID:${at(wk, 5)}-abc`) && !ics.includes(`UID:${at(wk, 2)}-abc`));
 });

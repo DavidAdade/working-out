@@ -39,6 +39,10 @@ export interface Day {
   skipped: boolean;
   /** Can this day be skipped on a 4-day week */
   skippable: boolean;
+  /** The time trial and the race stay on their day; their dates come from settings */
+  fixed: boolean;
+  /** The date the plan put this workout on, when the person moved it within the week */
+  movedFrom?: ISODate;
   alerts: string[];
 }
 
@@ -57,6 +61,14 @@ export interface GenerateOptions {
   skips?: Iterable<ISODate>;
   /** Current 5K fitness from logged tests (see fitness5k); paces use it instead of the settings value */
   fitness5kSec?: number;
+  /** Workouts the person moved to another day of the same week */
+  moves?: Iterable<Move>;
+}
+
+/** The workout the plan put on `from` is done on `to`, in the same Mon–Sun week. */
+export interface Move {
+  from: ISODate;
+  to: ISODate;
 }
 
 /** Weeks between the time trial week and the race week, so the race gets its own taper */
@@ -213,14 +225,14 @@ export function generatePlan(s: PlanSettings, opts: GenerateOptions = {}): Week[
       else wed = run(`Easy 30 min${i >= rtn + 2 ? " + strides" : ""}`, [`Easy, about ${easyRange}`, i >= rtn + 2 ? "4 × 20 s relaxed strides at the end" : "Keep it flat"]);
     } else if (phase === "build") {
       if (cut) wed = run("Easy 25 min + strides", ["Cutback week. Easy running", "4 × 20 s strides"]);
-      else if (i === test10k) wed = run("Easy 25 min", [`Easy, about ${easyRange}`, "10K test on Friday, so nothing hard today"]);
+      else if (i === test10k) wed = run("Easy 25 min", [`Easy, about ${easyRange}`, "10K test later this week, so nothing hard today"]);
       else {
         const sx = sessions[session % sessions.length]();
         session++;
         wed = run(sx.t, sx.x, { note: `One hard session a week, maximum. Skip it if pain is above 2/10. ${paceNote}` });
       }
     } else if (phase === "sharpen") wed = run("3 × 1 km at goal pace", ["10 min easy warm-up", `3 × 1 km at ${pace(gp)}/km, 3 min jog between`, "4 strides, 10 min cool-down"]);
-    else if (phase === "tt") wed = run("Easy 20 min", ["Very easy. Save it for Friday"]);
+    else if (phase === "tt") wed = run("Easy 20 min", ["Very easy. Save it for the time trial"]);
     else if (phase === "half")
       wed = (i - ttIdx) % 2 === 1
         ? run("Half-pace tempo", ["10 min easy", `2 × 10 min at ${halfTempo}, 3 min jog between`, "10 min easy"])
@@ -259,6 +271,7 @@ export function generatePlan(s: PlanSettings, opts: GenerateOptions = {}): Week[
       mk(ws, 4, [fri]),
     ];
     if (phase === "tt" || phase === "race") days[3].blocks = [days[3].blocks[0]]; // nothing heavy late in a goal week
+    if (phase === "tt") days[4].fixed = true;
     if (phase === "race" && s.raceDate) {
       const off = daysBetween(ws, s.raceDate);
       const raceItems = [
@@ -266,17 +279,22 @@ export function generatePlan(s: PlanSettings, opts: GenerateOptions = {}): Week[
         halfMin && halfMax ? `Start around ${pace(halfMax - 10)}/km, settle at ${pace((halfMin + halfMax) / 2)}/km after 5 km` : "Start easy, settle after 5 km",
         "Watch the knees on any downhill sections",
       ];
-      days.push({ date: addDays(ws, off), blocks: [test(s.raceName || "Half marathon", raceItems)], skipped: false, skippable: false, alerts: [] });
+      days.push({ date: addDays(ws, off), blocks: [test(s.raceName || "Half marathon", raceItems)], skipped: false, skippable: false, fixed: true, alerts: [] });
     }
     const notes = phase === "tt" && s.raceDate && !raceUsable ? [`${s.raceName || "The race"} is less than ${MIN_RACE_GAP_WEEKS} weeks after the time trial, so it isn't in the plan. Move one of the dates in Settings.`] : [];
     weeks.push({ label: `W${i}`, index: i, start: ws, phase, cutback: cut, days, notes });
   }
 
-  for (const w of weeks) applySkips(w, skips);
+  const moves = new Map([...(opts.moves ?? [])].map((m) => [m.from, m.to]));
+  for (const w of weeks) {
+    // Moves first, so skips and folding see the days where the person does them
+    applyMoves(w, moves);
+    applySkips(w, skips);
+  }
   return weeks;
 
   function mk(ws: ISODate, offset: number, blocks: Block[]): Day {
-    return { date: addDays(ws, offset), blocks: blocks.map((b) => ({ ...b })), skipped: false, skippable: true, alerts: [] };
+    return { date: addDays(ws, offset), blocks: blocks.map((b) => ({ ...b })), skipped: false, skippable: true, fixed: false, alerts: [] };
   }
 }
 
@@ -284,6 +302,84 @@ function fmtH(sec: number): string {
   const h = Math.floor(sec / 3600);
   const m = Math.round((sec % 3600) / 60);
   return `${h}:${String(m).padStart(2, "0")}`;
+}
+
+/** Hard sessions: tests, intervals and tempos. Easy, long, run-walk and shakeouts are not. */
+export const isHard = (b: Block) => b.kind === "test" || (b.kind === "run" && !/^(easy|long run|run-walk|shakeout)/i.test(b.title));
+const tough = (d: Day) => d.blocks.some((b) => isHard(b) || !!b.km);
+const origin = (d: Day) => d.movedFrom ?? d.date;
+
+/**
+ * Where each of the week's days lands under `moves` (planned date → new date), in `w.days` order,
+ * or null when they can't all apply: outside the week, a fixed day, two workouts on one day,
+ * or run-walk days back to back. Works on a week whose moves are already applied too.
+ */
+export function arrange(w: Week, moves: Map<ISODate, ISODate>): ISODate[] | null {
+  const end = addDays(w.start, 7);
+  const dates = w.days.map((d) => moves.get(origin(d)) ?? origin(d));
+  for (const [i, d] of w.days.entries()) {
+    if (dates[i] === origin(d)) continue;
+    if (d.fixed || dates[i] < w.start || dates[i] >= end) return null;
+  }
+  if (new Set(dates).size !== dates.length) return null;
+  if (w.phase === "return") {
+    const runs = w.days.flatMap((d, i) => (d.blocks.some((b) => b.kind === "run") ? [dates[i]] : [])).sort();
+    if (runs.some((r, i) => i > 0 && daysBetween(runs[i - 1], r) === 1)) return null;
+  }
+  return dates;
+}
+
+/**
+ * The week's full list of moves after the workouts shown on each `[from, to]` pair go to their new day,
+ * or null if that can't apply. Saved as the week's moves, replacing the old ones.
+ */
+export function rearrange(w: Week, place: [ISODate, ISODate][]): Move[] | null {
+  const moves = new Map(w.days.filter((d) => d.movedFrom).map((d) => [d.movedFrom!, d.date]));
+  for (const [from, to] of place) {
+    const d = w.days.find((x) => x.date === from);
+    if (!d) return null;
+    moves.set(origin(d), to);
+  }
+  if (!arrange(w, moves)) return null;
+  return [...moves].filter(([from, to]) => from !== to).map(([from, to]) => ({ from, to }));
+}
+
+/** Move the workout on `from` to `to`; a workout already on `to` trades places with it. */
+export function moveDay(w: Week, from: ISODate, to: ISODate): Move[] | null {
+  return rearrange(w, w.days.some((d) => d.date === to) ? [[from, to], [to, from]] : [[from, to]]);
+}
+
+/**
+ * Do a missed workout today. Today's own workout goes to the next free day this week,
+ * or to the missed day when there is none.
+ */
+export function catchUp(w: Week, missed: ISODate, today: ISODate): Move[] | null {
+  if (!w.days.some((d) => d.date === today)) return rearrange(w, [[missed, today]]);
+  const free = [1, 2, 3, 4, 5, 6].map((n) => addDays(today, n)).filter((x) => x < addDays(w.start, 7) && !w.days.some((d) => d.date === x));
+  for (const to of [...free, missed]) {
+    const r = rearrange(w, [[missed, today], [today, to]]);
+    if (r) return r;
+  }
+  return null;
+}
+
+function applyMoves(w: Week, moves: Map<ISODate, ISODate>) {
+  if (!w.days.some((d) => moves.has(d.date))) return;
+  const dates = arrange(w, moves);
+  // Moves that no longer fit the plan (e.g. after a settings change) are ignored, not an error
+  if (!dates) return;
+  w.days.forEach((d, i) => {
+    if (dates[i] !== d.date) {
+      d.movedFrom = d.date;
+      d.date = dates[i];
+    }
+  });
+  w.days.sort((a, b) => (a.date < b.date ? -1 : 1));
+  // Advice, never a block: two hard or long days in a row
+  for (const d of w.days.filter((x) => x.movedFrom && tough(x))) {
+    const next = w.days.find((x) => x !== d && tough(x) && Math.abs(daysBetween(d.date, x.date)) === 1);
+    if (next) d.alerts.push(`${dayTitle(next)} is the day ${next.date > d.date ? "after" : "before"}. Two hard days in a row: keep one easy if your legs feel heavy.`);
+  }
 }
 
 /** Order in which skipped upper-body work looks for a new home. */
