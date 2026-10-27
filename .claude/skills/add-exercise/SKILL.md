@@ -1,6 +1,6 @@
 ---
 name: add-exercise
-description: Add a new exercise (or a new template line for an existing one) to the Road to Sub-30 exercise database so it gets a stable key, a demo video, a muscle map, set logging and history, and syncs to Supabase. Use whenever a workout template gains a new exercise or the user asks to add exercises to the library.
+description: Add a new exercise (or a new template line for an existing one) to the WorkoutFlex exercise database so it gets a stable key, a demo video, a muscle map, set logging and history, and syncs to Supabase. Use whenever a workout template gains a new exercise or the user asks to add exercises to the library.
 ---
 
 # Add an exercise

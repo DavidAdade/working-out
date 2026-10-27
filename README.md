@@ -1,6 +1,6 @@
-# Road to Sub-30
+# WorkoutFlex
 
-A knee-safe training plan and log: injury recovery → sub-30 5K time trial → half marathon.
+A flexible running and strength training plan and log. Each person sets their own goal, and the plan is generated from their profile.
 Each person signs in with a magic link and only ever sees their own plan and logs.
 
 **Stack:** Next.js 15 (App Router, Server Actions) · TypeScript · Tailwind · Supabase (Postgres, Auth, row-level security) · Vercel.

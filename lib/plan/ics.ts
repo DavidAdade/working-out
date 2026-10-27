@@ -26,7 +26,7 @@ export function planToIcs(weeks: Week[], { name, uidSeed, now = new Date() }: { 
   const lines = [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
-    "PRODID:-//Road to Sub-30//Plan//EN",
+    "PRODID:-//WorkoutFlex//Plan//EN",
     "CALSCALE:GREGORIAN",
     "METHOD:PUBLISH",
     `X-WR-CALNAME:${esc(name)}`,

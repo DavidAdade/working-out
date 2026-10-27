@@ -3,9 +3,9 @@ import type { MetadataRoute } from "next";
 /** Lets the app be added to the home screen and open full-screen, like a native app. */
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Road to Sub-30",
-    short_name: "Sub-30",
-    description: "Knee-safe 5K and half-marathon training plan and log.",
+    name: "WorkoutFlex",
+    short_name: "WorkoutFlex",
+    description: "Flexible running and strength training plan and log.",
     start_url: "/",
     display: "standalone",
     background_color: "#0d1319",

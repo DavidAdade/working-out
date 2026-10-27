@@ -13,7 +13,7 @@ function LoginForm() {
 
   return (
     <main className="mt-10 flex flex-col gap-4">
-      <h1 className="font-display text-5xl font-bold text-accent">SUB-30</h1>
+      <h1 className="font-display text-5xl font-bold text-accent">WorkoutFlex</h1>
       <div className="card">
         <h2 className="font-display text-2xl font-bold">Sign in</h2>
         {params.get("error") && <p className="text-sm text-bad">That link expired or was already used. Request a new one.</p>}

@@ -19,8 +19,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
   const today = todayIn(safeTimeZone(feed.profile.timezone));
   const fitness = fitness5k(settings.current5kSec, feed.tests.map((t) => ({ ...t, km: t.km == null ? null : Number(t.km) })), today);
   const weeks = generatePlan(settings, { skips: feed.skips, fitness5kSec: fitness.sec });
-  const ics = planToIcs(weeks, { name: "Road to Sub-30", uidSeed: createHash("sha256").update(token).digest("hex").slice(0, 12) });
+  const ics = planToIcs(weeks, { name: "WorkoutFlex", uidSeed: createHash("sha256").update(token).digest("hex").slice(0, 12) });
   return new Response(ics, {
-    headers: { "Content-Type": "text/calendar; charset=utf-8", "Cache-Control": "private, max-age=900", "Content-Disposition": 'inline; filename="sub30.ics"' },
+    headers: { "Content-Type": "text/calendar; charset=utf-8", "Cache-Control": "private, max-age=900", "Content-Disposition": 'inline; filename="workoutflex.ics"' },
   });
 }

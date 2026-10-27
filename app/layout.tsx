@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Road to Sub-30",
-  description: "Knee-safe 5K and half-marathon training plan and log.",
-  appleWebApp: { capable: true, title: "Sub-30", statusBarStyle: "default" },
+  title: "WorkoutFlex",
+  description: "Flexible running and strength training plan and log.",
+  appleWebApp: { capable: true, title: "WorkoutFlex", statusBarStyle: "default" },
   formatDetection: { telephone: false },
 };
 

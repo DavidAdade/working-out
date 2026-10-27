@@ -354,7 +354,7 @@ test("suggested weight: only after every set hit the top of the range", () => {
 });
 
 test("calendar feed: one event per training day, valid lines", () => {
-  const ics = planToIcs(generatePlan(david, { skips: ["2027-02-11"] }), { name: "Road to Sub-30", uidSeed: "abc", now: new Date("2026-10-25T12:00:00Z") });
+  const ics = planToIcs(generatePlan(david, { skips: ["2027-02-11"] }), { name: "WorkoutFlex", uidSeed: "abc", now: new Date("2026-10-25T12:00:00Z") });
   assert.ok(ics.startsWith("BEGIN:VCALENDAR\r\n") && ics.endsWith("END:VCALENDAR\r\n"));
   assert.ok(ics.includes("DTSTART;VALUE=DATE:20270326"));
   assert.ok(!ics.includes("UID:2027-02-11-abc"), "skipped days are left out");

@@ -1,4 +1,4 @@
-# Road to Sub-30
+# WorkoutFlex
 
 Next.js 15 (App Router, Server Actions) + Supabase (Postgres, Auth, RLS) + Tailwind, deployed on Vercel. Used mostly on an iPhone mid-workout, so every change must work at 390px wide with 44px tap targets and 16px inputs.
 
