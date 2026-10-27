@@ -133,16 +133,20 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, set
       }
     });
 
-  const onMoves = (week: string, list: Move[]) =>
+  const onMoves = (week: string, list: Move[], note?: string) => {
+    // What the week looked like before, for the Undo on the confirmation
+    const before = optimisticMoves.filter((m) => m.from >= week && m.from < addDays(week, 7));
     startTransition(async () => {
       applyMoves({ week, list });
       try {
         const r = await setWeekMoves(week, list);
         if (!r.ok) notify({ text: r.error, tone: "error" });
+        else if (note) notify({ text: note, tone: "good", action: { label: "Undo", run: () => onMoves(week, before, "Move undone.") } });
       } catch {
         notify({ text: "No connection. That day wasn't moved.", tone: "error" });
       }
     });
+  };
 
   const openLog = (date: string) => {
     setLogDate(date);

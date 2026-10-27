@@ -7,7 +7,15 @@ import type { BlockKind } from "@/lib/plan/templates.ts";
 import { Chip, DayBlocks } from "./DayView";
 import { useDates } from "./DateLabels";
 
-export type OnMoves = (week: ISODate, moves: Move[]) => void;
+/** Saves a week's moves; `note` is shown once it's saved, with an Undo */
+export type OnMoves = (week: ISODate, moves: Move[], note?: string) => void;
+
+/** "Moved Long run 7 km from Fri to Sat." and, for a swap, where the other workout went */
+export function moveNote(week: Week, day: Day, to: ISODate, today?: ISODate): string {
+  const there = week.days.find((d) => d.date === to && d !== day);
+  const name = (d: ISODate) => (d === today ? "today" : dowName(d));
+  return `Moved ${dayTitle(day)} from ${name(day.date)} to ${name(to)}.${there ? ` ${dayTitle(there)} moves to ${name(day.date)}.` : ""}`;
+}
 
 /**
  * Where the workout on `from` can go: later this week (or today), onto a day with nothing logged or skipped.
@@ -94,7 +102,7 @@ export default function DayCard({
             <div className="flex items-center justify-between gap-2 text-sm text-muted">
               <span>Moved from {dates.hide ? dowName(day.movedFrom) : `${dowName(day.movedFrom)} ${fmtShort(day.movedFrom)}`}</span>
               {undo && (
-                <button className="min-h-11 px-1 font-semibold text-ink underline underline-offset-2" onClick={() => onMoves(week.start, undo)}>
+                <button className="min-h-11 px-1 font-semibold text-ink underline underline-offset-2" onClick={() => onMoves(week.start, undo, moveNote(week, day, day.movedFrom!))}>
                   Undo
                 </button>
               )}
@@ -114,9 +122,9 @@ export default function DayCard({
           today={today}
           logged={logged}
           onClose={() => setMoving(false)}
-          onPick={(moves) => {
+          onPick={(moves, to) => {
             setMoving(false);
-            onMoves(week.start, moves);
+            onMoves(week.start, moves, moveNote(week, day, to));
           }}
         />
       )}
@@ -125,7 +133,7 @@ export default function DayCard({
 }
 
 /** Pick a day this week. An empty day takes the workout; a day with one swaps with it. */
-export function MoveSheet({ week, day, today, logged, onClose, onPick }: { week: Week; day: Day; today: ISODate; logged: Set<ISODate>; onClose: () => void; onPick: (moves: Move[]) => void }) {
+export function MoveSheet({ week, day, today, logged, onClose, onPick }: { week: Week; day: Day; today: ISODate; logged: Set<ISODate>; onClose: () => void; onPick: (moves: Move[], to: ISODate) => void }) {
   const dates = useDates();
   const closeRef = useRef<HTMLButtonElement>(null);
   const targets = moveTargets(week, day.date, today, logged);
@@ -167,7 +175,7 @@ export function MoveSheet({ week, day, today, logged, onClose, onPick }: { week:
               <li key={date}>
                 <button
                   disabled={!moves}
-                  onClick={() => moves && onPick(moves)}
+                  onClick={() => moves && onPick(moves, date)}
                   className={`grid min-h-11 w-full grid-cols-[3.5rem_1fr_auto] items-center gap-2 rounded-lg border px-3 py-2 text-left ${self ? "border-ink" : "border-line"} ${moves ? "active:bg-sunk" : "opacity-45"}`}
                 >
                   <span className="flex flex-col leading-tight">

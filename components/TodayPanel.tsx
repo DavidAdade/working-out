@@ -14,7 +14,7 @@ import { GATES, type LogRow, type ProfileRow } from "@/lib/types";
 import { Chip, DayBlocks } from "./DayView";
 import { useDates } from "./DateLabels";
 import WeekCard, { loggedDates } from "./WeekCard";
-import { MoveSheet, moveTargets, type OnMoves } from "./DayCard";
+import { MoveSheet, moveNote, moveTargets, type OnMoves } from "./DayCard";
 
 interface Props {
   profile: ProfileRow;
@@ -100,9 +100,9 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
               today={today}
               logged={logged}
               onClose={() => setMoving(false)}
-              onPick={(moves) => {
+              onPick={(moves, to) => {
                 setMoving(false);
-                onMoves(week.start, moves);
+                onMoves(week.start, moves, moveNote(week, day, to, today));
               }}
             />
           )}
@@ -190,7 +190,10 @@ function CatchUpCard({
         {day && to ? <span className="text-muted">{to > today ? ` Doing it today moves today's ${dayTitle(day)} to ${dowName(to)}.` : ` Doing it today takes the place of today's ${dayTitle(day)}.`}</span> : null}
       </p>
       <div className="flex flex-wrap items-center gap-2">
-        <button className="btn" onClick={() => onMoves(week.start, moves)}>
+        <button
+          className="btn"
+          onClick={() => onMoves(week.start, moves, `Moved ${dayTitle(m)} from ${dowName(missed)} to today.${day && to ? ` ${dayTitle(day)} moves to ${dowName(to)}.` : ""}`)}
+        >
           Do it today
         </button>
         <button className="btn-ghost" onClick={() => onLog(missed)}>

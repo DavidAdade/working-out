@@ -74,7 +74,7 @@ export default function WeekCard({
             <DayCard key={d.date} week={week} day={d} today={today} logged={logged} onSkip={onSkip} onMoves={onMoves} todayAbove={todayAbove} />
           ))}
           {canReset && (
-            <button className="min-h-11 self-start px-1 text-sm text-muted underline underline-offset-2" onClick={() => onMoves(week.start, [])}>
+            <button className="min-h-11 self-start px-1 text-sm text-muted underline underline-offset-2" onClick={() => onMoves(week.start, [], `${week.label} is back as planned.`)}>
               Put this week back as planned
             </button>
           )}
