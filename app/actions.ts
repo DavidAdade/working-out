@@ -16,7 +16,8 @@ import { exerciseByKey } from "@/lib/plan/exercises.ts";
 import { customKey, youtubeId } from "@/lib/plan/catalog.ts";
 import { MUSCLES } from "@/lib/plan/muscles.ts";
 
-export type ActionResult = { ok: true } | { ok: false, error: string };
+/** `values` echoes a failed form back, so the form can keep what was typed (React resets it after every action) */
+export type ActionResult = { ok: true } | { ok: false, error: string, values?: Record<string, string> };
 
 async function requireUser() {
   const supabase = await createClient();
@@ -68,6 +69,7 @@ export async function saveSettings(_: unknown, form: FormData): Promise<ActionRe
     return v === "" ? null : v;
   };
   const dur = (k: string) => parseDuration(str(k));
+  const fail = (error: string): ActionResult => ({ ok: false, error, values: Object.fromEntries([...form].filter((e): e is [string, string] => typeof e[1] === "string")) });
   const injury = form.get("returning_from_injury") === "on";
   const update = {
     display_name: str("display_name"),
@@ -91,16 +93,16 @@ export async function saveSettings(_: unknown, form: FormData): Promise<ActionRe
       .filter(Boolean)
       .slice(0, 3),
   };
-  if (!update.start_date || !update.time_trial_date) return { ok: false, error: "Add a start date and a time trial date." };
-  if (!update.current_5k_sec || !update.goal_5k_sec) return { ok: false, error: "5K times should look like 35:00." };
-  if (update.goal_5k_sec >= update.current_5k_sec) return { ok: false, error: "The goal 5K should be faster than your current time." };
-  if (update.time_trial_date <= update.start_date) return { ok: false, error: "The time trial has to come after the start date." };
-  if (!isTimeZone(update.timezone)) return { ok: false, error: "Pick a time zone from the list." };
-  if (update.recovery_start && update.recovery_start >= update.start_date) return { ok: false, error: "The strength-only phase has to start before running does." };
+  if (!update.start_date || !update.time_trial_date) return fail("Add a start date and a time trial date.");
+  if (!update.current_5k_sec || !update.goal_5k_sec) return fail("5K times should look like 35:00.");
+  if (update.goal_5k_sec >= update.current_5k_sec) return fail("The goal 5K should be faster than your current time.");
+  if (update.time_trial_date <= update.start_date) return fail("The time trial has to come after the start date.");
+  if (!isTimeZone(update.timezone)) return fail("Pick a time zone from the list.");
+  if (update.recovery_start && update.recovery_start >= update.start_date) return fail("The strength-only phase has to start before running does.");
   if (update.race_date && daysBetween(update.time_trial_date, update.race_date) < MIN_RACE_GAP_WEEKS * 7)
-    return { ok: false, error: `Put the race at least ${MIN_RACE_GAP_WEEKS} weeks after the time trial, so it gets its own taper.` };
+    return fail(`Put the race at least ${MIN_RACE_GAP_WEEKS} weeks after the time trial, so it gets its own taper.`);
   const { error } = await supabase.from("profiles").update(update).eq("id", user.id);
-  if (error) return { ok: false, error: "Couldn't save settings. Try again." };
+  if (error) return fail("Couldn't save settings. Try again.");
   revalidatePath("/");
   redirect("/");
 }
