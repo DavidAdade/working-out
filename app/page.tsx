@@ -29,7 +29,7 @@ export default async function Home() {
       .order("date", { ascending: false })
       .limit(5000)
       .returns<SetRow[]>(),
-    supabase.from("exercises").select("key, name, load, primary_muscles, secondary_muscles, video_ids, video_query, lines, owner").order("name").returns<ExerciseInfo[]>(),
+    supabase.from("exercises").select("key, name, load, primary_muscles, secondary_muscles, equipment, video_ids, video_query, lines, owner").order("name").returns<ExerciseInfo[]>(),
     supabase.from("exercise_swaps").select("planDate:plan_date, from:from_key, to:to_key").returns<Swap[]>(),
   ]);
   // Built-ins from code fill any gap, e.g. before the first sync has run

@@ -7,6 +7,8 @@ import type { ExerciseInfo } from "@/lib/plan/catalog.ts";
 import { rankForSwap, swapTarget, type Pickable } from "@/lib/plan/swaps.ts";
 import { fmtSet, useSets, videoFromInfo } from "./Sets";
 import { useOpenVideo } from "./VideoModal";
+import EquipmentChips from "./EquipmentChips";
+import type { EquipmentId } from "@/lib/plan/equipment.ts";
 import type { SetRow } from "@/lib/types";
 
 /* ---------- saving a swap: provided by the Dashboard, which owns the plan ---------- */
@@ -62,6 +64,7 @@ export function SwapSheet({
   const cancelRef = useRef<HTMLButtonElement>(null);
   const [q, setQ] = useState("");
   const [chip, setChip] = useState<Chip>("suggested");
+  const [gear, setGear] = useState<EquipmentId | null>(null);
   const [limit, setLimit] = useState(40);
   // Typing searches everything, unless a muscle group was picked
   const shownChip: Chip = q.trim() && chip === "suggested" ? "all" : chip;
@@ -81,11 +84,11 @@ export function SwapSheet({
   }, [onClose]);
 
   const list = useMemo(() => {
-    const pool = exercises.filter((e) => e.key !== original.key && e.key !== current.key);
+    const pool = exercises.filter((e) => e.key !== original.key && e.key !== current.key && (!gear || (e.equipment ?? []).includes(gear)));
     const inGroup = shownChip === "suggested" || shownChip === "all" ? pool : pool.filter((e) => e.primary_muscles.some((m) => MUSCLE.get(m)?.group === shownChip));
     const ranked = rankForSwap<ExerciseInfo>(inGroup, original as Pickable, q, muscleName, shownChip === "all" && !q.trim() ? 0 : 8);
     return ranked;
-  }, [exercises, original, current.key, shownChip, q]);
+  }, [exercises, original, current.key, shownChip, q, gear]);
 
   const sized = (e: ExerciseInfo) => {
     const t = swapTarget(target, e.load);
@@ -145,6 +148,13 @@ export function SwapSheet({
               </button>
             ))}
           </div>
+          <EquipmentChips
+            value={gear}
+            onChange={(g) => {
+              setGear(g);
+              setLimit(40);
+            }}
+          />
         </div>
 
         <ul className="flex flex-col divide-y divide-line px-2">

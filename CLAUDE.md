@@ -9,7 +9,8 @@ Next.js 15 (App Router, Server Actions) + Supabase (Postgres, Auth, RLS) + Tailw
   - `lib/plan/exercises.ts`: catalog of built-in exercises (`key`, `name`, `load`, `video`, template `lines`)
   - `lib/plan/videos.ts`: YouTube ids per video key (main + backup)
   - `lib/plan/muscles.ts`: muscle ids, groups, body-map shapes, and `EXERCISE_MUSCLES` per exercise key
-  - `lib/plan/catalog.ts`: joins the three into rows shaped like the Supabase `exercises` table
+  - `lib/plan/equipment.ts`: equipment ids (bodyweight, dumbbell, barbell, kettlebell, cable, machine, band, other) and `EXERCISE_EQUIPMENT` per exercise key, for the Library and swap filters
+  - `lib/plan/catalog.ts`: joins the four into rows shaped like the Supabase `exercises` table
   - `scripts/sync-exercises.ts`: upserts those rows into Supabase. Runs before every `npm run build` (so every Vercel deploy) when `SUPABASE_SERVICE_ROLE_KEY` is set
   - Custom exercises people add in the Library tab are rows with `owner = auth.uid()`; the sync never touches them
 - **Set logs** (`set_logs`) store `exercise_key`, never template text, plus `plan_date` when a session is done early. Progression logic (stalls, bests, suggested weights) is in `lib/plan/progress.ts`.

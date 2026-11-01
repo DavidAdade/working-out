@@ -8,16 +8,19 @@ import { sessions } from "@/lib/plan/progress.ts";
 import { fmtSet, useSets, videoFromInfo } from "./Sets";
 import { useOpenVideo } from "./VideoModal";
 import Pager, { usePage } from "./Pager";
+import EquipmentChips from "./EquipmentChips";
+import { EQUIPMENT, equipmentName, type EquipmentId } from "@/lib/plan/equipment.ts";
 
 const MUSCLE = new Map(MUSCLES.map((m) => [m.id as string, m]));
 const muscleNames = (ids: string[]) => ids.map((id) => MUSCLE.get(id)?.name ?? id).join(", ");
 
-/** Every exercise in the database: search, filter by muscle group, open one for its muscles, video and history. */
+/** Every exercise in the database: search, filter by muscle group and equipment, open one for its muscles, video and history. */
 export default function LibraryPanel() {
   const { exercises, sets, unit, openHistory } = useSets();
   const openVideo = useOpenVideo();
   const [q, setQ] = useState("");
   const [group, setGroup] = useState<string | null>(null);
+  const [gear, setGear] = useState<EquipmentId | null>(null);
   const [adding, setAdding] = useState(false);
   const [page, setPage] = useState(0);
 
@@ -25,11 +28,12 @@ export default function LibraryPanel() {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
     return exercises.filter((e) => {
       const muscles = [...e.primary_muscles, ...e.secondary_muscles].map((m) => MUSCLE.get(m)?.name ?? m).join(" ");
-      const hay = `${e.name} ${muscles} ${e.lines.join(" ")}`.toLowerCase();
+      const hay = `${e.name} ${muscles} ${(e.equipment ?? []).map(equipmentName).join(" ")} ${e.lines.join(" ")}`.toLowerCase();
       if (!words.every((w) => hay.includes(w))) return false;
+      if (gear && !(e.equipment ?? []).includes(gear)) return false;
       return !group || e.primary_muscles.some((m) => MUSCLE.get(m)?.group === group);
     });
-  }, [exercises, q, group]);
+  }, [exercises, q, group, gear]);
   const list = usePage(shown, 15, page);
 
   return (
@@ -64,6 +68,13 @@ export default function LibraryPanel() {
             </button>
           ))}
         </div>
+        <EquipmentChips
+          value={gear}
+          onChange={(g) => {
+            setGear(g);
+            setPage(0);
+          }}
+        />
       </div>
 
       {adding ? <AddExercise onDone={() => setAdding(false)} /> : (
@@ -74,7 +85,7 @@ export default function LibraryPanel() {
 
       <article id="library-list" className="card scroll-mt-40 gap-0 p-0">
         {shown.length === 0 ? (
-          <p className="p-4 text-center text-muted">No exercises match. Try another word, or add it.</p>
+          <p className="p-4 text-center text-muted">No exercises match. Try another word or filter, or add it.</p>
         ) : (
           <ul className="flex flex-col divide-y divide-line">
             {list.shown.map((e) => (
@@ -105,7 +116,10 @@ function Row({ e, last, unit, onOpen, onVideo }: { e: ExerciseInfo; last?: { wei
             {e.name}
             {e.owner && <span className="ml-1.5 rounded bg-sunk px-1.5 py-px text-[0.68rem] font-semibold uppercase tracking-wide text-muted">Yours</span>}
           </span>
-          <span className="block truncate text-xs text-muted">{muscleNames(e.primary_muscles) || "No muscles tagged"}</span>
+          <span className="block truncate text-xs text-muted">
+            {muscleNames(e.primary_muscles) || "No muscles tagged"}
+            {e.equipment?.length ? ` · ${e.equipment.map(equipmentName).join(", ")}` : ""}
+          </span>
         </span>
         {last?.length ? <span className="whitespace-nowrap font-mono text-xs text-muted">{fmtSet(last[0], unit)}</span> : null}
         <span aria-hidden className="text-muted">›</span>
@@ -131,6 +145,7 @@ function AddExercise({ onDone }: { onDone: () => void }) {
   };
   const [primary, setPrimary] = useState<MuscleId[]>([]);
   const [secondary, setSecondary] = useState<MuscleId[]>([]);
+  const [gear, setGear] = useState<EquipmentId[]>([]);
   useEffect(() => {
     if (state?.ok) onDone();
   }, [state, onDone]);
@@ -182,6 +197,26 @@ function AddExercise({ onDone }: { onDone: () => void }) {
       ))}
       {secondary.map((m) => (
         <input key={m} type="hidden" name="secondary" value={m} />
+      ))}
+      <span className="label">Equipment: tap all that work</span>
+      <div className="flex flex-wrap gap-1.5">
+        {EQUIPMENT.map((q) => {
+          const on = gear.includes(q.id);
+          return (
+            <button
+              key={q.id}
+              type="button"
+              onClick={() => setGear((g) => (on ? g.filter((x) => x !== q.id) : [...g, q.id]))}
+              aria-pressed={on}
+              className={`min-h-11 rounded-full border px-3 text-sm ${on ? "border-accent bg-accent font-semibold text-on-accent" : "border-line bg-surface"}`}
+            >
+              {q.name}
+            </button>
+          );
+        })}
+      </div>
+      {gear.map((q) => (
+        <input key={q} type="hidden" name="equipment" value={q} />
       ))}
       <label className="label" htmlFor="ex-video">
         YouTube link (optional)

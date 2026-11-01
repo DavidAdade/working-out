@@ -7,7 +7,7 @@ description: Add a new exercise (or a new template line for an existing one) to 
 
 Every built-in exercise lives in code and is synced to the Supabase `exercises` table. Do all steps; the tests enforce them.
 
-1. **Is it new, or a variation of an existing one?** Search `lib/plan/exercises.ts`. If the same movement and load already exists (e.g. "Romanian deadlift, light" → `rdl`), just add the template text to that entry's `lines` and skip to step 5. History should stay continuous across rep/weight changes.
+1. **Is it new, or a variation of an existing one?** Search `lib/plan/exercises.ts`. If the same movement and load already exists (e.g. "Romanian deadlift, light" → `rdl`), just add the template text to that entry's `lines` and skip to step 6. History should stay continuous across rep/weight changes.
 
 2. **Video** (`lib/plan/videos.ts`): add a `VIDEOS` entry with a short `key`, `name`, a `match` regex for free-text lines, two YouTube ids (main + backup, both embeddable), and a search `query`. Check them with `npm run check-videos`.
 
@@ -18,11 +18,13 @@ Every built-in exercise lives in code and is synced to the Supabase `exercises` 
 
 4. **Muscles** (`lib/plan/muscles.ts` → `EXERCISE_MUSCLES`): `{ primary: [...], secondary: [...] }` using only ids from `MUSCLES`. If there's no exact region (glute medius, soleus, hip flexors), use the closest one.
 
-5. **Template** (`lib/plan/templates.ts`): write the line as `"Name, qualifier, 3×10"`. The parser reads `N×R`, `N×R–S`, `N×Ss` and `N sets`, plus `each` / `each side`.
+5. **Equipment** (`lib/plan/equipment.ts` → `EXERCISE_EQUIPMENT`): every way it's normally done, main one first, using only ids from `EQUIPMENT` (bodyweight, dumbbell, barbell, kettlebell, cable, machine, band, other). Benches, bars and steps don't count.
 
-6. **Verify:**
+6. **Template** (`lib/plan/templates.ts`): write the line as `"Name, qualifier, 3×10"`. The parser reads `N×R`, `N×R–S`, `N×Ss` and `N sets`, plus `each` / `each side`.
+
+7. **Verify:**
    ```bash
-   npm test            # mapping, video and muscle checks
+   npm test            # mapping, video, muscle and equipment checks
    npx tsc --noEmit
    npm run sync-exercises   # needs SUPABASE_SERVICE_ROLE_KEY; Vercel builds run it automatically
    ```

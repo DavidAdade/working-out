@@ -1,8 +1,9 @@
 // One row per exercise, the same shape as the Supabase `exercises` table.
-// Built-ins come from the code catalog (exercises.ts + videos.ts + muscles.ts); custom ones are added in the app.
+// Built-ins come from the code catalog (exercises.ts + videos.ts + muscles.ts + equipment.ts); custom ones are added in the app.
 
 import { EXERCISES, videoOf, type Exercise, type Load } from "./exercises.ts";
 import { EXERCISE_MUSCLES, type MuscleId } from "./muscles.ts";
+import { EXERCISE_EQUIPMENT, type EquipmentId } from "./equipment.ts";
 
 export interface ExerciseInfo {
   key: string;
@@ -10,6 +11,8 @@ export interface ExerciseInfo {
   load: Load;
   primary_muscles: MuscleId[];
   secondary_muscles: MuscleId[];
+  /** Main one first; empty for custom exercises saved before equipment existed */
+  equipment: EquipmentId[];
   video_ids: string[];
   video_query: string | null;
   lines: string[];
@@ -27,6 +30,7 @@ export function builtinRows(): ExerciseInfo[] {
       load: e.load,
       primary_muscles: [...m.primary],
       secondary_muscles: [...m.secondary],
+      equipment: [...(EXERCISE_EQUIPMENT[e.key] ?? [])],
       video_ids: v ? [...v.ids] : [],
       video_query: v?.query ?? e.name,
       lines: [...e.lines],

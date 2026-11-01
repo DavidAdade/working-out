@@ -9,6 +9,7 @@ import { duration, parseDuration } from "@/lib/plan/format.ts";
 import { addDays, daysBetween, isMonday, isTimeZone, mondayOf, safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
 import { planFor } from "@/lib/plan/adapt.ts";
 import { builtinRows } from "@/lib/plan/catalog.ts";
+import { isEquipment } from "@/lib/plan/equipment.ts";
 import { aiEnabled, generateReview, type Review } from "@/lib/coach/review";
 import { MIN_RACE_GAP_WEEKS, type Move } from "@/lib/plan/generate.ts";
 import { GATES, profileToSettings, type LogKind, type LogRow, type ProfileRow, type SetRow, type Unit } from "@/lib/types";
@@ -340,6 +341,7 @@ export async function addExercise(_: unknown, form: FormData): Promise<ActionRes
   const primary = form.getAll("primary").map(String).filter((m) => MUSCLE_IDS.has(m));
   const secondary = form.getAll("secondary").map(String).filter((m) => MUSCLE_IDS.has(m) && !primary.includes(m));
   if (!primary.length) return { ok: false, error: "Pick at least one main muscle." };
+  const equipment = [...new Set(form.getAll("equipment").map(String).filter(isEquipment))];
   const videoRaw = String(form.get("video") ?? "").trim();
   const video = videoRaw ? youtubeId(videoRaw) : null;
   if (videoRaw && !video) return { ok: false, error: "That doesn't look like a YouTube link." };
@@ -349,6 +351,7 @@ export async function addExercise(_: unknown, form: FormData): Promise<ActionRes
     load,
     primary_muscles: primary,
     secondary_muscles: secondary,
+    equipment,
     video_ids: video ? [video] : [],
     video_query: name,
     owner: user.id,

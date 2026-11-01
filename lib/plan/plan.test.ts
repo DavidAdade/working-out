@@ -8,6 +8,7 @@ import { videoFor, VIDEOS } from "./videos.ts";
 import { EXERCISES, parseLine, videoOf, videoForLine } from "./exercises.ts";
 import { builtinRows, customKey, youtubeId } from "./catalog.ts";
 import { MUSCLES, regionOf } from "./muscles.ts";
+import { EXERCISE_EQUIPMENT, isEquipment } from "./equipment.ts";
 import { bestOn, compareSession, sessions, suggestWeight, type SetLike } from "./progress.ts";
 import { fitness5k, goalPace } from "./paces.ts";
 import { adaptPlan, planFor } from "./adapt.ts";
@@ -175,7 +176,7 @@ test("auto strength logs don't hide a run's pain warning", () => {
   assert.equal(w[0]?.level, "warn");
 });
 
-test("exercise database: every built-in has a video and muscles", () => {
+test("exercise database: every built-in has a video, muscles and equipment", () => {
   const muscleIds = new Set<string>(MUSCLES.map((m) => m.id));
   for (const e of EXERCISES) {
     assert.ok(videoOf(e), `${e.key} has no video (add \`video:\` pointing at a VIDEOS key)`);
@@ -184,8 +185,12 @@ test("exercise database: every built-in has a video and muscles", () => {
     assert.match(r.key, /^[a-z0-9-]{1,40}$/);
     assert.ok(r.primary_muscles.length > 0, `${r.key} has no muscles in EXERCISE_MUSCLES`);
     for (const m of [...r.primary_muscles, ...r.secondary_muscles]) assert.ok(muscleIds.has(m), `${r.key}: unknown muscle ${m}`);
+    assert.ok(r.equipment.length > 0, `${r.key} has no equipment in EXERCISE_EQUIPMENT`);
+    for (const q of r.equipment) assert.ok(isEquipment(q), `${r.key}: unknown equipment ${q}`);
     assert.ok(r.video_ids.length > 0);
   }
+  const keys = new Set(EXERCISES.map((e) => e.key));
+  assert.deepEqual(Object.keys(EXERCISE_EQUIPMENT).filter((k) => !keys.has(k)), [], "equipment for an exercise that doesn't exist");
   // Plan lines get their video through the catalog
   assert.equal(videoForLine("Romanian deadlift, light, 3×8")!.key, "rdl");
 });
@@ -444,7 +449,7 @@ test("moved days: pain changes and the calendar follow the new date", () => {
 /* ---------- exercise swaps ---------- */
 const KNOWN = new Map(builtinRows().map((e) => [e.key, e] as const));
 // A custom exercise has no template lines; swaps must still work for it
-KNOWN.set("goblet-squat-abc123", { key: "goblet-squat-abc123", name: "Goblet squat", load: "weight", primary_muscles: ["quads", "glutes"], secondary_muscles: [], video_ids: [], video_query: null, lines: [], owner: "u1" });
+KNOWN.set("goblet-squat-abc123", { key: "goblet-squat-abc123", name: "Goblet squat", load: "weight", primary_muscles: ["quads", "glutes"], secondary_muscles: [], equipment: ["dumbbell"], video_ids: [], video_query: null, lines: [], owner: "u1" });
 const lookup = (k: string) => KNOWN.get(k);
 const firstLift = (d: Week["days"][number]) => {
   for (const b of d.blocks) for (const [i, l] of b.items.entries()) { const p = parseLine(l); if (p) return { b, i, p }; }
