@@ -540,8 +540,8 @@ test("swaps: same-kind targets keep reps and range, and the calendar shows the n
 test("swap picker: same muscles first, forgiving search", () => {
   const all = [...KNOWN.values()];
   const rdl = KNOWN.get("rdl")!;
-  const top = rankForSwap(all, rdl, "").slice(0, 3).map((e) => e.key);
-  assert.ok(top.includes("db-rdl") && top.includes("sl-db-rdl"), top.join());
+  const top = rankForSwap(all, rdl, "").slice(0, 8).map((e) => e.key);
+  assert.ok(top.includes("db-rdl") && top.includes("sl-db-rdl") && top.includes("deadlift"), top.join());
   assert.ok(!rankForSwap(all, rdl, "").some((e) => e.key === "rdl"), "never offers itself");
   assert.equal(rankForSwap(all, rdl, "").length, all.length - 1, "everything else follows A–Z");
   assert.equal(rankForSwap(all, rdl, "db rdl")[0].key, "db-rdl");
