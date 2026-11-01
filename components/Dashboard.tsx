@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useOptimistic, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useOptimistic, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { weekForDate, PHASE_NAMES, type Move, type PlanSettings, type Week } from "@/lib/plan/generate.ts";
 import { addDays, daysBetween, fmtShort, safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
@@ -21,6 +21,8 @@ import LibraryPanel from "./LibraryPanel";
 import { VideoProvider } from "./VideoModal";
 import { DateLabelsProvider, useDates } from "./DateLabels";
 import { SetsProvider } from "./Sets";
+import { SwapProvider, type SwapApi } from "./SwapSheet";
+import type { Swap } from "@/lib/plan/swaps.ts";
 
 type Tab = "today" | "plan" | "log" | "progress" | "library";
 const TABS: { id: Tab; label: string }[] = [
@@ -38,6 +40,8 @@ export interface DashboardProps {
   skips: string[];
   /** Workouts moved to another day of their week */
   moves: Move[];
+  /** Exercises swapped for another on one plan day */
+  swaps: Swap[];
   sets: SetRow[];
   exercises: ExerciseInfo[];
   today: string;
@@ -78,12 +82,14 @@ function queuedLog(i: LogInput): LogRow {
   };
 }
 
-function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, sets, exercises, today, ai, review }: DashboardProps) {
+const swapId = (planDate: string, from: string) => `${planDate}|${from}`;
+
+function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swaps: serverSwaps, sets, exercises, today, ai, review }: DashboardProps) {
   const [tab, setTab] = useState<Tab>("today");
   const [logDate, setLogDate] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const router = useRouter();
-  const { queue, notify } = useDock();
+  const { queue, notify, send, onRejected } = useDock();
   const [optimisticSkips, applySkip] = useOptimistic(skips, (cur: string[], { date, skip }: { date: string; skip: boolean }) =>
     skip ? [...cur, date] : cur.filter((d) => d !== date),
   );
@@ -114,10 +120,40 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, set
     };
   }, [profile.timezone, today, router]);
 
+  // Swaps: the server's, then any still waiting in the outbox, then ones made here that the server hasn't shown back yet
+  const [localSwaps, setLocalSwaps] = useState<Map<string, string | null>>(() => new Map());
+  const localRef = useRef(localSwaps);
+  localRef.current = localSwaps;
+  const swaps = useMemo(() => {
+    const m = new Map(serverSwaps.map((s) => [swapId(s.planDate, s.from), s.to] as [string, string | null]));
+    for (const op of queue) if (op.t === "swap") m.set(swapId(op.planDate, op.from), op.to);
+    for (const [k, to] of localSwaps) m.set(k, to);
+    return [...m].flatMap(([k, to]) => (to ? [{ planDate: k.split("|")[0], from: k.split("|")[1], to }] : []));
+  }, [serverSwaps, queue, localSwaps]);
+  // Once the server agrees, its row takes over
+  useEffect(() => {
+    setLocalSwaps((cur) => {
+      if (!cur.size) return cur;
+      const server = new Map(serverSwaps.map((s) => [swapId(s.planDate, s.from), s.to]));
+      const next = new Map([...cur].filter(([k, to]) => (server.get(k) ?? null) !== to));
+      return next.size === cur.size ? cur : next;
+    });
+  }, [serverSwaps]);
+  useEffect(
+    () =>
+      onRejected((op) => {
+        if (op.t === "swap") setLocalSwaps((cur) => new Map([...cur].filter(([k]) => k !== swapId(op.planDate, op.from))));
+      }),
+    [onRejected],
+  );
+  const swapsRef = useRef(swaps);
+  swapsRef.current = swaps;
+
+  const byKey = useMemo(() => new Map(exercises.map((e) => [e.key, e])), [exercises]);
   const gatesPending = settings.returningFromInjury && GATES.some((g) => !profile.gates?.[g.key]);
   const { weeks, fitness, warnings } = useMemo(
-    () => planFor({ settings, logs, skips: optimisticSkips, moves: optimisticMoves, gatesPending, today }),
-    [settings, logs, optimisticSkips, optimisticMoves, gatesPending, today],
+    () => planFor({ settings, logs, skips: optimisticSkips, moves: optimisticMoves, gatesPending, today, swaps, exercise: (k) => byKey.get(k) }),
+    [settings, logs, optimisticSkips, optimisticMoves, gatesPending, today, swaps, byKey],
   );
   const thisWeek = weekForDate(weeks, today);
   const daysToTT = daysBetween(today, settings.timeTrialDate);
@@ -148,6 +184,42 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, set
     });
   };
 
+  const swap = useCallback<SwapApi["swap"]>(
+    (planDate, from, to, note) => {
+      const k = swapId(planDate, from);
+      const before = swapsRef.current.find((s) => swapId(s.planDate, s.from) === k)?.to ?? null;
+      const hadLocal = localRef.current.has(k);
+      const prevLocal = localRef.current.get(k);
+      setLocalSwaps((cur) => new Map(cur).set(k, to));
+      const undo = { label: "Undo", run: () => swap(planDate, from, before, "Swap undone.") };
+      // Through the outbox, so a swap made without signal replays before the sets logged after it
+      void send({ id: crypto.randomUUID(), t: "swap", planDate, from, to }).then((r) => {
+        if (r === "sent") notify({ text: note, tone: "good", action: undo });
+        else if (r === "queued") notify({ text: `${note} Saved on this phone. Syncs when you're back online.`, action: undo });
+        else {
+          setLocalSwaps((cur) => {
+            const next = new Map(cur);
+            if (hadLocal) next.set(k, prevLocal ?? null);
+            else next.delete(k);
+            return next;
+          });
+          notify({ text: r.error, tone: "error" });
+        }
+      });
+    },
+    [notify, send],
+  );
+  const swapApi = useMemo<SwapApi>(
+    () => ({
+      swap,
+      openLibrary: () => {
+        setTab("library");
+        window.scrollTo({ top: 0 });
+      },
+    }),
+    [swap],
+  );
+
   const openLog = (date: string) => {
     setLogDate(date);
     setTab("log");
@@ -158,6 +230,7 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, set
     <DateLabelsProvider hide={profile.hide_dates} weeks={weeks}>
       <VideoProvider>
         <SetsProvider initial={sets} unit={profile.weight_unit} today={today} weeks={weeks} exercises={exercises}>
+          <SwapProvider value={swapApi}>
           <GoalHeader settings={settings} fitness={fitness.sec} thisWeek={thisWeek} daysToTT={daysToTT} />
 
           <nav className="sticky top-[env(safe-area-inset-top,0px)] z-10 grid grid-cols-5 gap-1 bg-bg py-1.5" role="tablist">
@@ -196,6 +269,7 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, set
           {tab === "log" && <LogPanel weeks={weeks} logs={logs} today={today} painAreas={profile.pain_areas} initialDate={logDate ?? today} />}
           {tab === "library" && <LibraryPanel />}
           {tab === "progress" && <ProgressPanel logs={logs} settings={settings} painAreas={profile.pain_areas} today={today} />}
+          </SwapProvider>
         </SetsProvider>
       </VideoProvider>
     </DateLabelsProvider>

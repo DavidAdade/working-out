@@ -4,6 +4,7 @@ import { profileToSettings, type LogRow, type ProfileRow, type SetRow } from "@/
 import { builtinRows, type ExerciseInfo } from "@/lib/plan/catalog.ts";
 import { mondayOf, safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
 import type { Move } from "@/lib/plan/generate.ts";
+import type { Swap } from "@/lib/plan/swaps.ts";
 import type { SavedReview } from "@/components/CoachCard";
 import { aiEnabled } from "@/lib/coach/review";
 import Dashboard from "@/components/Dashboard";
@@ -17,7 +18,7 @@ export default async function Home() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: profile }, { data: logs }, { data: skips }, { data: moves }, { data: sets }, { data: exercises }] = await Promise.all([
+  const [{ data: profile }, { data: logs }, { data: skips }, { data: moves }, { data: sets }, { data: exercises }, { data: swaps }] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).single<ProfileRow>(),
     supabase.from("logs").select("*").order("date", { ascending: false }).order("created_at", { ascending: false }).limit(1000).returns<LogRow[]>(),
     supabase.from("day_overrides").select("date").eq("status", "skipped").returns<{ date: string }[]>(),
@@ -29,6 +30,7 @@ export default async function Home() {
       .limit(5000)
       .returns<SetRow[]>(),
     supabase.from("exercises").select("key, name, load, primary_muscles, secondary_muscles, video_ids, video_query, lines, owner").order("name").returns<ExerciseInfo[]>(),
+    supabase.from("exercise_swaps").select("planDate:plan_date, from:from_key, to:to_key").returns<Swap[]>(),
   ]);
   // Built-ins from code fill any gap, e.g. before the first sync has run
   const byKey = new Map(builtinRows().map((e) => [e.key, e]));
@@ -48,6 +50,7 @@ export default async function Home() {
       logs={(logs ?? []).map((l) => ({ ...l, km: l.km == null ? null : Number(l.km) }))}
       skips={(skips ?? []).map((s) => s.date)}
       moves={moves ?? []}
+      swaps={swaps ?? []}
       exercises={[...byKey.values()].sort((a, b) => a.name.localeCompare(b.name))}
       sets={(sets ?? []).map((s) => ({ ...s, weight: s.weight == null ? null : Number(s.weight), weight_kg: s.weight_kg == null ? null : Number(s.weight_kg) }))}
       today={today}

@@ -4,6 +4,8 @@ import { generatePlan, type Move } from "@/lib/plan/generate.ts";
 import { fitness5k } from "@/lib/plan/paces.ts";
 import { safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
 import { planToIcs } from "@/lib/plan/ics.ts";
+import { applySwaps } from "@/lib/plan/swaps.ts";
+import type { Load } from "@/lib/plan/exercises.ts";
 import { profileToSettings, type ProfileRow } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -13,12 +15,18 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
   const token = (await params).token.replace(/\.ics$/, "");
   if (!/^[\w-]{20,64}$/.test(token)) return new Response("Not found", { status: 404 });
   const { data } = await anonClient().rpc("calendar_feed", { p_token: token });
-  const feed = data as { profile: ProfileRow; skips: string[]; moves?: Move[]; tests: { date: string; kind: string; km: number | null; duration_sec: number | null }[] } | null;
+  const feed = data as { profile: ProfileRow; skips: string[]; moves?: Move[]; swaps?: { date: string; from: string; to: string; name: string; load: Load }[]; tests: { date: string; kind: string; km: number | null; duration_sec: number | null }[] } | null;
   const settings = feed ? profileToSettings(feed.profile) : null;
   if (!feed || !settings) return new Response("Not found", { status: 404 });
   const today = todayIn(safeTimeZone(feed.profile.timezone));
   const fitness = fitness5k(settings.current5kSec, feed.tests.map((t) => ({ ...t, km: t.km == null ? null : Number(t.km) })), today);
-  const weeks = generatePlan(settings, { skips: feed.skips, moves: feed.moves ?? [], fitness5kSec: fitness.sec });
+  const swaps = feed.swaps ?? [];
+  const named = new Map(swaps.map((s) => [s.to, { name: s.name, load: s.load }]));
+  const weeks = applySwaps(
+    generatePlan(settings, { skips: feed.skips, moves: feed.moves ?? [], fitness5kSec: fitness.sec }),
+    swaps.map((s) => ({ planDate: s.date, from: s.from, to: s.to })),
+    (key) => named.get(key),
+  );
   const ics = planToIcs(weeks, { name: "WorkoutFlex", uidSeed: createHash("sha256").update(token).digest("hex").slice(0, 12) });
   return new Response(ics, {
     headers: { "Content-Type": "text/calendar; charset=utf-8", "Cache-Control": "private, max-age=900", "Content-Disposition": 'inline; filename="workoutflex.ics"' },

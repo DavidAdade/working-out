@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { MockLanguageModelV4 } from "ai/test";
 import { generatePlan, type PlanSettings } from "../plan/generate.ts";
 import { context, generateReview } from "./review.ts";
+import { applySwaps } from "../plan/swaps.ts";
 import type { LogRow } from "../types.ts";
 
 const settings: PlanSettings = { startDate: "2027-05-03", returningFromInjury: false, timeTrialDate: "2027-09-17", current5kSec: 1980, goal5kSec: 1740 };
@@ -54,4 +55,12 @@ test("review keeps only suggestions the plan allows", async () => {
   }));
   assert.equal(r.summary, "Good week.");
   assert.deepEqual(r.suggestions.map((s) => s.date), ["2027-06-16", "2027-06-18"]);
+});
+
+test("review context names swapped exercises so they are not read as gaps", () => {
+  // Monday 2027-06-14 legs: Romanian deadlift done as Leg curl
+  const weeks = applySwaps(input.weeks, [{ planDate: today, from: "rdl", to: "leg-curl" }], (k) => (k === "leg-curl" ? { name: "Leg curl", load: "weight" as const } : undefined));
+  const c = context({ ...input, weeks, names: new Map([["rdl", "Romanian deadlift"]]) });
+  assert.match(c, /swapped Romanian deadlift → Leg curl \(Mon 2027-06-14\)/);
+  assert.ok(!context(input).includes("chose to swap"));
 });

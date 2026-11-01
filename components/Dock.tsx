@@ -6,12 +6,14 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { addLog, deleteSet, upsertSet, type ActionResult, type LogInput, type SetInput } from "@/app/actions";
+import { addLog, deleteSet, setSwap, upsertSet, type ActionResult, type LogInput, type SetInput } from "@/app/actions";
 
 export type Op =
   | { id: string; t: "set"; input: SetInput }
   | { id: string; t: "unset"; date: string; key: string; setNo: number }
-  | { id: string; t: "log"; input: LogInput };
+  | { id: string; t: "log"; input: LogInput }
+  /** Swap the template exercise `from` on plan day `planDate` for `to`; null puts it back */
+  | { id: string; t: "swap"; planDate: string; from: string; to: string | null };
 
 export type SendResult = "sent" | "queued" | { error: string };
 
@@ -41,6 +43,7 @@ export const useDock = () => {
 function run(op: Op): Promise<ActionResult> {
   if (op.t === "set") return upsertSet(op.input);
   if (op.t === "unset") return deleteSet(op.date, op.key, op.setNo);
+  if (op.t === "swap") return setSwap(op.planDate, op.from, op.to);
   return addLog(op.input);
 }
 

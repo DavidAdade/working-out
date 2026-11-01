@@ -83,7 +83,7 @@ async function main() {
       weight_unit: "kg",
     }),
   });
-  for (const t of ["set_logs", "logs", "day_overrides", "day_moves"]) await api(`/rest/v1/${t}?user_id=eq.${uid}`, { method: "DELETE" });
+  for (const t of ["set_logs", "logs", "day_overrides", "day_moves", "exercise_swaps"]) await api(`/rest/v1/${t}?user_id=eq.${uid}`, { method: "DELETE" });
 
   const skipDate = addDays(start, 7 + 1); // week 2 Tuesday
   const weeks = generatePlan(settings, { skips: [skipDate] });
@@ -159,11 +159,26 @@ async function main() {
 
   await api("/rest/v1/day_overrides", { method: "POST", body: JSON.stringify([{ user_id: uid, date: skipDate, status: "skipped" }]) });
   await api("/rest/v1/logs", { method: "POST", body: JSON.stringify(logs) });
+
+  // One swap on the last lifting day, after its sets were logged: the original's sets stay and show under the
+  // swapped row. Two sets of an exercise that day doesn't have show under "Also logged".
+  const swapDay = days.filter(({ d }) => d.blocks.some((b) => b.items.some((l) => parseLine(l)))).at(-1)?.d;
+  const swapNote: string[] = [];
+  if (swapDay) {
+    const keys = new Set(swapDay.blocks.flatMap((b) => b.items.flatMap((l) => parseLine(l)?.exercise.key ?? [])));
+    const from = [...keys][0];
+    const to = ["db-rdl", "goblet-split-squat", "push-up"].find((k) => !keys.has(k))!;
+    await api("/rest/v1/exercise_swaps", { method: "POST", body: JSON.stringify([{ user_id: uid, plan_date: swapDay.date, from_key: from, to_key: to }]) });
+    const extra = ["hollow-hold", "side-plank", "plank"].find((k) => !keys.has(k))!;
+    for (const n of [1, 2]) sets.push({ user_id: uid, date: swapDay.date, exercise_key: extra, set_no: n, weight: null, unit: "kg", reps: null, duration_sec: 30, light_week: false });
+    swapNote.push(`${from} → ${to} on ${swapDay.date} (also logged: ${extra})`);
+  }
   for (let i = 0; i < sets.length; i += 500) await api("/rest/v1/set_logs", { method: "POST", body: JSON.stringify(sets.slice(i, i + 500)) });
 
   const runs = logs.filter((l) => l.kind !== "strength").length;
   console.log(`seed-test-user: ${email} reset with ${runs} runs/tests, ${logs.length - runs} lifting days, ${sets.length} sets from ${FROM} to ${addDays(today, -1)}.`);
   console.log(`  Plan starts ${start}. Warnings to look for: ${STALLED} (no increase) and ${DROPPED} (dropped ~15%).`);
+  if (swapNote.length) console.log(`  Swap: ${swapNote.join(", ")}.`);
 }
 
 main().catch((e) => {

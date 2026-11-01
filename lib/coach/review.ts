@@ -7,6 +7,7 @@ import { addDays, dowName, type ISODate } from "../plan/dates.ts";
 import { PHASE_NAMES, type Week } from "../plan/generate.ts";
 import { duration } from "../plan/format.ts";
 import { sessions } from "../plan/progress.ts";
+import { swapsShown } from "../plan/swaps.ts";
 import type { Warning } from "../plan/warnings.ts";
 import type { LogRow, SetRow } from "../types.ts";
 
@@ -58,12 +59,16 @@ export function context(o: { name: string | null; weeks: Week[]; logs: LogRow[];
   const coming = planned.filter(({ d }) => d.date >= o.today && d.date < addDays(o.today, 7));
   const line = ({ w, d }: { w: Week; d: Week["days"][number] }) =>
     `${d.date} ${dowName(d.date)} [${PHASE_NAMES[w.phase]}${w.cutback ? ", cutback" : ""}] ${d.skipped ? "SKIPPED" : d.blocks.map((b) => b.title).join(" + ")}${d.skippable && !d.skipped ? "" : " (can't skip)"}`;
+  const swapped = swapsShown(o.weeks)
+    .filter((s) => s.date >= addDays(o.today, -7) && s.date < addDays(o.today, 7))
+    .map((s) => `swapped ${o.names.get(s.from) ?? s.from} → ${s.name} (${dowName(s.date)} ${s.date})`);
   return [
     `Today: ${o.today} (${dowName(o.today)}). Athlete: ${o.name ?? "runner"}. Current 5K fitness ${o.fitness}, goal ${o.goal}.`,
     o.warnings.length ? `App warnings now: ${o.warnings.map((w) => w.message).join(" ")}` : "No pain warnings right now.",
     `Last 7 days planned vs done:\n${past.map((x) => `${line(x)} → ${loggedDates.has(x.d.date) ? "done" : x.d.skipped ? "skipped" : "nothing logged"}`).join("\n") || "none"}`,
     `Sessions and check-ins, last 3 weeks:\n${runs.join("\n") || "none"}`,
     `Lifts, last 3 weeks (oldest → newest):\n${lifts.join("\n") || "none"}`,
+    ...(swapped.length ? [`Exercises the athlete chose to swap (planned on purpose, not gaps):\n${swapped.join("\n")}`] : []),
     `Coming 7 days (suggestions must use these dates):\n${coming.map(line).join("\n")}`,
   ].join("\n\n");
 }

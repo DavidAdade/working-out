@@ -3,6 +3,7 @@
 
 import { addDays, type ISODate } from "./dates.ts";
 import { dayTitle, type Week } from "./generate.ts";
+import { itemLine } from "./swaps.ts";
 
 const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
 const ymd = (d: ISODate) => d.replace(/-/g, "");
@@ -36,7 +37,7 @@ export function planToIcs(weeks: Week[], { name, uidSeed, now = new Date() }: { 
   for (const w of weeks)
     for (const d of w.days) {
       if (d.skipped || !d.blocks.length) continue;
-      const desc = d.blocks.map((b) => `${b.title}\n${b.items.map((i) => `• ${i}`).join("\n")}${b.note ? `\n${b.note}` : ""}`).join("\n\n");
+      const desc = d.blocks.map((b) => `${b.title}\n${b.items.map((_, i) => `• ${itemLine(b, i)}`).join("\n")}${b.note ? `\n${b.note}` : ""}`).join("\n\n");
       lines.push(
         "BEGIN:VEVENT",
         `UID:${d.date}-${uidSeed}@sub30`,

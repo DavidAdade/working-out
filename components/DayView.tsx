@@ -3,9 +3,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Block, BlockKind } from "@/lib/plan/templates.ts";
 import { dayTitle, type Day } from "@/lib/plan/generate.ts";
-import { daysBetween } from "@/lib/plan/dates.ts";
+import { daysBetween, dowName } from "@/lib/plan/dates.ts";
 import { parseLine } from "@/lib/plan/exercises.ts";
-import { ExerciseRow, planDayOf, useSets } from "./Sets";
+import { itemKey } from "@/lib/plan/swaps.ts";
+import type { SetRow } from "@/lib/types";
+import { ExerciseRow, fmtSet, planDayOf, useSets } from "./Sets";
+import { SwapSheet, useSwap } from "./SwapSheet";
 
 const CHIP: Record<BlockKind, { label: string; cls: string }> = {
   run: { label: "Run", cls: "bg-accent text-on-accent" },
@@ -53,7 +56,9 @@ export function DayBlocks({
   today: string;
   logOpen?: boolean;
 }) {
-  const { sets } = useSets();
+  const { sets, info, nameOf, unit, openHistory } = useSets();
+  const swapApi = useSwap();
+  const [swapping, setSwapping] = useState<{ bi: number; ii: number } | null>(null);
   // Past days and today log on their own date; the next week's workouts can be done early and log under today
   const early = day.date > today && daysBetween(today, day.date) < 7;
   const logDate = day.date <= today ? day.date : early ? today : null;
@@ -66,7 +71,8 @@ export function DayBlocks({
         LIFT_KINDS.includes(b.kind)
           ? b.items.flatMap((line, ii) => {
               const p = parseLine(line);
-              return p ? [{ id: `${bi}-${ii}`, key: p.exercise.key, sets: b.light ? Math.min(p.target.sets, 2) : p.target.sets }] : [];
+              // A swapped line counts the exercise swapped in
+              return p ? [{ id: `${bi}-${ii}`, key: itemKey(b, ii) ?? p.exercise.key, sets: b.light ? Math.min(p.target.sets, 2) : p.target.sets }] : [];
             })
           : [],
       ),
@@ -83,6 +89,48 @@ export function DayBlocks({
     // Only on first render: re-running would reopen rows you closed
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Sets on this plan day under an exercise the day doesn't show (swapped out and back, a deleted custom
+  // exercise, logged from the Library): never lost, listed at the end. A swapped row shows its own original's.
+  const stray = useMemo(() => {
+    const shown = new Set(order.map((x) => x.key));
+    for (const b of day.blocks) for (const s of Object.values(b.swaps ?? {})) shown.add(s.from);
+    const byKey = new Map<string, SetRow[]>();
+    for (const s of sets) if (planDayOf(s) === day.date && !shown.has(s.exercise_key)) byKey.set(s.exercise_key, [...(byKey.get(s.exercise_key) ?? []), s]);
+    return [...byKey].map(([key, rows]) => ({ key, rows: rows.sort((a, b) => a.set_no - b.set_no) }));
+  }, [order, day.blocks, day.date, sets]);
+
+  const where = day.date === today ? "today" : `on ${dowName(day.date)}`;
+  const closeSwap = (focusId?: string) => {
+    setSwapping(null);
+    if (focusId) requestAnimationFrame(() => document.getElementById(`swap-ex-${day.date}-${focusId}`)?.focus({ preventScroll: true }));
+  };
+  const sheet = (() => {
+    if (!swapping || !swapApi) return null;
+    const b = day.blocks[swapping.bi];
+    const p = b && parseLine(b.items[swapping.ii]);
+    const original = p && info(p.exercise.key);
+    if (!b || !p || !original) return null;
+    const sw = b.swaps?.[swapping.ii];
+    const current = (sw && info(sw.to)) || (sw ? { key: sw.to, name: sw.name } : original);
+    const id = `${swapping.bi}-${swapping.ii}`;
+    const planDate = b.planDate ?? day.date;
+    return (
+      <SwapSheet
+        original={original}
+        current={current}
+        target={p.target}
+        light={!!b.light || !!b.foldedFrom}
+        inDay={new Set(order.filter((x) => x.id !== id).map((x) => x.key))}
+        logged={sets.filter((s) => planDayOf(s) === day.date && s.exercise_key === current.key)}
+        onClose={() => closeSwap(id)}
+        onPick={(to) => {
+          closeSwap(id);
+          swapApi.swap(planDate, original.key, to.key === original.key ? null : to.key, to.key === original.key ? `${original.name} is back.` : `Swapped ${current.name} for ${to.name} ${where}.`);
+        }}
+      />
+    );
+  })();
 
   const advanceFrom = (id: string) => {
     const i = order.findIndex((x) => x.id === id);
@@ -120,6 +168,9 @@ export function DayBlocks({
             <ul className="flex flex-col divide-y divide-line">
               {b.items.map((line, ii) => {
                 const id = `${bi}-${ii}`;
+                const sw = b.swaps?.[ii];
+                const from = sw ? info(sw.from) : undefined;
+                const canSwap = !!swapApi && !!parseLine(line);
                 return (
                   <ExerciseRow
                       key={id}
@@ -132,6 +183,13 @@ export function DayBlocks({
                       open={openId === id}
                       onToggle={() => setOpenId((cur) => (cur === id ? null : id))}
                       onComplete={() => advanceFrom(id)}
+                      swap={sw}
+                      onSwap={canSwap ? () => setSwapping({ bi, ii }) : undefined}
+                      onPutBack={
+                        sw && swapApi
+                          ? () => swapApi.swap(b.planDate ?? day.date, sw.from, null, `${from?.name ?? nameOf(sw.from)} is back.`)
+                          : undefined
+                      }
                     />
                 );
               })}
@@ -142,6 +200,25 @@ export function DayBlocks({
           <SimpleBlock key={b.title + bi} block={b} />
         ),
       )}
+      {stray.length > 0 && (
+        <div className="flex flex-col">
+          <div className="label">Also logged</div>
+          <ul className="flex flex-col divide-y divide-line">
+            {stray.map(({ key, rows }) => (
+              <li key={key}>
+                <button type="button" onClick={() => openHistory(key, rows[0].date)} className="flex min-h-11 w-full items-center gap-2 text-left text-sm">
+                  <span className="min-w-0 flex-1 break-words">
+                    {nameOf(key)} · {rows.length} set{rows.length === 1 ? "" : "s"}
+                  </span>
+                  <span className="whitespace-nowrap font-mono text-xs text-muted">{rows.map((x) => fmtSet(x, unit)).join(", ")}</span>
+                  <span aria-hidden className="text-muted">›</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {sheet}
       {(onMove || (onSkip && day.skippable)) && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           {onMove && (

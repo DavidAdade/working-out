@@ -10,7 +10,8 @@ import { builtinRows, customKey, youtubeId } from "./catalog.ts";
 import { MUSCLES, regionOf } from "./muscles.ts";
 import { bestOn, compareSession, sessions, suggestWeight, type SetLike } from "./progress.ts";
 import { fitness5k, goalPace } from "./paces.ts";
-import { adaptPlan } from "./adapt.ts";
+import { adaptPlan, planFor } from "./adapt.ts";
+import { applySwaps, itemKey, itemLine, rankForSwap, searchScore, swapTarget, swapsShown, targetLine } from "./swaps.ts";
 import { onTrack, wins } from "./ontrack.ts";
 import { planToIcs } from "./ics.ts";
 import { addDays } from "./dates.ts";
@@ -438,4 +439,115 @@ test("moved days: pain changes and the calendar follow the new date", () => {
   assert.equal(ease.flatMap((x) => x.days).find((d) => d.date === at(wk, 5))!.blocks[0].title, "Easy 20 min");
   const ics = planToIcs(plan, { name: "WorkoutFlex", uidSeed: "abc", now: new Date("2026-10-25T12:00:00Z") });
   assert.ok(ics.includes(`UID:${at(wk, 5)}-abc`) && !ics.includes(`UID:${at(wk, 2)}-abc`));
+});
+
+/* ---------- exercise swaps ---------- */
+const KNOWN = new Map(builtinRows().map((e) => [e.key, e] as const));
+// A custom exercise has no template lines; swaps must still work for it
+KNOWN.set("goblet-squat-abc123", { key: "goblet-squat-abc123", name: "Goblet squat", load: "weight", primary_muscles: ["quads", "glutes"], secondary_muscles: [], video_ids: [], video_query: null, lines: [], owner: "u1" });
+const lookup = (k: string) => KNOWN.get(k);
+const firstLift = (d: Week["days"][number]) => {
+  for (const b of d.blocks) for (const [i, l] of b.items.entries()) { const p = parseLine(l); if (p) return { b, i, p }; }
+  return null;
+};
+const findSwap = (w: Week, from: string) => w.days.flatMap((d) => d.blocks.flatMap((b) => Object.values(b.swaps ?? {}).filter((s) => s.from === from).map((s) => ({ d, b, s }))));
+
+test("swaps: shown on the day, keep sets, follow a move, every profile", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const wk = generatePlan(p).find((w) => w.phase === "build" && !w.cutback)!;
+    const mon = firstLift(wk.days[0])!;
+    const from = mon.p.exercise.key;
+    const swap = { planDate: at(wk, 0), from, to: "goblet-squat-abc123" };
+    const w = weekForDate(applySwaps(generatePlan(p), [swap], lookup), wk.start)!;
+    const s = w.days[0].blocks.find((b) => b.title === mon.b.title)!.swaps![mon.i];
+    assert.equal(s.to, "goblet-squat-abc123", name);
+    assert.equal(s.target.sets, mon.p.target.sets, `${name}: sets stay`);
+    assert.match(itemLine(w.days[0].blocks.find((b) => b.title === mon.b.title)!, mon.i), /^Goblet squat, \d×/);
+    assert.equal(itemKey(w.days[0].blocks.find((b) => b.title === mon.b.title)!, mon.i), "goblet-squat-abc123");
+    // Template text is untouched
+    assert.equal(w.days[0].blocks.find((b) => b.title === mon.b.title)!.items[mon.i], mon.b.items[mon.i]);
+
+    // Monday's workout moved to Tuesday: the swap goes with it
+    const moved = weekForDate(applySwaps(generatePlan(p, { moves: moveDay(wk, at(wk, 0), at(wk, 1))! }), [swap], lookup), wk.start)!;
+    const hit = findSwap(moved, from);
+    assert.equal(hit.length, 1, name);
+    assert.equal(hit[0].d.date, at(wk, 1), `${name}: swap shows on the day the workout moved to`);
+  }
+});
+
+test("swaps: follow upper body folded after a skip, every profile", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const wk = generatePlan(p).find((w) => w.phase === "build" && !w.cutback)!;
+    const thu = wk.days.find((d) => d.date === at(wk, 3))!;
+    const upper = thu.blocks.find((b) => b.carry)!;
+    const from = parseLine(upper.items[0])!.exercise.key;
+    const w = weekForDate(applySwaps(generatePlan(p, { skips: [at(wk, 3)] }), [{ planDate: at(wk, 3), from, to: "lateral-raise" }], lookup), wk.start)!;
+    const hit = findSwap(w, from).filter((x) => !x.d.skipped);
+    assert.equal(hit.length, 1, name);
+    assert.equal(hit[0].b.foldedFrom, "Thu", name);
+    assert.equal(hit[0].b.planDate, at(wk, 3), `${name}: folded block keeps its plan date`);
+  }
+});
+
+test("swaps: stale rows are ignored, targets convert, light weeks, applying twice", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const plan = generatePlan(p);
+    const wk = plan.find((w) => w.phase === "build" && !w.cutback)!;
+    const mon = firstLift(wk.days[0])!;
+    const from = mon.p.exercise.key;
+    // Original not on that plan day any more (Tuesday is a run), or an exercise that's gone
+    assert.equal(findSwap(weekForDate(applySwaps(plan, [{ planDate: at(wk, 1), from, to: "plank" }], lookup), wk.start)!, from).length, 0, name);
+    assert.equal(findSwap(weekForDate(applySwaps(plan, [{ planDate: at(wk, 0), from, to: "deleted-thing-abc123" }], lookup), wk.start)!, from).length, 0, name);
+
+    // Reps to seconds and back: same sets, 30 s or 10 reps
+    const timed = findSwap(weekForDate(applySwaps(plan, [{ planDate: at(wk, 0), from, to: "plank" }], lookup), wk.start)!, from)[0].s;
+    assert.deepEqual([timed.target.sets, timed.target.sec, timed.target.reps], [mon.p.target.sets, 30, null], name);
+    const wed = wk.days[2].blocks.flatMap((b) => b.items.map((l, i) => ({ b, i, p: parseLine(l) }))).find((x) => x.p?.exercise.load === "time")!;
+    const reps = findSwap(weekForDate(applySwaps(plan, [{ planDate: at(wk, 2), from: wed.p!.exercise.key, to: "dead-bug" }], lookup), wk.start)!, wed.p!.exercise.key)[0].s;
+    assert.deepEqual([reps.target.sets, reps.target.reps, reps.target.sec], [wed.p!.target.sets, 10, null], name);
+
+    // Light week: the block stays light, so the row shows at most 2 sets whatever the exercise
+    const cut = plan.find((w) => w.cutback);
+    if (cut) {
+      const cm = firstLift(cut.days[0])!;
+      const hit = findSwap(weekForDate(applySwaps(plan, [{ planDate: at(cut, 0), from: cm.p.exercise.key, to: "goblet-squat-abc123" }], lookup), cut.start)!, cm.p.exercise.key)[0];
+      assert.ok(hit.b.light, name);
+      assert.equal(Math.min(hit.s.target.sets, hit.b.light ? 2 : 99), 2, name);
+    }
+
+    // Idempotent, and putting it back (no row) removes the overlay
+    const once = applySwaps(plan, [{ planDate: at(wk, 0), from, to: "plank" }], lookup);
+    assert.deepEqual(applySwaps(once, [{ planDate: at(wk, 0), from, to: "plank" }], lookup), once, name);
+    assert.equal(findSwap(weekForDate(applySwaps(once, [], lookup), wk.start)!, from).length, 0, name);
+  }
+});
+
+test("swaps: same-kind targets keep reps and range, and the calendar shows the new name", () => {
+  const t = swapTarget({ sets: 3, reps: 8, repsMax: 10, sec: null, each: true }, "bodyweight");
+  assert.deepEqual(t, { sets: 3, reps: 8, repsMax: 10, sec: null, each: true });
+  assert.equal(targetLine("Hammer curl", t), "Hammer curl, 3×8–10 each");
+  assert.equal(targetLine("Side plank", { sets: 2, reps: null, repsMax: null, sec: 30, each: false }), "Side plank, 2×30s");
+  const wk = generatePlan(david).find((w) => w.phase === "build" && !w.cutback)!;
+  const mon = firstLift(wk.days[0])!;
+  const plan = applySwaps(generatePlan(david), [{ planDate: at(wk, 0), from: mon.p.exercise.key, to: "goblet-squat-abc123" }], lookup);
+  const ics = planToIcs(plan, { name: "WorkoutFlex", uidSeed: "abc", now: new Date("2026-10-25T12:00:00Z") });
+  assert.ok(ics.replace(/\r\n /g, "").includes("Goblet squat\\, 3×"));
+  // planFor applies them as well
+  const shown = planFor({ settings: david, logs: [], skips: [], moves: [], gatesPending: false, today: wk.start, swaps: [{ planDate: at(wk, 0), from: mon.p.exercise.key, to: "goblet-squat-abc123" }], exercise: lookup });
+  assert.equal(swapsShown(shown.weeks).filter((s) => s.date === at(wk, 0)).length, 1);
+});
+
+test("swap picker: same muscles first, forgiving search", () => {
+  const all = [...KNOWN.values()];
+  const rdl = KNOWN.get("rdl")!;
+  const top = rankForSwap(all, rdl, "").slice(0, 3).map((e) => e.key);
+  assert.ok(top.includes("db-rdl") && top.includes("sl-db-rdl"), top.join());
+  assert.ok(!rankForSwap(all, rdl, "").some((e) => e.key === "rdl"), "never offers itself");
+  assert.equal(rankForSwap(all, rdl, "").length, all.length - 1, "everything else follows A–Z");
+  assert.equal(rankForSwap(all, rdl, "db rdl")[0].key, "db-rdl");
+  assert.equal(rankForSwap(all, rdl, "bulgarain")[0].key, "bulgarian-split-squat", "one typo");
+  assert.ok(rankForSwap(all, rdl, "hamstrings", (id) => MUSCLES.find((m) => m.id === id)?.name ?? id).some((e) => e.key === "leg-curl"), "by muscle");
+  assert.ok(rankForSwap(all, rdl, "goblet").some((e) => e.key === "goblet-squat-abc123"), "custom exercises too");
+  assert.deepEqual(rankForSwap(all, rdl, "zzqx"), []);
+  assert.ok(searchScore("lat pull", "Lat pulldown", []) > searchScore("lt", "Lat pulldown", []));
 });

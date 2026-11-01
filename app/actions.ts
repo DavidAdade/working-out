@@ -12,7 +12,8 @@ import { builtinRows } from "@/lib/plan/catalog.ts";
 import { aiEnabled, generateReview, type Review } from "@/lib/coach/review";
 import { MIN_RACE_GAP_WEEKS, type Move } from "@/lib/plan/generate.ts";
 import { GATES, profileToSettings, type LogKind, type LogRow, type ProfileRow, type SetRow, type Unit } from "@/lib/types";
-import { exerciseByKey } from "@/lib/plan/exercises.ts";
+import { exerciseByKey, type Load } from "@/lib/plan/exercises.ts";
+import type { Swap } from "@/lib/plan/swaps.ts";
 import { customKey, youtubeId } from "@/lib/plan/catalog.ts";
 import { MUSCLES } from "@/lib/plan/muscles.ts";
 
@@ -151,6 +152,34 @@ export async function setWeekMoves(week: string, moves: Move[]): Promise<ActionR
   if (!ok || new Set(moves.map((m) => m.from)).size !== moves.length || new Set(moves.map((m) => m.to)).size !== moves.length) return { ok: false, error: "That move doesn't fit this week." };
   const { error } = await supabase.rpc("set_week_moves", { p_week: week, p_moves: moves.map(({ from, to }) => ({ from, to })) });
   if (error) return { ok: false, error: "Couldn't move that day." };
+  revalidatePath("/");
+  return { ok: true };
+}
+
+/* ---------- swap an exercise on one plan day ---------- */
+const KEY = /^[a-z0-9-]{1,40}$/;
+
+/**
+ * `from` is the template exercise on the plan day `planDate` (the plan's own date, before moves);
+ * `to` null, or the same as `from`, puts the original back. Logged sets are never touched.
+ */
+export async function setSwap(planDate: string, from: string, to: string | null): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  if (!ISO.test(planDate) || !KEY.test(from) || !exerciseByKey(from) || (to != null && !KEY.test(to))) return { ok: false, error: "Couldn't swap that exercise." };
+  if (to == null || to === from) {
+    const { error } = await supabase.from("exercise_swaps").delete().eq("user_id", user.id).eq("plan_date", planDate).eq("from_key", from);
+    if (error) return { ok: false, error: "Couldn't put it back. Try again." };
+  } else {
+    if (!exerciseByKey(to)) {
+      // Not a built-in: it has to be one of this person's own exercises (RLS hides everyone else's)
+      const { data } = await supabase.from("exercises").select("key").eq("key", to).maybeSingle();
+      if (!data) return { ok: false, error: "That exercise is gone. Pick another." };
+    }
+    const { error } = await supabase
+      .from("exercise_swaps")
+      .upsert({ user_id: user.id, plan_date: planDate, from_key: from, to_key: to, created_at: new Date().toISOString() }, { onConflict: "user_id,plan_date,from_key" });
+    if (error) return { ok: false, error: "Couldn't swap that exercise. Try again." };
+  }
   revalidatePath("/");
   return { ok: true };
 }
@@ -334,6 +363,8 @@ export async function deleteExercise(key: string): Promise<ActionResult> {
   // Built-ins have no owner, so this only ever removes your own. Logged sets stay in your history.
   const { error } = await supabase.from("exercises").delete().eq("key", key).eq("owner", user.id);
   if (error) return { ok: false, error: "Couldn't delete. Try again." };
+  // Days it was swapped in on go back to their planned exercise (the plan ignores those rows anyway)
+  await supabase.from("exercise_swaps").delete().eq("user_id", user.id).eq("to_key", key);
   revalidatePath("/");
   return { ok: true };
 }
@@ -378,18 +409,21 @@ export async function weeklyReview(refresh = false): Promise<ReviewResult> {
   if (!aiEnabled()) return { ok: false, error: "The AI check-in is turned off." };
 
   const from = addDays(today, -60);
-  const [{ data: logs }, { data: sets }, { data: skips }, { data: moves }, { data: exercises }] = await Promise.all([
+  const [{ data: logs }, { data: sets }, { data: skips }, { data: moves }, { data: exercises }, { data: swaps }] = await Promise.all([
     supabase.from("logs").select("*").gte("date", from).order("date", { ascending: false }).returns<LogRow[]>(),
     supabase.from("set_logs").select("id, date, exercise_key, set_no, weight, unit, weight_kg, reps, duration_sec, light_week, plan_date").gte("date", from).returns<SetRow[]>(),
     supabase.from("day_overrides").select("date").eq("status", "skipped").returns<{ date: string }[]>(),
     supabase.from("day_moves").select("from:from_date, to:to_date").returns<Move[]>(),
-    supabase.from("exercises").select("key, name").returns<{ key: string; name: string }[]>(),
+    supabase.from("exercises").select("key, name, load").returns<{ key: string; name: string; load: Load }[]>(),
+    supabase.from("exercise_swaps").select("planDate:plan_date, from:from_key, to:to_key").gte("plan_date", addDays(today, -21)).returns<Swap[]>(),
   ]);
   const cleanLogs = (logs ?? []).map((l) => ({ ...l, km: l.km == null ? null : Number(l.km) }));
   const cleanSets = (sets ?? []).map((s) => ({ ...s, weight_kg: s.weight_kg == null ? null : Number(s.weight_kg) }));
   const gatesPending = settings.returningFromInjury && GATES.some((g) => !profile.gates?.[g.key]);
-  const { weeks, fitness, warnings } = planFor({ settings, logs: cleanLogs, skips: (skips ?? []).map((s) => s.date), moves: moves ?? [], gatesPending, today });
-  const names = new Map([...builtinRows().map((e) => [e.key, e.name] as const), ...(exercises ?? []).map((e) => [e.key, e.name] as const)]);
+  const known = new Map<string, { name: string; load: Load }>([...builtinRows().map((e) => [e.key, e] as const), ...(exercises ?? []).map((e) => [e.key, e] as const)]);
+  // Swaps included, so a swapped-out exercise doesn't read as a gap and the coming week shows what's really planned
+  const { weeks, fitness, warnings } = planFor({ settings, logs: cleanLogs, skips: (skips ?? []).map((s) => s.date), moves: moves ?? [], gatesPending, today, swaps: swaps ?? [], exercise: (k) => known.get(k) });
+  const names = new Map([...known].map(([k, e]) => [k, e.name] as const));
 
   let review: Review;
   try {

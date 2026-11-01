@@ -6,7 +6,9 @@ import { useDock, type SendResult } from "./Dock";
 import { weekForDate, type Week } from "@/lib/plan/generate.ts";
 import { parseLine, videoForLine, type Exercise, type Target } from "@/lib/plan/exercises.ts";
 import { asExercise, type ExerciseInfo } from "@/lib/plan/catalog.ts";
+import { itemKey } from "@/lib/plan/swaps.ts";
 import type { ExerciseVideo } from "@/lib/plan/videos.ts";
+import type { ItemSwap } from "@/lib/plan/templates.ts";
 import { deleteExercise } from "@/app/actions";
 import MuscleMap, { MuscleChips } from "./MuscleMap";
 import { compareSession, sessions, suggestWeight, toUnit, type Change, type Session } from "@/lib/plan/progress.ts";
@@ -274,14 +276,21 @@ export interface RowProps {
   onToggle: () => void;
   /** Called once when the last planned set is ticked */
   onComplete: () => void;
+  /** The exercise swapped in for this line on this day, if any */
+  swap?: ItemSwap;
+  /** Opens the swap sheet; left out where swapping isn't offered */
+  onSwap?: () => void;
+  /** Puts the template exercise back */
+  onPutBack?: () => void;
 }
 
-export function ExerciseRow({ anchorId, line, logDate: planLogDate, planDate, light, dayTitle, open, onToggle, onComplete }: RowProps) {
+export function ExerciseRow({ anchorId, line, logDate: planLogDate, planDate, light, dayTitle, open, onToggle, onComplete, swap, onSwap, onPutBack }: RowProps) {
   const parsed = parseLine(line);
-  const { sets, unit, today, openHistory } = useSets();
+  const { sets, unit, today, openHistory, info, nameOf } = useSets();
   const dates = useDates();
   const openVideo = useOpenVideo();
-  const video = videoForLine(line);
+  const swappedIn = swap ? info(swap.to) : undefined;
+  const video = swap ? (swappedIn ? videoFromInfo(swappedIn) : null) : videoForLine(line);
   // Far-off days open read-only; "Log it today" switches this row to logging under today
   const [logToday, setLogToday] = useState(false);
   if (!parsed) {
@@ -293,7 +302,26 @@ export function ExerciseRow({ anchorId, line, logDate: planLogDate, planDate, li
     );
   }
   const logDate = planLogDate ?? (logToday ? today : null);
-  const { exercise, target, name } = parsed;
+  // A swapped row logs, suggests weights and shows history under the exercise swapped in
+  const exercise: Exercise = swap ? (swappedIn ? asExercise(swappedIn) : { key: swap.to, name: swap.name, load: swap.load, lines: [] }) : parsed.exercise;
+  const target: Target = swap ? swap.target : parsed.target;
+  const name = swap ? swap.name : parsed.name;
+  // Sets logged for the original before the swap: never moved, shown read-only under the row
+  const before = swap ? sets.filter((s) => planDayOf(s) === planDate && s.exercise_key === swap.from).sort((a, b) => a.set_no - b.set_no) : [];
+  const swapButtons = (onSwap || (swap && onPutBack)) && (
+    <>
+      {onSwap && (
+        <button type="button" className="btn-ghost px-3 text-xs" onClick={onSwap}>
+          Swap
+        </button>
+      )}
+      {swap && onPutBack && (
+        <button type="button" className="btn-ghost px-3 text-xs" onClick={onPutBack}>
+          Put back
+        </button>
+      )}
+    </>
+  );
   const sized = light ? { ...target, sets: Math.min(target.sets, 2) } : target;
   const done = logDate ? sets.filter((s) => planDayOf(s) === planDate && s.exercise_key === exercise.key).sort((a, b) => a.set_no - b.set_no) : [];
   const complete = done.length >= sized.sets;
@@ -307,8 +335,9 @@ export function ExerciseRow({ anchorId, line, logDate: planLogDate, planDate, li
       <div className="flex min-h-11 items-center gap-1">
         {video ? <VideoButton onClick={() => openVideo(video)} label={video.name} /> : <span className="w-11 flex-none" />}
         <button type="button" aria-expanded={open} onClick={onToggle} className="flex min-h-11 min-w-0 flex-1 items-center gap-2 text-left">
-          <span className="min-w-0 flex-1">
+          <span className="min-w-0 flex-1 break-words">
             <span className="font-medium">{name}</span> <span className="whitespace-nowrap font-mono text-[0.8rem] text-muted">{targetText}</span>
+            {swap && <span className="block text-xs text-muted">⇄ Swapped from {nameOf(swap.from)}</span>}
           </span>
           {logDate && (
             <span
@@ -323,14 +352,33 @@ export function ExerciseRow({ anchorId, line, logDate: planLogDate, planDate, li
             ▾
           </span>
         </button>
+        {onSwap && (
+          <button
+            type="button"
+            id={anchorId ? `swap-${anchorId}` : undefined}
+            onClick={onSwap}
+            aria-label={`Swap ${name}`}
+            className="flex h-11 w-11 flex-none items-center justify-center rounded-lg text-lg text-muted active:bg-sunk"
+          >
+            <span aria-hidden>⇄</span>
+          </button>
+        )}
       </div>
+      {before.length > 0 && swap && (
+        <button type="button" onClick={() => openHistory(swap.from, before[0].date)} className="ml-11 flex min-h-11 items-center gap-1 text-left text-xs text-muted">
+          <span>
+            {nameOf(swap.from)}: {before.length} set{before.length === 1 ? "" : "s"} logged · <span className="font-mono">{before.map((x) => fmtSet(x, unit)).join(", ")}</span>
+          </span>
+          <span aria-hidden>›</span>
+        </button>
+      )}
       {change && (
         <div className="mb-2 ml-11">
           <ChangeBanner change={change} exerciseKey={exercise.key} />
         </div>
       )}
       {open && logDate && (
-        <SetTable exercise={exercise} target={sized} date={logDate} planDate={planDate} light={light} dayTitle={dayTitle} done={done} onCollapse={onToggle} onComplete={onComplete} />
+        <SetTable key={exercise.key} exercise={exercise} target={sized} date={logDate} planDate={planDate} light={light} dayTitle={dayTitle} done={done} onCollapse={onToggle} onComplete={onComplete} actions={swapButtons} />
       )}
       {open && !logDate && (
         <div className="mb-2 ml-11 flex flex-col gap-1.5 text-sm">
@@ -350,6 +398,7 @@ export function ExerciseRow({ anchorId, line, logDate: planLogDate, planDate, li
             <button type="button" className="btn-ghost px-3 text-xs" onClick={() => openHistory(exercise.key)}>
               History
             </button>
+            {swapButtons}
           </div>
         </div>
       )}
@@ -380,8 +429,11 @@ function SetTable({
   onCollapse,
   onComplete,
   inset = true,
+  actions,
 }: {
   inset?: boolean;
+  /** More buttons for the row's action bar, e.g. Swap */
+  actions?: React.ReactNode;
   exercise: Exercise;
   target: Target;
   date: string;
@@ -471,6 +523,7 @@ function SetTable({
         <button type="button" className="btn-ghost px-3 text-xs" onClick={() => openHistory(exercise.key)}>
           History
         </button>
+        {actions}
         {target.each && <span className="text-xs text-muted">Log one side&apos;s reps</span>}
         <button type="button" className="btn-ghost ml-auto px-3 text-xs" onClick={onCollapse} aria-label={`Collapse ${exercise.name}`}>
           Collapse ▴
@@ -626,7 +679,7 @@ function ExerciseSheet({ exerciseKey, focus, onClose }: { exerciseKey: string; f
   const [confirmDelete, setConfirmDelete] = useState(false);
   // Which plan sessions use it: "Legs: rebuild (gym)", …
   const usedIn = useMemo(
-    () => [...new Set(weeks.flatMap((w) => w.days.flatMap((d) => d.blocks.filter((b) => b.items.some((l) => parseLine(l)?.exercise.key === exerciseKey)).map((b) => b.title))))],
+    () => [...new Set(weeks.flatMap((w) => w.days.flatMap((d) => d.blocks.filter((b) => b.items.some((_, i) => itemKey(b, i) === exerciseKey)).map((b) => b.title))))],
     [weeks, exerciseKey],
   );
 

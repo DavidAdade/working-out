@@ -294,7 +294,8 @@ export function generatePlan(s: PlanSettings, opts: GenerateOptions = {}): Week[
   return weeks;
 
   function mk(ws: ISODate, offset: number, blocks: Block[]): Day {
-    return { date: addDays(ws, offset), blocks: blocks.map((b) => ({ ...b })), skipped: false, skippable: true, fixed: false, alerts: [] };
+    const date = addDays(ws, offset);
+    return { date, blocks: blocks.map((b) => ({ ...b, planDate: date })), skipped: false, skippable: true, fixed: false, alerts: [] };
   }
 }
 

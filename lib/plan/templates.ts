@@ -15,6 +15,22 @@ export interface Block {
   foldedFrom?: string;
   /** Light week: 2 sets, so weight comparisons skip it */
   light?: boolean;
+  /** The date the plan put this block on, before moves and folds. Exercise swaps are keyed by it */
+  planDate?: string;
+  /** Exercises the person swapped, by item index (see swaps.ts). `items` keep the template text */
+  swaps?: Record<number, ItemSwap>;
+}
+
+/** One template line shown as another exercise. `target` keeps the original's sets */
+export interface ItemSwap {
+  /** The template exercise's key */
+  from: string;
+  to: string;
+  name: string;
+  load: "weight" | "bodyweight" | "time";
+  target: { sets: number; reps: number | null; repsMax: number | null; sec: number | null; each: boolean };
+  /** The line as shown, e.g. "Hack squat, 3×8–10" */
+  line: string;
 }
 
 type Template = Omit<Block, "kind"> & { kind?: BlockKind };
