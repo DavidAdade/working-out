@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createHash } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
+import { checkUser } from "@/lib/supabase/user";
 import { duration, parseDuration } from "@/lib/plan/format.ts";
 import { addDays, daysBetween, isMonday, isTimeZone, mondayOf, safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
 import { planFor } from "@/lib/plan/adapt.ts";
@@ -23,9 +24,9 @@ export type ActionResult = { ok: true } | { ok: false, error: string, values?: R
 
 async function requireUser() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user, transient } = await checkUser(supabase);
+  // A hiccup throws like a dropped connection, so the outbox keeps the write and retries; only a real sign-out goes to /login
+  if (transient) throw new Error("Couldn't reach the server");
   if (!user) redirect("/login");
   return { supabase, user };
 }

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { checkUser } from "@/lib/supabase/user";
 import { profileToSettings, type LogRow, type ProfileRow, type SetRow } from "@/lib/types";
 import { builtinRows, type ExerciseInfo } from "@/lib/plan/catalog.ts";
 import { mondayOf, safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
@@ -13,13 +14,13 @@ export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { user, transient } = await checkUser(supabase);
+  // A Supabase hiccup shows the "Try again" screen instead of signing out
+  if (transient) throw new Error("Couldn't reach the server");
   if (!user) redirect("/login");
 
-  const [{ data: profile }, { data: logs }, { data: skips }, { data: moves }, { data: sets }, { data: exercises }, { data: swaps }] = await Promise.all([
-    supabase.from("profiles").select("*").eq("id", user.id).single<ProfileRow>(),
+  const reads = await Promise.all([
+    supabase.from("profiles").select("*").eq("id", user.id).maybeSingle<ProfileRow>(),
     supabase.from("logs").select("*").order("date", { ascending: false }).order("created_at", { ascending: false }).limit(1000).returns<LogRow[]>(),
     supabase.from("day_overrides").select("date").eq("status", "skipped").returns<{ date: string }[]>(),
     supabase.from("day_moves").select("from:from_date, to:to_date").returns<Move[]>(),
@@ -32,6 +33,9 @@ export default async function Home() {
     supabase.from("exercises").select("key, name, load, primary_muscles, secondary_muscles, equipment, video_ids, video_query, lines, owner").order("name").returns<ExerciseInfo[]>(),
     supabase.from("exercise_swaps").select("planDate:plan_date, from:from_key, to:to_key").returns<Swap[]>(),
   ]);
+  // A failed read is a hiccup, not a sign-out, and an empty history would invite logging twice: show "Try again"
+  if (reads.some((r) => r.error)) throw new Error("Couldn't load your data");
+  const [{ data: profile }, { data: logs }, { data: skips }, { data: moves }, { data: sets }, { data: exercises }, { data: swaps }] = reads;
   // Built-ins from code fill any gap, e.g. before the first sync has run
   const byKey = new Map(builtinRows().map((e) => [e.key, e]));
   for (const e of exercises ?? []) byKey.set(e.key, e);
