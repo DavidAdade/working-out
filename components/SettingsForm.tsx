@@ -5,6 +5,7 @@ import { useActionState, useState } from "react";
 import { saveSettings, signOut, type ActionResult } from "@/app/actions";
 import { duration } from "@/lib/plan/format.ts";
 import type { ProfileRow } from "@/lib/types";
+import { clearSnapshot } from "@/lib/offline";
 
 const t = (s: number | null) => (s ? duration(s) : "");
 
@@ -107,7 +108,8 @@ export default function SettingsForm({ profile, firstRun, zones, children }: { p
 
       {children}
 
-      <form action={signOut}>
+      {/* Forget the data saved on this phone for offline use (the login page clears it too) */}
+      <form action={signOut} onSubmit={() => void clearSnapshot()}>
         <button className="btn-ghost">Sign out</button>
       </form>
     </main>

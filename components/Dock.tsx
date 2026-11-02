@@ -7,6 +7,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { addLog, deleteSet, setSwap, upsertSet, type ActionResult, type LogInput, type SetInput } from "@/app/actions";
+import SyncSheet, { type Refused, type SyncResult } from "./SyncSheet";
 
 export type Op =
   | { id: string; t: "set"; input: SetInput }
@@ -47,35 +48,80 @@ function run(op: Op): Promise<ActionResult> {
   return addLog(op.input);
 }
 
-const read = (key: string): Op[] => {
+const read = <T,>(key: string, fallback: T): T => {
   try {
-    const v = JSON.parse(localStorage.getItem(key) ?? "[]");
-    return Array.isArray(v) ? v : [];
+    const v = JSON.parse(localStorage.getItem(key) ?? "null");
+    return v == null || Array.isArray(fallback) !== Array.isArray(v) ? fallback : v;
   } catch {
-    return [];
+    return fallback;
   }
 };
+const write = (key: string, v: unknown) => {
+  try {
+    if (v == null || (Array.isArray(v) && !v.length)) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(v));
+    return true;
+  } catch {
+    // Private mode or full storage: the queue still works until the app closes
+    return false;
+  }
+};
+/** One sender at a time across open tabs, so two windows never replay the same write twice */
+const exclusive = <T,>(name: string, fn: () => Promise<T>): Promise<T> => (navigator.locks ? (navigator.locks.request(name, fn) as Promise<T>) : fn());
 
-export function DockProvider({ userId, restTimer, children }: { userId: string; restTimer: boolean; children: React.ReactNode }) {
+/** Changes waiting this long, or after this many failed tries, get the "not synced" banner and sheet */
+const STALE_MS = 2 * 60 * 1000;
+const STALE_TRIES = 5;
+
+export function DockProvider({
+  userId,
+  restTimer,
+  refresh: refreshProp,
+  children,
+}: {
+  userId: string;
+  restTimer: boolean;
+  /** Reloads server data once writes land (default: a router refresh) */
+  refresh?: () => void;
+  children: React.ReactNode;
+}) {
   const router = useRouter();
+  const refresh = useCallback(() => (refreshProp ? refreshProp() : router.refresh()), [refreshProp, router]);
   const storageKey = `sub30-outbox:${userId}`;
   const [queue, setQueue] = useState<Op[]>([]);
   const queueRef = useRef<Op[]>([]);
-  const flushing = useRef(false);
+  const flushing = useRef<Promise<SyncResult> | null>(null);
   const rejected = useRef(new Set<(op: Op, error: string) => void>());
   const [notice, setNotice] = useState<Notice | null>(null);
+  // When the oldest waiting change was made, failed tries in a row, and replayed writes the server refused
+  const [since, setSince] = useState<number | null>(null);
+  const [fails, setFails] = useState(0);
+  const [refused, setRefused] = useState<Refused[]>([]);
+  const [sheet, setSheet] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
+  const stored = useRef(true);
 
   const save = useCallback(
     (q: Op[]) => {
       queueRef.current = q;
       setQueue(q);
-      try {
-        if (q.length) localStorage.setItem(storageKey, JSON.stringify(q));
-        else localStorage.removeItem(storageKey);
-      } catch {
-        // Private mode or full storage: the queue still works until the app closes
-      }
+      stored.current = write(storageKey, q);
+      setSince((cur) => {
+        const next = q.length ? (cur ?? Date.now()) : null;
+        write(`${storageKey}:since`, next);
+        return next;
+      });
+      if (!q.length) setFails(0);
     },
+    [storageKey],
+  );
+  const saveRefused = useCallback(
+    (fn: (cur: Refused[]) => Refused[]) =>
+      setRefused((cur) => {
+        const next = fn(cur);
+        write(`${storageKey}:refused`, next);
+        return next;
+      }),
     [storageKey],
   );
 
@@ -86,49 +132,83 @@ export function DockProvider({ userId, restTimer, children }: { userId: string; 
     return () => clearTimeout(t);
   }, [notice]);
 
-  const flush = useCallback(async () => {
-    if (flushing.current || !queueRef.current.length) return;
-    flushing.current = true;
-    let sent = 0;
-    try {
-      while (queueRef.current.length) {
+  /** Sends what's waiting, oldest first. A call made while a run is going shares its result. */
+  const flush = useCallback((): Promise<SyncResult> => {
+    if (flushing.current) return flushing.current;
+    if (!queueRef.current.length) return Promise.resolve({ sent: 0, refused: 0, left: 0 });
+    const go = async (): Promise<SyncResult> => {
+      let sent = 0;
+      let refusedNow = 0;
+      for (;;) {
+        // Another tab may have sent some while this one waited for the lock: go by what's on the phone
+        if (stored.current) {
+          const q = read<Op[]>(storageKey, []);
+          if (q.length !== queueRef.current.length || q[0]?.id !== queueRef.current[0]?.id) {
+            queueRef.current = q;
+            setQueue(q);
+          }
+        }
+        if (!queueRef.current.length) break;
         const op = queueRef.current[0];
         let r: ActionResult;
         try {
           r = await run(op);
         } catch {
+          setFails((f) => f + 1);
           break; // still offline: try again later
         }
         save(queueRef.current.slice(1));
         if (r.ok) sent++;
         else {
+          // Kept until read, so a refused change is explained instead of quietly vanishing
+          refusedNow++;
+          saveRefused((cur) => [...cur, { op, error: r.error, at: Date.now() }]);
           for (const fn of rejected.current) fn(op, r.error);
-          notify({ text: r.error, tone: "error" });
         }
       }
-    } finally {
-      flushing.current = false;
-    }
-    if (sent) {
-      if (!queueRef.current.length) notify({ text: `Back online: ${sent} saved.`, tone: "good" });
-      router.refresh();
-    }
-  }, [notify, router, save]);
+      return { sent, refused: refusedNow, left: queueRef.current.length };
+    };
+    const p = exclusive(storageKey, go)
+      .then((r) => {
+        if (r.refused) setSheet(true);
+        if (r.sent) {
+          if (!r.left && !r.refused) notify({ text: `Back online: ${r.sent} saved.`, tone: "good" });
+          refresh();
+        }
+        return r;
+      })
+      .finally(() => (flushing.current = null));
+    flushing.current = p;
+    return p;
+  }, [notify, refresh, save, saveRefused, storageKey]);
 
-  // Pick up anything left from an earlier visit, then retry whenever the connection might be back
+  // Pick up anything left from an earlier visit (or changed in another tab), then retry whenever the connection might be back
   useEffect(() => {
-    save(read(storageKey));
+    const load = () => {
+      const q = read<Op[]>(storageKey, []);
+      queueRef.current = q;
+      setQueue(q);
+      setSince(q.length ? (read<number | null>(`${storageKey}:since`, null) ?? Date.now()) : null);
+      setRefused(read<Refused[]>(`${storageKey}:refused`, []));
+    };
+    load();
     void flush();
-    const retry = () => document.visibilityState === "visible" && void flush();
+    const retry = () => {
+      setNow(Date.now());
+      if (document.visibilityState === "visible") void flush();
+    };
+    const onStorage = (e: StorageEvent) => e.key?.startsWith(storageKey) && load();
     window.addEventListener("online", retry);
+    window.addEventListener("storage", onStorage);
     document.addEventListener("visibilitychange", retry);
     const t = setInterval(retry, 20000);
     return () => {
       window.removeEventListener("online", retry);
+      window.removeEventListener("storage", onStorage);
       document.removeEventListener("visibilitychange", retry);
       clearInterval(t);
     };
-  }, [storageKey, save, flush]);
+  }, [storageKey, flush]);
 
   const send = useCallback<DockCtx["send"]>(
     async (op) => {
@@ -158,6 +238,15 @@ export function DockProvider({ userId, restTimer, children }: { userId: string; 
 
   const value = useMemo(() => ({ queue, send, onRejected, notify, rest: rest.api }), [queue, send, onRejected, notify, rest.api]);
 
+  // Out of sync: changes stuck on this phone for a while, or ones the server refused
+  const stuck = refused.length > 0 || (queue.length > 0 && (fails >= STALE_TRIES || (since != null && now - since > STALE_MS)));
+  const syncNow = useCallback(async () => {
+    const r = await flush();
+    // Then fresh data: what just landed, and the server's copy of anything refused
+    if (!r.left && !r.sent) refresh();
+    return r;
+  }, [flush, refresh]);
+
   return (
     <Ctx.Provider value={value}>
       {children}
@@ -186,17 +275,28 @@ export function DockProvider({ userId, restTimer, children }: { userId: string; 
             </span>
           </div>
         )}
-        {queue.length > 0 && (
+        {stuck ? (
           <button
             type="button"
-            onClick={() => void flush()}
-            className="pointer-events-auto flex min-h-11 items-center justify-center gap-2 self-center rounded-full border border-warn bg-surface px-4 text-sm font-semibold shadow-lg"
+            onClick={() => setSheet(true)}
+            className="pointer-events-auto flex min-h-11 items-center justify-center gap-2 self-center rounded-full border border-bad bg-surface px-4 text-sm font-semibold shadow-lg"
           >
-            <span aria-hidden>⟳</span> {queue.length} waiting to sync · Retry
+            <span aria-hidden>!</span> {queue.length ? `${queue.length} not synced · Sync now` : `${refused.length} not saved · See why`}
           </button>
+        ) : (
+          queue.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void flush()}
+              className="pointer-events-auto flex min-h-11 items-center justify-center gap-2 self-center rounded-full border border-warn bg-surface px-4 text-sm font-semibold shadow-lg"
+            >
+              <span aria-hidden>⟳</span> {queue.length} waiting to sync · Retry
+            </button>
+          )
         )}
         {rest.view}
       </div>
+      {sheet && <SyncSheet queue={queue} refused={refused} since={since} sync={syncNow} onDismissRefused={() => saveRefused(() => [])} onClose={() => setSheet(false)} />}
     </Ctx.Provider>
   );
 }

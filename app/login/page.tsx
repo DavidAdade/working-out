@@ -1,12 +1,15 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import { sendMagicLink, signInWithPassword, type ActionResult } from "@/app/actions";
+import { clearSnapshot } from "@/lib/offline";
 
 function LoginForm() {
   const params = useSearchParams();
+  // Signed out (or someone else is signing in on this phone): forget the data saved for offline use
+  useEffect(() => void clearSnapshot(), []);
   const [useLink, setUseLink] = useState(false);
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(signInWithPassword, null);
   const [linkState, linkAction, linkPending] = useActionState<ActionResult | null, FormData>(sendMagicLink, null);

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import ServiceWorker from "@/components/ServiceWorker";
 
 export const metadata: Metadata = {
   title: "WorkoutFlex",
@@ -31,6 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <div className="mx-auto flex max-w-[720px] flex-col gap-4">{children}</div>
+        <ServiceWorker />
       </body>
     </html>
   );

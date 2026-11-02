@@ -22,6 +22,8 @@ import { VideoProvider } from "./VideoModal";
 import { DateLabelsProvider, useDates } from "./DateLabels";
 import { SetsProvider } from "./Sets";
 import { SwapProvider, type SwapApi } from "./SwapSheet";
+import OfflineBanner, { goLive } from "./OfflineBanner";
+import { saveSnapshot } from "@/lib/offline";
 import type { Swap } from "@/lib/plan/swaps.ts";
 
 type Tab = "today" | "plan" | "log" | "progress" | "library";
@@ -51,10 +53,21 @@ export interface DashboardProps {
   review: SavedReview | null;
 }
 
-export default function Dashboard(props: DashboardProps) {
+/**
+ * The app. `offline` means it runs from the copy saved on this phone (see lib/offline.ts): writes still go
+ * to the outbox, and "refresh" means trying the live app again.
+ */
+export default function Dashboard({ offline, ...props }: DashboardProps & { offline?: { savedAt: number } }) {
+  // Every fresh load from the server is saved on this phone for next time there's no signal
+  const { profile, settings, logs, skips, moves, swaps, sets, exercises, today, ai, review } = props;
+  useEffect(() => {
+    if (!offline) void saveSnapshot<DashboardProps>(profile.id, { profile, settings, logs, skips, moves, swaps, sets, exercises, today, ai, review });
+  }, [offline, profile, settings, logs, skips, moves, swaps, sets, exercises, today, ai, review]);
+
   return (
-    <DockProvider userId={props.profile.id} restTimer={props.profile.rest_timer}>
-      <DashboardInner {...props} />
+    <DockProvider userId={profile.id} restTimer={profile.rest_timer} refresh={offline ? goLive : undefined}>
+      {offline && <OfflineBanner savedAt={offline.savedAt} />}
+      <DashboardInner {...props} offline={!!offline} />
     </DockProvider>
   );
 }
@@ -84,7 +97,7 @@ function queuedLog(i: LogInput): LogRow {
 
 const swapId = (planDate: string, from: string) => `${planDate}|${from}`;
 
-function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swaps: serverSwaps, sets, exercises, today, ai, review }: DashboardProps) {
+function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swaps: serverSwaps, sets, exercises, today, ai, review, offline }: DashboardProps & { offline: boolean }) {
   const [tab, setTab] = useState<Tab>("today");
   const [logDate, setLogDate] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -109,7 +122,10 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
   // A home-screen app can sit in memory overnight: when it comes back on a new day, reload today
   useEffect(() => {
     const check = () => {
-      if (document.visibilityState === "visible" && todayIn(safeTimeZone(profile.timezone)) !== today) router.refresh();
+      if (document.visibilityState === "visible" && todayIn(safeTimeZone(profile.timezone)) !== today) {
+        if (offline) goLive();
+        else router.refresh();
+      }
     };
     check();
     document.addEventListener("visibilitychange", check);
@@ -118,7 +134,7 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
       document.removeEventListener("visibilitychange", check);
       window.removeEventListener("focus", check);
     };
-  }, [profile.timezone, today, router]);
+  }, [profile.timezone, today, router, offline]);
 
   // Swaps: the server's, then any still waiting in the outbox, then ones made here that the server hasn't shown back yet
   const [localSwaps, setLocalSwaps] = useState<Map<string, string | null>>(() => new Map());
