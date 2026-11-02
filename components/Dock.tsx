@@ -1,12 +1,13 @@
 "use client";
 
-// Everything pinned to the bottom of the screen: the offline outbox, short notices, and the rest timer.
+// Everything pinned to the bottom of the screen: the offline outbox, short notices, and the rest timer (RestTimer.tsx).
 // The outbox keeps writes made without signal on this phone (per person) and sends them in order once
 // the connection is back, so a basement gym never loses a set or a run.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { addLog, deleteSet, endWorkout, setSwap, startWorkout, upsertSet, type ActionResult, type LogInput, type SetInput } from "@/app/actions";
+import { RestTimerView } from "./RestTimer";
 
 export type Op =
   | { id: string; t: "set"; input: SetInput }
@@ -33,7 +34,6 @@ interface DockCtx {
   /** Hear about queued writes the server later refused, so their optimistic rows can go */
   onRejected: (fn: (op: Op, error: string) => void) => () => void;
   notify: (n: Notice | string) => void;
-  rest: { start: (sec: number, label: string) => void; stop: () => void; enabled: boolean };
 }
 
 const Ctx = createContext<DockCtx | null>(null);
@@ -61,7 +61,7 @@ const read = (key: string): Op[] => {
   }
 };
 
-export function DockProvider({ userId, restTimer, children }: { userId: string; restTimer: boolean; children: React.ReactNode }) {
+export function DockProvider({ userId, children }: { userId: string; children: React.ReactNode }) {
   const router = useRouter();
   const storageKey = `sub30-outbox:${userId}`;
   const [queue, setQueue] = useState<Op[]>([]);
@@ -159,9 +159,7 @@ export function DockProvider({ userId, restTimer, children }: { userId: string; 
     return () => void rejected.current.delete(fn);
   }, []);
 
-  const rest = useRestTimer(restTimer);
-
-  const value = useMemo(() => ({ queue, send, onRejected, notify, rest: rest.api }), [queue, send, onRejected, notify, rest.api]);
+  const value = useMemo(() => ({ queue, send, onRejected, notify }), [queue, send, onRejected, notify]);
 
   return (
     <Ctx.Provider value={value}>
@@ -200,107 +198,8 @@ export function DockProvider({ userId, restTimer, children }: { userId: string; 
             <span aria-hidden>⟳</span> {queue.length} waiting to sync · Retry
           </button>
         )}
-        {rest.view}
+        <RestTimerView />
       </div>
     </Ctx.Provider>
   );
-}
-
-/* ---------- rest timer: starts when a set is ticked ---------- */
-function useRestTimer(enabled: boolean) {
-  const [timer, setTimer] = useState<{ end: number; total: number; label: string } | null>(null);
-  const [now, setNow] = useState(() => Date.now());
-  const audio = useRef<AudioContext | null>(null);
-  const lock = useRef<{ release: () => Promise<void> } | null>(null);
-  const beeped = useRef(false);
-
-  const release = () => {
-    void lock.current?.release().catch(() => {});
-    lock.current = null;
-  };
-
-  const start = useCallback(
-    (sec: number, label: string) => {
-      if (!enabled) return;
-      beeped.current = false;
-      setNow(Date.now());
-      setTimer({ end: Date.now() + sec * 1000, total: sec, label });
-      // Created on the tap, so iOS lets it play when the rest ends
-      try {
-        audio.current ??= new AudioContext();
-        void audio.current.resume();
-      } catch {}
-      // Keep the screen on while resting (iOS 18.4+ home-screen apps, most other browsers)
-      const wl = (navigator as Navigator & { wakeLock?: { request: (t: "screen") => Promise<{ release: () => Promise<void> }> } }).wakeLock;
-      if (wl && !lock.current) wl.request("screen").then((l) => (lock.current = l)).catch(() => {});
-    },
-    [enabled],
-  );
-  const stop = useCallback(() => {
-    setTimer(null);
-    release();
-  }, []);
-
-  useEffect(() => {
-    if (!timer) return;
-    const t = setInterval(() => setNow(Date.now()), 250);
-    return () => clearInterval(t);
-  }, [timer]);
-
-  const left = timer ? Math.ceil((timer.end - now) / 1000) : 0;
-  useEffect(() => {
-    if (!timer || left > 0 || beeped.current) return;
-    beeped.current = true;
-    beep(audio.current);
-    release();
-    const t = setTimeout(() => setTimer((cur) => (cur === timer ? null : cur)), 8000);
-    return () => clearTimeout(t);
-  }, [left, timer]);
-
-  const api = useMemo(() => ({ start, stop, enabled }), [start, stop, enabled]);
-  const adjust = (d: number) => setTimer((cur) => (cur ? { ...cur, end: Math.max(Date.now() + 1000, cur.end + d * 1000) } : cur));
-
-  const view = timer ? (
-    <div
-      role="timer"
-      aria-live="off"
-      className={`pointer-events-auto flex items-center gap-2 rounded-lg border px-3 py-1.5 shadow-lg ${left <= 0 ? "border-good bg-good text-bg" : "border-ink bg-surface"}`}
-    >
-      <div className="min-w-0 flex-1">
-        <div className="font-display text-2xl font-bold leading-none tabular-nums">{left > 0 ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` : "Go"}</div>
-        <div className={`truncate text-xs ${left <= 0 ? "" : "text-muted"}`}>{left > 0 ? `Rest · ${timer.label}` : "Rest over. Next set."}</div>
-      </div>
-      {left > 0 && (
-        <>
-          <button type="button" className="btn-ghost px-2.5" onClick={() => adjust(-15)} aria-label="15 seconds less">
-            −15
-          </button>
-          <button type="button" className="btn-ghost px-2.5" onClick={() => adjust(15)} aria-label="15 seconds more">
-            +15
-          </button>
-        </>
-      )}
-      <button type="button" className={`btn-ghost px-2.5 ${left <= 0 ? "border-bg text-bg" : ""}`} onClick={stop}>
-        {left > 0 ? "Skip" : "OK"}
-      </button>
-    </div>
-  ) : null;
-
-  return { api, view };
-}
-
-function beep(ctx: AudioContext | null) {
-  if (!ctx) return;
-  try {
-    for (const [at, f] of [[0, 880], [0.25, 880], [0.5, 1320]] as const) {
-      const o = ctx.createOscillator();
-      const g = ctx.createGain();
-      o.frequency.value = f;
-      g.gain.setValueAtTime(0.2, ctx.currentTime + at);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + at + 0.2);
-      o.connect(g).connect(ctx.destination);
-      o.start(ctx.currentTime + at);
-      o.stop(ctx.currentTime + at + 0.2);
-    }
-  } catch {}
 }

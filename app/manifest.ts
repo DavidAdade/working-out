@@ -8,7 +8,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: "Flexible running and strength training plan and log.",
     start_url: "/",
     display: "standalone",
-    background_color: "#0d1319",
+    // The light page colour: iOS paints this while relaunching the app, and the old near-black flashed between frames
+    background_color: "#eef1f4",
     theme_color: "#f2541b",
     icons: [
       { src: "/icon", sizes: "512x512", type: "image/png" },

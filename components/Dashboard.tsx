@@ -11,6 +11,7 @@ import { planFor } from "@/lib/plan/adapt.ts";
 import { setWeekMoves, toggleSkip, type LogInput } from "@/app/actions";
 import { GATES, type LogRow, type ProfileRow, type SetRow } from "@/lib/types";
 import { DockProvider, useDock } from "./Dock";
+import { RestTimerProvider } from "./RestTimer";
 import CoachCard, { type SavedReview } from "./CoachCard";
 import type { ExerciseInfo } from "@/lib/plan/catalog.ts";
 import TodayPanel from "./TodayPanel";
@@ -53,13 +54,17 @@ export interface DashboardProps {
   ai: boolean;
   /** This week's AI check-in, if one was made */
   review: SavedReview | null;
+  /** Whether "Rest over" notifications are available (VAPID keys are set) */
+  push: boolean;
 }
 
 export default function Dashboard(props: DashboardProps) {
   return (
-    <DockProvider userId={props.profile.id} restTimer={props.profile.rest_timer}>
-      <DashboardInner {...props} />
-    </DockProvider>
+    <RestTimerProvider userId={props.profile.id} enabled={props.profile.rest_timer} seconds={props.profile.rest_seconds ?? null} push={props.push}>
+      <DockProvider userId={props.profile.id}>
+        <DashboardInner {...props} />
+      </DockProvider>
+    </RestTimerProvider>
   );
 }
 

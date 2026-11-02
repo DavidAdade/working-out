@@ -25,9 +25,9 @@ export default {
         area3: v("area3"),
       },
       fontFamily: {
-        display: ['"Barlow Condensed"', '"Arial Narrow"', "Arial", "sans-serif"],
-        body: ["Figtree", "system-ui", "-apple-system", '"Segoe UI"', "sans-serif"],
-        mono: ['"JetBrains Mono"', "ui-monospace", "Menlo", "Consolas", "monospace"],
+        display: ["var(--font-display)", '"Barlow Condensed"', '"Arial Narrow"', "Arial", "sans-serif"],
+        body: ["var(--font-body)", "Figtree", "system-ui", "-apple-system", '"Segoe UI"', "sans-serif"],
+        mono: ["var(--font-mono)", '"JetBrains Mono"', "ui-monospace", "Menlo", "Consolas", "monospace"],
       },
     },
   },

@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { SetInput } from "@/app/actions";
 import { useDock, type SendResult } from "./Dock";
+import { useRest } from "./RestTimer";
 import { weekForDate, type Week } from "@/lib/plan/generate.ts";
 import { parseLine, videoForLine, type Exercise, type Target } from "@/lib/plan/exercises.ts";
 import { asExercise, type ExerciseInfo } from "@/lib/plan/catalog.ts";
@@ -96,7 +97,8 @@ export function SetsProvider({
   exercises: ExerciseInfo[];
   children: React.ReactNode;
 }) {
-  const { send, notify, onRejected, queue, rest } = useDock();
+  const { send, notify, onRejected, queue } = useDock();
+  const rest = useRest();
   const { ensureStarted } = useWorkout();
   const [sets, setSets] = useState(initial);
   const setsRef = useRef(sets);

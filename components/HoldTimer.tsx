@@ -5,6 +5,7 @@
 // "Each side" holds run both sides with a short switch between, and log one side's time.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { chime, prime, release as release_audio } from "@/lib/audio";
 import { heldSeconds, holdPhases, SWITCH_SEC, type HoldPhase } from "@/lib/plan/workout.ts";
 
 const storeKey = (key: string) => `wf-hold:${key}`;
@@ -61,6 +62,8 @@ export default function HoldTimer({
 
   const start = () => {
     remember(len);
+    // Opened on the tap so the side-switch and finish chimes can play (over music, never instead of it)
+    prime(true);
     const phases = holdPhases(len, each);
     setNow(Date.now());
     setRun({ phases, index: 0, phaseEnd: Date.now() + phases[0].sec * 1000 });
@@ -73,6 +76,7 @@ export default function HoldTimer({
     setRun(null);
     release();
     if (sec > 0) doneRef.current(sec, finished);
+    release_audio();
   }, []);
 
   const stop = () => {
@@ -92,10 +96,10 @@ export default function HoldTimer({
     if (!run || now < run.phaseEnd) return;
     const next = run.index + 1;
     if (next < run.phases.length) {
-      // TODO(audio): chime() — switch sides
+      chime();
       setRun({ ...run, index: next, phaseEnd: run.phaseEnd + run.phases[next].sec * 1000 });
     } else {
-      // TODO(audio): chime() — hold finished
+      chime();
       finish(heldSeconds(run.phases, run.index, run.phases[run.index].sec), true);
     }
   }, [now, run, finish]);

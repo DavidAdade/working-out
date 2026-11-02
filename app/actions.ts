@@ -13,12 +13,13 @@ import { builtinRows } from "@/lib/plan/catalog.ts";
 import { isEquipment } from "@/lib/plan/equipment.ts";
 import { aiEnabled, generateReview, type Review } from "@/lib/coach/review";
 import { MIN_RACE_GAP_WEEKS, type Move } from "@/lib/plan/generate.ts";
-import { GATES, profileToSettings, type LogKind, type LogRow, type ProfileRow, type SetRow, type Unit } from "@/lib/types";
+import { GATES, REST_CHOICES, profileToSettings, type LogKind, type LogRow, type ProfileRow, type SetRow, type Unit } from "@/lib/types";
 import { exerciseByKey, type Load } from "@/lib/plan/exercises.ts";
 import type { Swap } from "@/lib/plan/swaps.ts";
 import { customKey, youtubeId } from "@/lib/plan/catalog.ts";
 import { MUSCLES } from "@/lib/plan/muscles.ts";
-import { clampEnd, isLocked, sessionDateFor, type WorkoutSession } from "@/lib/plan/workout.ts";
+import { AUTO_END_MS, clampEnd, isLocked, sessionDateFor, type WorkoutSession } from "@/lib/plan/workout.ts";
+import { cancelPush, pushEnabled, schedulePush } from "@/lib/push";
 
 /** `values` echoes a failed form back, so the form can keep what was typed (React resets it after every action) */
 export type ActionResult = { ok: true } | { ok: false, error: string, values?: Record<string, string> };
@@ -79,6 +80,7 @@ export async function saveSettings(_: unknown, form: FormData): Promise<ActionRe
     display_name: str("display_name"),
     timezone: str("timezone") ?? "America/Toronto",
     rest_timer: form.get("rest_timer") === "on",
+    rest_seconds: REST_CHOICES.includes(Number(form.get("rest_seconds"))) ? Number(form.get("rest_seconds")) : null,
     start_date: str("start_date"),
     recovery_start: injury ? str("recovery_start") : null,
     returning_from_injury: injury,
@@ -384,6 +386,10 @@ export async function startWorkout(planDate: string, at: string): Promise<Action
     .from("workout_sessions")
     .upsert({ user_id: user.id, plan_date: planDate, started_at: phoneTime(at) }, { onConflict: "user_id,plan_date", ignoreDuplicates: true });
   if (error) return { ok: false, error: "Couldn't start the workout. Try again." };
+  // "Workout auto-ended" 4 hours on, unless it's ended first; best effort, the workout is saved either way
+  const { data: s } = await supabase.from("workout_sessions").select(SESSION_COLS).eq("user_id", user.id).eq("plan_date", planDate).maybeSingle<WorkoutSession>();
+  if (pushEnabled() && s && !s.ended_at && Date.parse(s.started_at) + AUTO_END_MS > Date.now())
+    await schedulePush(user.id, { at: Date.parse(s.started_at) + AUTO_END_MS, title: "Workout ended", body: "It ran 4 hours, so it was ended for you. You can still edit it for 12 hours.", tag: `workout-end:${planDate}` }).catch(() => {});
   return { ok: true };
 }
 
@@ -400,6 +406,7 @@ export async function endWorkout(planDate: string, at: string, auto = false): Pr
     .eq("plan_date", planDate)
     .is("ended_at", null);
   if (error) return { ok: false, error: "Couldn't end the workout. Try again." };
+  if (pushEnabled()) await cancelPush(user.id, `workout-end:${planDate}`).catch(() => {});
   revalidatePath("/");
   return { ok: true };
 }

@@ -4,11 +4,25 @@ import Link from "next/link";
 import { useActionState, useState } from "react";
 import { saveSettings, signOut, type ActionResult } from "@/app/actions";
 import { duration } from "@/lib/plan/format.ts";
-import type { ProfileRow } from "@/lib/types";
+import { REST_CHOICES, type ProfileRow } from "@/lib/types";
+import RestPush from "./RestPush";
 
 const t = (s: number | null) => (s ? duration(s) : "");
 
-export default function SettingsForm({ profile, firstRun, zones, children }: { profile: ProfileRow; firstRun: boolean; zones: string[]; children?: React.ReactNode }) {
+export default function SettingsForm({
+  profile,
+  firstRun,
+  zones,
+  vapidKey,
+  children,
+}: {
+  profile: ProfileRow;
+  firstRun: boolean;
+  zones: string[];
+  /** Set when the server can send pushes; shows the rest notification toggle */
+  vapidKey?: string | null;
+  children?: React.ReactNode;
+}) {
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(saveSettings, null);
   const [injury, setInjury] = useState(profile.returning_from_injury);
   // After a failed save React resets the form, so default every field to what was just typed
@@ -81,9 +95,25 @@ export default function SettingsForm({ profile, firstRun, zones, children }: { p
           <span>
             <b>Rest timer</b>
             <br />
-            <span className="text-sm text-muted">Counts down after each ticked set (2 min for big lifts, 90 s otherwise) and beeps when it&apos;s time.</span>
+            <span className="text-sm text-muted">
+              Counts down after each ticked set, ticks for the last 5 seconds and beeps when it&apos;s time. Sounds play over your music, never instead of it (silent when the ringer is off).
+            </span>
           </span>
         </label>
+        <div className="flex min-w-0 flex-col gap-1">
+          <label className="label" htmlFor="rest_seconds">
+            Rest between sets
+          </label>
+          <select id="rest_seconds" name="rest_seconds" defaultValue={val("rest_seconds", profile.rest_seconds ? String(profile.rest_seconds) : "")} className="input">
+            <option value="">Auto (by exercise)</option>
+            {REST_CHOICES.map((s) => (
+              <option key={s} value={s}>
+                {s < 120 ? `${s} s` : `${s / 60} min`}
+              </option>
+            ))}
+          </select>
+        </div>
+        {vapidKey && <RestPush userId={profile.id} vapidKey={vapidKey} />}
 
         <div className="label mt-2 sm:col-span-2">Optional half marathon, at least 3 weeks after the time trial</div>
         <Field label="Race name" name="race_name" defaultValue={val("race_name", profile.race_name ?? "")} placeholder="Toronto Marathon: half" />

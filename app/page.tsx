@@ -9,6 +9,7 @@ import type { Swap } from "@/lib/plan/swaps.ts";
 import type { WorkoutSession } from "@/lib/plan/workout.ts";
 import type { SavedReview } from "@/components/CoachCard";
 import { aiEnabled } from "@/lib/coach/review";
+import { pushEnabled } from "@/lib/push";
 import Dashboard from "@/components/Dashboard";
 
 export const dynamic = "force-dynamic";
@@ -73,6 +74,7 @@ export default async function Home() {
       today={today}
       ai={ai}
       review={ai && review ? { review: review.content, createdAt: review.created_at } : null}
+      push={pushEnabled()}
     />
   );
 }

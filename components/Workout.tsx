@@ -5,6 +5,7 @@
 // Writes go through the Dock outbox, so Start and End work with no signal and replay in order before later sets.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { celebrate as celebrate_sound, prime } from "@/lib/audio";
 import { useDock } from "./Dock";
 import { elapsed, sessionState, type Completion, type WorkoutSession } from "@/lib/plan/workout.ts";
 import Confetti from "./Confetti";
@@ -86,8 +87,6 @@ export function WorkoutProvider({ initial, children }: { initial: WorkoutSession
       if (ref.current.has(planDate)) return;
       const at = new Date().toISOString();
       setLocal((cur) => new Map(cur).set(planDate, { plan_date: planDate, started_at: at, ended_at: null, auto_ended: false }));
-      // TODO(push): schedule "Workout auto-ended" for { planDate, startedAt: at } due at Date.parse(at) + AUTO_END_MS
-      // (lib/plan/workout.ts); cancelled by end() below. Tag it by planDate so a second start can't double it.
       write({ id: crypto.randomUUID(), t: "workout-start", planDate, at }, () => setLocal((cur) => new Map([...cur].filter(([k]) => k !== planDate))));
     },
     [write],
@@ -104,7 +103,8 @@ export function WorkoutProvider({ initial, children }: { initial: WorkoutSession
   );
   const end = useCallback(
     (planDate: string) => {
-      // TODO(push): cancel the "Workout auto-ended" notification scheduled for planDate in start()
+      // On the tap, so the celebration sound can play over music
+      prime();
       endAt(planDate, new Date().toISOString(), false);
     },
     [endAt],
@@ -134,7 +134,7 @@ export function WorkoutProvider({ initial, children }: { initial: WorkoutSession
       celebrated.current.set(planDate, c.status);
       const big = c.status === "beyond";
       setBurst({ id: Date.now(), big });
-      // TODO(audio): celebrate()
+      celebrate_sound();
       notify({
         text: big
           ? `You went the extra mile: ${c.extraSets} more set${c.extraSets === 1 ? "" : "s"} than planned${c.extraExercises ? `, ${c.extraExercises} extra exercise${c.extraExercises === 1 ? "" : "s"}` : ""}. You pushed harder today.`

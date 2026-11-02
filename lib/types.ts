@@ -21,9 +21,14 @@ export interface ProfileRow {
   weight_unit: Unit;
   /** Start a rest countdown when a set is ticked */
   rest_timer: boolean;
+  /** Rest length in seconds; null = by exercise. Absent until migration 0009 is applied. */
+  rest_seconds?: number | null;
 }
 
 export type Unit = "kg" | "lb";
+
+/** Rest lengths offered in Settings, in seconds */
+export const REST_CHOICES = [30, 45, 60, 75, 90, 120, 180];
 
 export interface SetRow {
   id: string;
