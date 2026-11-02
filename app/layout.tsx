@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Barlow_Condensed, Figtree, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import ServiceWorker from "@/components/ServiceWorker";
 
 // Self-hosted at build time. A stylesheet from fonts.googleapis.com blocked the first paint, so on a weak gym
 // signal a relaunched home-screen app sat on a blank (dark) screen until Google answered.
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <div className="mx-auto flex max-w-[720px] flex-col gap-4">{children}</div>
+        <ServiceWorker />
       </body>
     </html>
   );

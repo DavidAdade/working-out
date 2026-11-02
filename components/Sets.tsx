@@ -110,15 +110,21 @@ export function SetsProvider({
   const initialRef = useRef(initial);
   const [version, setVersion] = useState(0);
 
-  // Writes still waiting from an earlier visit show as done straight away
-  const seeded = useRef(false);
-  if (!seeded.current) {
-    seeded.current = true;
+  // Writes still waiting from an earlier visit show as done straight away. The outbox is read from the phone
+  // after the first render, so pick its ops up as they appear (each once, in order).
+  const seen = useRef(new Set<string>());
+  useEffect(() => {
+    let added = false;
     for (const op of queue) {
+      if (seen.current.has(op.id)) continue;
+      seen.current.add(op.id);
       if (op.t === "set") pending.current.set(id(op.input.date, op.input.exerciseKey, op.input.setNo), rowFromInput(op.input, unit));
-      if (op.t === "unset") pending.current.set(id(op.date, op.key, op.setNo), null);
+      else if (op.t === "unset") pending.current.set(id(op.date, op.key, op.setNo), null);
+      else continue;
+      added = true;
     }
-  }
+    if (added) setVersion((v) => v + 1);
+  }, [queue, unit]);
 
   useEffect(() => {
     initialRef.current = initial;
