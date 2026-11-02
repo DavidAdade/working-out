@@ -9,7 +9,7 @@ import { duration, pace, parseDuration, predict } from "@/lib/plan/format.ts";
 import { goalPace } from "@/lib/plan/paces.ts";
 import { planFor } from "@/lib/plan/adapt.ts";
 import { setWeekMoves, toggleSkip, type LogInput } from "@/app/actions";
-import { GATES, type LogRow, type ProfileRow, type SetRow } from "@/lib/types";
+import { GATES, type ActivityEventRow, type LogRow, type ProfileRow, type SetRow } from "@/lib/types";
 import { DockProvider, useDock } from "./Dock";
 import CoachCard, { type SavedReview } from "./CoachCard";
 import type { ExerciseInfo } from "@/lib/plan/catalog.ts";
@@ -18,18 +18,20 @@ import PlanPanel from "./PlanPanel";
 import LogPanel from "./LogPanel";
 import ProgressPanel from "./ProgressPanel";
 import LibraryPanel from "./LibraryPanel";
+import AccountabilityPanel, { type ScoreInputs } from "./AccountabilityPanel";
 import { VideoProvider } from "./VideoModal";
 import { DateLabelsProvider, useDates } from "./DateLabels";
 import { SetsProvider } from "./Sets";
 import { SwapProvider, type SwapApi } from "./SwapSheet";
 import type { Swap } from "@/lib/plan/swaps.ts";
 
-type Tab = "today" | "plan" | "log" | "progress" | "library";
+type Tab = "today" | "plan" | "log" | "score" | "progress" | "library";
 const TABS: { id: Tab; label: string }[] = [
   { id: "today", label: "Today" },
   { id: "plan", label: "Plan" },
   { id: "log", label: "Log" },
-  { id: "progress", label: "Progress" },
+  { id: "score", label: "Score" },
+  { id: "progress", label: "Stats" },
   { id: "library", label: "Library" },
 ];
 
@@ -49,6 +51,8 @@ export interface DashboardProps {
   ai: boolean;
   /** This week's AI check-in, if one was made */
   review: SavedReview | null;
+  /** For the Score tab: when each skip was made, deletes, and how far back the loaded history is complete */
+  score: { skippedAt: Record<string, string | null>; events: ActivityEventRow[]; horizon: string | null };
 }
 
 export default function Dashboard(props: DashboardProps) {
@@ -84,7 +88,7 @@ function queuedLog(i: LogInput): LogRow {
 
 const swapId = (planDate: string, from: string) => `${planDate}|${from}`;
 
-function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swaps: serverSwaps, sets, exercises, today, ai, review }: DashboardProps) {
+function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swaps: serverSwaps, sets, exercises, today, ai, review, score }: DashboardProps) {
   const [tab, setTab] = useState<Tab>("today");
   const [logDate, setLogDate] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -155,6 +159,15 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
     () => planFor({ settings, logs, skips: optimisticSkips, moves: optimisticMoves, gatesPending, today, swaps, exercise: (k) => byKey.get(k) }),
     [settings, logs, optimisticSkips, optimisticMoves, gatesPending, today, swaps, byKey],
   );
+  // A skip made here and not yet reloaded was made today
+  const scoreInputs = useMemo<ScoreInputs>(
+    () => ({ weeks, logs, skips: optimisticSkips.map((date) => ({ date, createdAt: score.skippedAt[date] ?? `${today}T12:00:00Z` })), events: score.events, gatesPending, today, horizon: score.horizon }),
+    [weeks, logs, optimisticSkips, score, gatesPending, today],
+  );
+  const openTab = (t: Tab) => {
+    setTab(t);
+    window.scrollTo({ top: 0 });
+  };
   const thisWeek = weekForDate(weeks, today);
   const daysToTT = daysBetween(today, settings.timeTrialDate);
 
@@ -233,7 +246,7 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
           <SwapProvider value={swapApi}>
           <GoalHeader settings={settings} fitness={fitness.sec} thisWeek={thisWeek} daysToTT={daysToTT} />
 
-          <nav className="sticky top-[env(safe-area-inset-top,0px)] z-10 grid grid-cols-5 gap-1 bg-bg py-1.5" role="tablist">
+          <nav className="sticky top-[env(safe-area-inset-top,0px)] z-10 grid grid-cols-6 gap-1 bg-bg py-1.5" role="tablist">
             {TABS.map((t) => (
               <button
                 key={t.id}
@@ -243,7 +256,7 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
                   setTab(t.id);
                   window.scrollTo({ top: 0 });
                 }}
-                className={`min-h-11 rounded-full border px-0.5 py-2 text-[0.8rem] font-semibold sm:text-sm ${tab === t.id ? "border-ink bg-ink text-bg" : "border-line bg-surface"}`}
+                className={`min-h-11 rounded-full border px-0.5 py-2 text-[0.75rem] font-semibold sm:text-sm ${tab === t.id ? "border-ink bg-ink text-bg" : "border-line bg-surface"}`}
               >
                 {t.label}
               </button>
@@ -263,10 +276,12 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
               onSkip={onSkip}
               onMoves={onMoves}
               coach={ai ? <CoachCard initial={review} onSkip={onSkip} skipped={new Set(optimisticSkips)} /> : null}
+              score={{ inputs: scoreInputs, open: () => openTab("score") }}
             />
           )}
           {tab === "plan" && <PlanPanel weeks={weeks} logs={logs} today={today} onSkip={onSkip} onMoves={onMoves} />}
           {tab === "log" && <LogPanel weeks={weeks} logs={logs} today={today} painAreas={profile.pain_areas} initialDate={logDate ?? today} />}
+          {tab === "score" && <AccountabilityPanel inputs={scoreInputs} onLog={openLog} onToday={() => openTab("today")} />}
           {tab === "library" && <LibraryPanel />}
           {tab === "progress" && <ProgressPanel logs={logs} settings={settings} painAreas={profile.pain_areas} today={today} />}
           </SwapProvider>

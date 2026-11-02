@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { checkUser } from "@/lib/supabase/user";
-import { profileToSettings, type LogRow, type ProfileRow, type SetRow } from "@/lib/types";
+import { profileToSettings, type ActivityEventRow, type LogRow, type ProfileRow, type SetRow, type SkipRow } from "@/lib/types";
 import { builtinRows, type ExerciseInfo } from "@/lib/plan/catalog.ts";
-import { mondayOf, safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
+import { addDays, mondayOf, safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
 import type { Move } from "@/lib/plan/generate.ts";
 import type { Swap } from "@/lib/plan/swaps.ts";
 import type { SavedReview } from "@/components/CoachCard";
@@ -22,7 +22,7 @@ export default async function Home() {
   const reads = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle<ProfileRow>(),
     supabase.from("logs").select("*").order("date", { ascending: false }).order("created_at", { ascending: false }).limit(1000).returns<LogRow[]>(),
-    supabase.from("day_overrides").select("date").eq("status", "skipped").returns<{ date: string }[]>(),
+    supabase.from("day_overrides").select("date, created_at").eq("status", "skipped").returns<SkipRow[]>(),
     supabase.from("day_moves").select("from:from_date, to:to_date").returns<Move[]>(),
     supabase
       .from("set_logs")
@@ -45,7 +45,14 @@ export default async function Home() {
   if (!settings) redirect("/settings");
   const today = todayIn(safeTimeZone(profile.timezone));
   const ai = aiEnabled();
-  const { data: review } = await supabase.from("ai_reviews").select("content, created_at").eq("week_start", mondayOf(today)).maybeSingle<{ content: SavedReview["review"]; created_at: string }>();
+  const [{ data: review }, { data: events }] = await Promise.all([
+    supabase.from("ai_reviews").select("content, created_at").eq("week_start", mondayOf(today)).maybeSingle<{ content: SavedReview["review"]; created_at: string }>(),
+    // Deletes for the Score tab; a missing table (migration not pushed yet) just means none
+    supabase.from("activity_events").select("kind, date, payload, created_at").gte("date", addDays(today, -84)).order("date", { ascending: false }).limit(1000).returns<ActivityEventRow[]>(),
+  ]);
+  // TODO(sessions): fetch workout_sessions (plan_date, auto_ended) for the Score tab's "ended early" rows
+  // History is capped above: before the oldest row of a full read, the Score tab can't tell a miss from a gap
+  const horizon = [logs?.length === 1000 ? logs.at(-1)?.date : null, sets?.length === 5000 ? sets.at(-1)?.date : null].filter((d): d is string => !!d).sort().at(-1) ?? null;
 
   return (
     <Dashboard
@@ -60,6 +67,7 @@ export default async function Home() {
       today={today}
       ai={ai}
       review={ai && review ? { review: review.content, createdAt: review.created_at } : null}
+      score={{ skippedAt: Object.fromEntries((skips ?? []).map((s) => [s.date, s.created_at])), events: events ?? [], horizon }}
     />
   );
 }

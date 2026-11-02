@@ -259,11 +259,20 @@ export async function updateLog(id: string, patch: { kind?: LogKind; rpe?: strin
 
 export async function deleteLog(id: string): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
-  const { data: log } = await supabase.from("logs").select("date, auto").eq("id", id).single<{ date: string; auto: boolean }>();
+  const { data: log } = await supabase
+    .from("logs")
+    .select("date, kind, auto, title, km, duration_sec, source")
+    .eq("id", id)
+    .single<{ date: string; kind: string; auto: boolean; title: string | null; km: number | null; duration_sec: number | null; source: string }>();
   // An auto entry stands for that day's sets, so deleting it removes them too
-  if (log?.auto) await supabase.from("set_logs").delete().eq("user_id", user.id).eq("date", log.date);
+  const gone = log?.auto ? (await supabase.from("set_logs").delete().eq("user_id", user.id).eq("date", log.date).select("id")).data : null;
   const { error } = await supabase.from("logs").delete().eq("id", id).eq("user_id", user.id);
   if (error) return { ok: false, error: "Couldn't delete. Try again." };
+  // The Score tab lists deletes, which otherwise leave no trace. A failed note never fails the delete
+  if (log) {
+    const { date, auto: _auto, ...payload } = log;
+    await supabase.from("activity_events").insert({ kind: "log_deleted", date, payload: { ...payload, sets: gone?.length ?? 0 } });
+  }
   revalidatePath("/");
   return { ok: true };
 }
@@ -325,8 +334,18 @@ export async function upsertSet(input: SetInput): Promise<ActionResult> {
 
 export async function deleteSet(date: string, exerciseKey: string, setNo: number): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
-  const { error } = await supabase.from("set_logs").delete().eq("user_id", user.id).eq("date", date).eq("exercise_key", exerciseKey).eq("set_no", setNo);
+  const { data: gone, error } = await supabase
+    .from("set_logs")
+    .delete()
+    .eq("user_id", user.id)
+    .eq("date", date)
+    .eq("exercise_key", exerciseKey)
+    .eq("set_no", setNo)
+    .select("date, plan_date, exercise_key, set_no, weight, unit, reps, duration_sec");
   if (error) return { ok: false, error: "Couldn't remove that set." };
+  // For the Score tab. A replayed delete finds no row, so it never notes the same set twice; a failed note is ignored
+  const row = gone?.[0];
+  if (row) await supabase.from("activity_events").insert({ kind: "set_deleted", date: row.plan_date ?? row.date, payload: row });
   return { ok: true };
 }
 

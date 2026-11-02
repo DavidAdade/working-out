@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { generatePlan, dayTitle, weekForDate, moveDay, catchUp, type PlanSettings, type Week } from "./generate.ts";
+import { generatePlan, dayTitle, weekForDate, moveDay, catchUp, isHard, type PlanSettings, type Week } from "./generate.ts";
 import { painWarnings } from "./warnings.ts";
 import { parseDuration, duration, pace } from "./format.ts";
 import { weekday } from "./dates.ts";
@@ -15,7 +15,8 @@ import { adaptPlan, planFor } from "./adapt.ts";
 import { applySwaps, itemKey, itemLine, rankForSwap, searchScore, swapTarget, swapsShown, targetLine } from "./swaps.ts";
 import { onTrack, wins } from "./ontrack.ts";
 import { planToIcs } from "./ics.ts";
-import { addDays } from "./dates.ts";
+import { addDays, daysBetween } from "./dates.ts";
+import { accountability, runCredit, type AcctLog, type AcctSet, type AccountabilityInput } from "./accountability.ts";
 
 const david: PlanSettings = {
   startDate: "2026-11-16",
@@ -555,4 +556,321 @@ test("swap picker: same muscles first, forgiving search", () => {
   assert.ok(rankForSwap(all, rdl, "goblet").some((e) => e.key === "goblet-squat-abc123"), "custom exercises too");
   assert.deepEqual(rankForSwap(all, rdl, "zzqx"), []);
   assert.ok(searchScore("lat pull", "Lat pulldown", []) > searchScore("lt", "Lat pulldown", []));
+});
+
+/* ---------- accountability (Score tab) ---------- */
+
+interface LogOpts {
+  /** Weight for a key on a date (default 20 kg) */
+  kg?: (key: string, date: string) => number;
+  /** Extra sets on every logged line */
+  extra?: number;
+  /** Only log these dates */
+  only?: (date: string) => boolean;
+}
+
+/** Logs every planned day between `from` and `to` exactly as shown: target sets, runs at plan length, walks. */
+function logPlan(weeks: Week[], from: string, to: string, o: LogOpts = {}): { sets: AcctSet[]; logs: AcctLog[] } {
+  const sets: AcctSet[] = [];
+  const logs: AcctLog[] = [];
+  for (const d of weeks.flatMap((w) => w.days)) {
+    if (d.date < from || d.date > to || d.skipped || !d.blocks.length || (o.only && !o.only(d.date))) continue;
+    const n = new Map<string, number>();
+    for (const b of d.blocks) {
+      if (b.kind === "run" || b.kind === "test") {
+        const min = isHard(b) ? 45 : Number(/(\d+) min/.exec(b.title)?.[1] ?? 40);
+        logs.push({ date: d.date, kind: b.kind, km: b.kind === "test" ? 5 : b.km ?? null, duration_sec: min * 60, pain: {} });
+      } else if (b.kind === "walk" || b.kind === "gate") logs.push({ date: d.date, kind: "walk", km: null, duration_sec: 1800, pain: {} });
+      else
+        b.items.forEach((_, i) => {
+          const key = itemKey(b, i);
+          const t = b.swaps?.[i]?.target ?? parseLine(b.items[i])?.target;
+          if (!key || !t) return;
+          const count = (b.light || b.foldedFrom ? Math.min(t.sets, 2) : t.sets) + (o.extra ?? 0);
+          for (let k = 0; k < count; k++) {
+            const setNo = (n.get(key) ?? 0) + 1;
+            n.set(key, setNo);
+            const kg = o.kg?.(key, d.date) ?? 20;
+            sets.push({ date: d.date, exercise_key: key, set_no: setNo, weight: t.sec ? null : kg, unit: "kg", weight_kg: t.sec ? null : kg, reps: t.sec ? null : 10, duration_sec: t.sec, light_week: !!b.light });
+          }
+        });
+    }
+    if (d.blocks.some((b) => ["legs", "upper", "abs", "mobility"].includes(b.kind))) logs.push({ date: d.date, kind: "strength", km: null, duration_sec: null, pain: {}, auto: n.size > 0 });
+  }
+  return { sets, logs };
+}
+
+type History = { sets: AcctSet[]; logs: AcctLog[] };
+const acct = (weeks: Week[], today: string, data: History, more: Partial<AccountabilityInput> = {}) => accountability({ weeks, today, ...data, ...more });
+const merge = (a: History, b: History): History => ({ sets: [...a.sets, ...b.sets], logs: [...a.logs, ...b.logs] });
+/** Adherence by the spec's formula, for checking the engine against hand-worked numbers */
+const weightedA = (days: { date: string; u: number; c: number }[], today: string) => {
+  const w = (d: string) => 0.5 ** (daysBetween(d, today) / 14);
+  return Math.round((1000 * days.reduce((s, d) => s + w(d.date) * d.c, 0)) / days.reduce((s, d) => s + w(d.date) * d.u, 0)) / 10;
+};
+const dayOf = (weeks: Week[], date: string) => weeks.flatMap((w) => w.days).find((d) => d.date === date)!;
+const check = (date: string, knee: number): AcctLog => ({ date, kind: "check", km: null, duration_sec: null, pain: { knee } });
+const shift = (p: PlanSettings, days: number): PlanSettings => ({
+  ...p,
+  startDate: addDays(p.startDate, days),
+  recoveryStart: p.recoveryStart ? addDays(p.recoveryStart, days) : p.recoveryStart,
+  timeTrialDate: addDays(p.timeTrialDate, days),
+  raceDate: p.raceDate ? addDays(p.raceDate, days) : p.raceDate,
+});
+
+test("accountability: everything logged scores 100 in every profile and week type", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const weeks = generatePlan(p);
+    const all = logPlan(weeks, weeks[0].start, weeks.at(-1)!.days.at(-1)!.date);
+    const kinds = new Set<string>();
+    for (const w of weeks.slice(1)) {
+      // Mid-week and the Monday after, so each week type is the newest in the window once
+      for (const today of [addDays(w.start, 3), addDays(w.start, 7)]) {
+        const r = acct(weeks, today, all);
+        assert.equal(r.score, 100, `${name} ${w.label} (${w.phase}${w.cutback ? ", cutback" : ""}) on ${today}: ${JSON.stringify(r.parts)}`);
+      }
+      kinds.add(w.cutback ? "cutback" : w.phase);
+    }
+    assert.ok(kinds.size >= 5, `${name}: ${[...kinds]}`);
+  }
+  const weeks = generatePlan(PROFILES.september);
+  const r = acct(weeks, "2027-07-14", logPlan(weeks, weeks[0].start, "2027-07-13"));
+  assert.equal(r.band, "locked");
+  assert.equal(r.weeks.length, 6);
+  assert.ok(r.weeks[1].days.every((c) => c.glyph === "done" || c.glyph === "rest"));
+  assert.ok(r.streak >= 6, String(r.streak));
+});
+
+test("accountability: cutback weeks ask for 2 sets, and a third isn't extra", () => {
+  const weeks = generatePlan(PROFILES.september);
+  const cut = weeks.find((w) => w.cutback && w.phase === "build")!;
+  const before = logPlan(weeks, weeks[0].start, addDays(cut.start, -1));
+  const today = addDays(cut.start, 7);
+  assert.equal(acct(weeks, today, merge(before, logPlan(weeks, cut.start, addDays(cut.start, 6)))).score, 100);
+  const r = acct(weeks, today, merge(before, logPlan(weeks, cut.start, addDays(cut.start, 6), { extra: 1 })), { horizon: cut.start });
+  assert.equal(r.parts.e, 0);
+  assert.equal(r.score, 100);
+  assert.ok(r.feed.some((f) => f.kind === "set_extra" && f.delta === "not counted"));
+});
+
+test("accountability: a swapped exercise scores like the template one", () => {
+  const plain = generatePlan(PROFILES.september);
+  const mon = "2027-05-31";
+  const from = parseLine(dayOf(plain, mon).blocks[0].items[0])!.exercise.key;
+  const swapped = applySwaps(plain, [{ planDate: mon, from, to: "goblet-squat" }], (k) => (k === "goblet-squat" ? { name: "Goblet squat", load: "weight" } : undefined));
+  const today = "2027-06-02";
+  const a = acct(plain, today, logPlan(plain, plain[0].start, "2027-06-01"));
+  const b = acct(swapped, today, logPlan(swapped, plain[0].start, "2027-06-01"));
+  assert.ok(logPlan(swapped, mon, mon).sets.some((s) => s.exercise_key === "goblet-squat"));
+  assert.equal(b.score, a.score);
+  assert.equal(b.parts.a, 100);
+  assert.ok(b.feed.some((f) => f.kind === "swapped" && f.date === mon));
+});
+
+test("accountability: a moved day logged where it was moved to scores 100", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const w = generatePlan(p).find((x) => x.phase === "base")!;
+    const moves = moveDay(w, addDays(w.start, 1), addDays(w.start, 3));
+    assert.ok(moves, name);
+    const weeks = generatePlan(p, { moves: moves! });
+    const today = addDays(w.start, 7);
+    const r = acct(weeks, today, logPlan(weeks, weeks[0].start, addDays(today, -1)));
+    assert.equal(r.score, 100, name);
+    assert.ok(r.weeks[1].days.some((c) => c.glyph === "moved"), name);
+  }
+});
+
+test("accountability: skipped days count half, carry work counts where it was folded", () => {
+  const ws = "2027-05-10"; // september's base week 2
+  const thu = addDays(ws, 3);
+  const weeks = generatePlan(PROFILES.september, { skips: [thu] });
+  assert.ok(dayOf(weeks, ws).blocks.some((b) => b.foldedFrom === "Thu"));
+  const today = addDays(ws, 4);
+  const data = logPlan(weeks, ws, addDays(today, -1));
+  // Skipped ahead of time: the folded block (2 sets each) counts on Monday, the rest of Thursday counts half
+  const early = acct(weeks, today, data, { horizon: ws, skips: [{ date: thu, createdAt: `${ws}T08:00:00Z` }] });
+  const days = (monU: number, thuU: number) => [
+    { date: ws, u: monU, c: monU },
+    { date: addDays(ws, 1), u: 20, c: 20 },
+    { date: addDays(ws, 2), u: 44, c: 44 },
+    { date: thu, u: thuU, c: 0 },
+  ];
+  assert.equal(early.parts.a, weightedA(days(36 + 8, 0.5 * (15 + 9)), today));
+  assert.ok(early.feed.some((f) => f.kind === "skipped" && f.delta === "half credit"));
+  // Skipped after Monday had passed: Monday couldn't have done it, so all of Thursday counts half
+  const late = acct(weeks, today, data, { horizon: ws, skips: [{ date: thu, createdAt: `${today}T08:00:00Z` }] });
+  assert.equal(late.parts.a, weightedA(days(36, 18), today));
+  assert.ok(late.feed.some((f) => f.kind === "skipped_late"));
+});
+
+test("accountability: a skipped run costs half, an unlogged one all of it", () => {
+  const ws = "2027-05-17"; // september's base week 3 (5K test on Wednesday)
+  const tue = addDays(ws, 1);
+  const today = addDays(ws, 7);
+  const days = (tueU: number) => [
+    { date: ws, u: 36, c: 36 },
+    { date: tue, u: tueU, c: 0 },
+    { date: addDays(ws, 2), u: 30 + 24, c: 30 + 24 },
+    { date: addDays(ws, 3), u: 36, c: 36 },
+    { date: addDays(ws, 4), u: 30, c: 30 },
+  ];
+  const skipped = generatePlan(PROFILES.september, { skips: [tue] });
+  const s = acct(skipped, today, logPlan(skipped, ws, addDays(today, -1)), { horizon: ws });
+  assert.equal(s.parts.a, weightedA(days(10), today));
+  const plain = generatePlan(PROFILES.september);
+  const u = acct(plain, today, logPlan(plain, ws, addDays(today, -1), { only: (d) => d !== tue }), { horizon: ws });
+  assert.equal(u.parts.a, weightedA(days(20), today));
+  assert.ok(u.parts.a < s.parts.a);
+  assert.ok(u.feed.some((f) => f.kind === "missed" && f.date === tue));
+});
+
+test("accountability: yesterday gets a grace day, today only adds", () => {
+  const weeks = generatePlan(PROFILES.september);
+  const today = "2027-06-03"; // Thu
+  const full = logPlan(weeks, weeks[0].start, addDays(today, -2));
+  const r = acct(weeks, today, full);
+  assert.equal(r.score, 100);
+  assert.ok(r.feed.some((f) => f.kind === "grace" && f.date === addDays(today, -1)));
+  assert.equal(r.weeks[0].days[2].glyph, "grace");
+  assert.equal(r.weeks[0].days[3].glyph, "today");
+  assert.ok(acct(weeks, addDays(today, 1), full).parts.a < 100, "two days ago unlogged counts");
+  const part = logPlan(weeks, today, today);
+  assert.equal(acct(weeks, today, { sets: [...full.sets, ...part.sets.slice(0, 4)], logs: [...full.logs, ...part.logs] }).score, 100, "part of today never lowers it");
+});
+
+test("accountability: runs get full credit from 90% of the plan", () => {
+  const easy = { kind: "run" as const, title: "Easy 30 min", items: [] };
+  const run = (min: number): AcctLog => ({ date: "2027-01-01", kind: "run", km: null, duration_sec: min * 60, pain: {} });
+  assert.equal(runCredit(easy, 20, [run(27)]).c, 20);
+  assert.equal(runCredit(easy, 20, [run(24)]).c, 16);
+  assert.equal(runCredit({ ...easy, title: "Long run 8 km", km: 8 }, 30, [{ ...run(50), km: 6 }]).c, 22.5);
+  assert.equal(runCredit({ ...easy, title: "Tempo 3 × 6 min" }, 20, [run(12)]).c, 20, "intervals: any run of 10 min+");
+  assert.equal(runCredit(easy, 20, []).c, 0);
+});
+
+test("accountability: extras only count in kept weeks when the plan isn't easing off", () => {
+  const weeks = generatePlan(PROFILES.september);
+  const ws = "2027-05-31"; // build
+  const today = addDays(ws, 7);
+  const lots = acct(weeks, today, logPlan(weeks, weeks[0].start, addDays(today, -1), { extra: 3 }));
+  assert.equal(lots.parts.e, 8, "capped at +8");
+  assert.equal(lots.score, 100);
+  const low = acct(weeks, today, logPlan(weeks, ws, addDays(today, -1), { extra: 2, only: (d) => d !== addDays(ws, 2) && d !== addDays(ws, 3) }), { horizon: ws });
+  assert.ok(low.weeks[1].pct! < 80);
+  assert.equal(low.parts.e, 0, "under 80%");
+  assert.ok(low.feed.some((f) => f.detail === "Counts once the week is at 80%"));
+  const sore = logPlan(weeks, ws, addDays(today, -1), { extra: 2 });
+  for (const d of [-1, 1, 3, 5]) sore.logs.push(check(addDays(ws, d), 3));
+  const pained = acct(weeks, today, sore, { horizon: ws });
+  assert.equal(pained.parts.e, 0, "pain");
+  assert.ok(pained.feed.some((f) => f.detail === "Extra logged. Plan says ease off"));
+  const iw = generatePlan(PROFILES.shortInjury);
+  const ret = iw.find((w) => w.phase === "return")!;
+  const r = acct(iw, addDays(ret.start, 7), logPlan(iw, iw[0].start, addDays(ret.start, 6), { extra: 2 }), { horizon: ret.start });
+  assert.equal(r.parts.e, 0, "run-walk weeks");
+  assert.equal(r.score, 100);
+});
+
+test("accountability: bests add up to +3, drops take up to −2", () => {
+  const weeks = generatePlan(PROFILES.september);
+  const mon = "2027-06-14"; // build
+  const today = addDays(mon, 2);
+  const keys = dayOf(weeks, mon).blocks.flatMap((b) => b.items.flatMap((l) => (parseLine(l)?.target.sec ? [] : parseLine(l)?.exercise.key ?? [])));
+  assert.ok(keys.length >= 10);
+  const run = (n: number, kg: number) => acct(weeks, today, logPlan(weeks, weeks[0].start, addDays(today, -1), { kg: (k, d) => (d === mon && keys.slice(0, n).includes(k) ? kg : 20) }));
+  assert.equal(run(5, 25).parts.p, 2.5);
+  assert.equal(run(10, 25).parts.p, 3);
+  assert.equal(run(1, 25).feed.find((f) => f.kind === "weight_up")?.delta, "+5 kg");
+  const dropped = run(5, 18);
+  assert.equal(dropped.parts.d, 2);
+  assert.equal(dropped.score, 98);
+  assert.ok(dropped.feed.some((f) => f.kind === "weight_down" && f.tone === "bad"));
+  // Lighter in a cutback week, or with pain logged: not a drop
+  const cut = weeks.find((w) => w.cutback && w.phase === "build")!;
+  const light = acct(weeks, addDays(cut.start, 2), logPlan(weeks, weeks[0].start, addDays(cut.start, 1), { kg: (_, d) => (d === cut.start ? 15 : 20) }));
+  assert.equal(light.parts.d, 0);
+  const sore = logPlan(weeks, weeks[0].start, addDays(today, -1), { kg: (k, d) => (d === mon && keys.slice(0, 5).includes(k) ? 18 : 20) });
+  sore.logs.push(check(addDays(mon, -1), 3));
+  assert.equal(acct(weeks, today, sore).parts.d, 0);
+  // The same weight week after week (stalled) is full marks
+  assert.equal(acct(weeks, today, logPlan(weeks, weeks[0].start, addDays(today, -1))).score, 100);
+});
+
+test("accountability: no number until 3 planned days have passed", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const weeks = generatePlan(p);
+    const start = weeks[0].start;
+    assert.equal(acct(weeks, addDays(start, -3), { sets: [], logs: [] }).status, "not_started", name);
+    const early = acct(weeks, addDays(start, 2), logPlan(weeks, start, addDays(start, 1)));
+    assert.equal(early.score, null, name);
+    assert.equal(early.status, "building", name);
+    assert.equal(acct(weeks, addDays(start, 4), logPlan(weeks, start, addDays(start, 3))).score, 100, name);
+  }
+});
+
+test("accountability: the worked example scores 78", () => {
+  const p = PROFILES.september;
+  const w1 = "2027-05-31"; // build week, then another
+  const w2 = addDays(w1, 7);
+  const today = addDays(w2, 2);
+  const tue1 = addDays(w1, 1);
+  const lift = (date: string, key: string, n: number): AcctSet => ({ date, exercise_key: key, set_no: n, weight: 20, unit: "kg", weight_kg: 20, reps: 10, duration_sec: null, light_week: false });
+  const fixture = (weeks: Week[]) => {
+    const kg = (k: string, d: string) => (d === w2 && k === "bulgarian-split-squat" ? 25 : d === w2 && k === "rdl" ? 18.6 : 20);
+    // W1 Mon: everything plus 3 extra curl sets
+    const out = logPlan(weeks, w1, w1, { kg });
+    out.sets.push(lift(w1, "curl", 4), lift(w1, "curl", 5), lift(w1, "curl", 6));
+    // W1 Wed: the run and 14 of 24 sets
+    const wed = logPlan(weeks, addDays(w1, 2), addDays(w1, 2));
+    out.logs.push(...wed.logs);
+    out.sets.push(...wed.sets.slice(0, 14));
+    // W1 Fri: 95% of the long run
+    out.logs.push({ date: addDays(w1, 4), kind: "run", km: dayOf(weeks, addDays(w1, 4)).blocks[0].km! * 0.95, duration_sec: 3600, pain: {} });
+    // W2 Mon: 33 of 36 sets (the last abs line left out), split squat heavier, RDL 7% lighter
+    const lastAbs = parseLine(dayOf(weeks, w2).blocks[2].items.at(-1)!)!.exercise.key;
+    const mon2 = logPlan(weeks, w2, w2, { kg });
+    out.sets.push(...mon2.sets.filter((s) => s.exercise_key !== lastAbs));
+    out.logs.push(...mon2.logs);
+    // W2 Tue: the run and 3 sets that weren't planned
+    out.logs.push(...logPlan(weeks, addDays(w2, 1), addDays(w2, 1)).logs);
+    out.sets.push(lift(addDays(w2, 1), "sl-calf-raise", 1), lift(addDays(w2, 1), "sl-calf-raise", 2), lift(addDays(w2, 1), "sl-calf-raise", 3));
+    // W2 Wed (today): the run and 9 sets so far
+    const wed2 = logPlan(weeks, today, today);
+    out.logs.push(...wed2.logs);
+    out.sets.push(...wed2.sets.slice(0, 9));
+    return out;
+  };
+  const weeks = generatePlan(p, { skips: [tue1] });
+  const r = acct(weeks, today, fixture(weeks), { horizon: w1, skips: [{ date: tue1, createdAt: `${w1}T07:00:00Z` }] });
+  assert.equal(r.parts.a, 77.4);
+  assert.equal(r.parts.e, 0.7); // 0.745
+  assert.equal(r.parts.p, 0.5);
+  assert.equal(r.parts.d, 0.5);
+  assert.equal(r.score, 78);
+  assert.equal(r.band, "steady");
+  assert.equal(r.weeks[1].pct, 64);
+  assert.equal(r.weeks[0].pct, 96);
+  assert.deepEqual(r.weeks[1].days.map((c) => c.glyph), ["done", "skipped", "partial", "missed", "done", "rest", "rest"]);
+  assert.ok(r.feed.some((f) => f.kind === "set_extra" && f.key === "curl" && f.delta === "not counted"), "W1 is under 80%");
+  assert.ok(r.feed.some((f) => f.kind === "exercise_extra" && f.delta === "+3 sets"));
+  assert.ok(r.feed.some((f) => f.kind === "weight_down" && f.key === "rdl"));
+  assert.ok(r.feed.some((f) => f.kind === "weight_same" && f.tone === "good"));
+  // Thursday skipped (after Monday had passed) instead of left unlogged
+  const thu = addDays(w1, 3);
+  const both = generatePlan(p, { skips: [tue1, thu] });
+  const r2 = acct(both, today, fixture(both), { horizon: w1, skips: [{ date: tue1, createdAt: `${w1}T07:00:00Z` }, { date: thu, createdAt: `${thu}T21:00:00Z` }] });
+  assert.equal(r2.parts.a, 83.2);
+});
+
+test("accountability: the same history scores the same from any profile's start", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const scores = [0, 7 * 9, 7 * 52].map((off) => {
+      const weeks = generatePlan(shift(p, off));
+      const start = weeks[0].start;
+      const today = addDays(start, 26);
+      return acct(weeks, today, logPlan(weeks, start, addDays(today, -1), { only: (d) => ![0, 7, 14].includes(daysBetween(start, d)) })).score;
+    });
+    assert.ok(scores[0] != null && scores[0] < 100, `${name}: ${scores}`);
+    assert.equal(new Set(scores).size, 1, `${name}: ${scores}`);
+  }
 });

@@ -9,17 +9,22 @@
 // account's logs, sets and skips first.
 
 import { generatePlan, type PlanSettings } from "../lib/plan/generate.ts";
-import { addDays, daysBetween, todayIn } from "../lib/plan/dates.ts";
-import { parseLine } from "../lib/plan/exercises.ts";
+import { addDays, daysBetween, mondayOf, todayIn } from "../lib/plan/dates.ts";
+import { exerciseByKey, parseLine } from "../lib/plan/exercises.ts";
+import { planFor } from "../lib/plan/adapt.ts";
+import { accountability, type AcctLog, type AcctSet } from "../lib/plan/accountability.ts";
 
-const email = (process.argv[2] ?? "test@mailinator.com").toLowerCase();
+// --dry builds the same data and prints what it would show (e.g. the Score) without touching Supabase
+const dry = process.argv.includes("--dry");
+const email = (process.argv.slice(2).find((a) => !a.startsWith("--")) ?? "test@mailinator.com").toLowerCase();
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-if (!url || !key) throw new Error("Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (e.g. in .env.local)");
+if (!dry && (!url || !key)) throw new Error("Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (e.g. in .env.local)");
 if (!email.endsWith("@mailinator.com")) throw new Error(`Refusing to seed ${email}: test accounts must be @mailinator.com`);
 
-const headers = { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
+const headers = { apikey: key ?? "", Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
 async function api(path: string, init: RequestInit = {}) {
+  if (dry) return path.startsWith("/auth/") ? { users: [{ id: "dry-run", email }] } : null;
   const res = await fetch(`${url}${path}`, { ...init, headers: { ...headers, ...(init.headers as Record<string, string>) } });
   if (!res.ok) throw new Error(`${init.method ?? "GET"} ${path}: ${res.status} ${await res.text()}`);
   const text = await res.text();
@@ -84,10 +89,19 @@ async function main() {
     }),
   });
   for (const t of ["set_logs", "logs", "day_overrides", "day_moves", "exercise_swaps"]) await api(`/rest/v1/${t}?user_id=eq.${uid}`, { method: "DELETE" });
+  // Score tab deletes; the table only exists once migration 0011 is pushed
+  await api(`/rest/v1/activity_events?user_id=eq.${uid}`, { method: "DELETE" }).catch(() => null);
 
   const skipDate = addDays(start, 7 + 1); // week 2 Tuesday
   const weeks = generatePlan(settings, { skips: [skipDate] });
-  const days = weeks.flatMap((w) => w.days.map((d) => ({ d, w }))).filter(({ d }) => d.date >= FROM && d.date < today && !d.skipped);
+  const planned = weeks.flatMap((w) => w.days.map((d) => ({ d, w }))).filter(({ d }) => d.date >= FROM && d.date < today && !d.skipped);
+  // For a varied Score: an easy run and a lifting day missed, one lifting day a set short on core, one extra Saturday run
+  const missRun = planned.filter(({ d }) => d.date <= addDays(today, -3) && d.blocks.every((b) => b.kind === "run" && !b.km)).at(-1)?.d.date;
+  const missLift = planned.filter(({ d }) => d.date <= addDays(today, -4) && d.blocks.every((b) => b.kind !== "run" && b.kind !== "test")).at(-1)?.d.date;
+  const missDate = [missRun, missLift].filter(Boolean).join(" and ");
+  const days = planned.filter(({ d }) => d.date !== missRun && d.date !== missLift);
+  const partialDate = days.filter(({ d }) => d.date <= addDays(today, -3) && d.blocks.some((b) => b.kind === "abs")).at(-1)?.d.date;
+  const extraRun = addDays(mondayOf(today), -2);
 
   const logs: Record<string, unknown>[] = [];
   const sets: Record<string, unknown>[] = [];
@@ -135,7 +149,7 @@ async function main() {
           if (light) kg = Math.round(kg * 0.8 * 2) / 2;
         }
         const reps = target.reps ?? 12;
-        const count = light ? Math.min(target.sets, 2) : target.sets;
+        const count = (light ? Math.min(target.sets, 2) : target.sets) - (d.date === partialDate && b.kind === "abs" ? 1 : 0);
         for (let s = 1; s <= count; s++) {
           const r = stallNow ? lastByKey.get(ex.key)?.reps ?? reps : s === count && rand() < 0.4 ? reps - 1 : reps;
           sets.push({
@@ -157,7 +171,10 @@ async function main() {
     if (daysBetween(start, d.date) % 7 === 6) easyPace -= 4;
   }
 
-  await api("/rest/v1/day_overrides", { method: "POST", body: JSON.stringify([{ user_id: uid, date: skipDate, status: "skipped" }]) });
+  if (extraRun >= FROM) logs.push({ user_id: uid, date: extraRun, kind: "run", title: "Easy extra", km: 3.2, duration_sec: 25 * 60, rpe: 3, pain: { knee: 0, foot: 0 }, notes: "Felt good, added one", auto: false });
+  // Skipped the evening before, so it reads as planned rather than after the fact
+  const skippedAt = `${addDays(skipDate, -1)}T23:00:00Z`;
+  await api("/rest/v1/day_overrides", { method: "POST", body: JSON.stringify([{ user_id: uid, date: skipDate, status: "skipped", created_at: skippedAt }]) });
   await api("/rest/v1/logs", { method: "POST", body: JSON.stringify(logs) });
 
   // One swap on the last lifting day, after its sets were logged: the original's sets stay and show under the
@@ -179,6 +196,15 @@ async function main() {
   console.log(`seed-test-user: ${email} reset with ${runs} runs/tests, ${logs.length - runs} lifting days, ${sets.length} sets from ${FROM} to ${addDays(today, -1)}.`);
   console.log(`  Plan starts ${start}. Warnings to look for: ${STALLED} (no increase) and ${DROPPED} (dropped ~15%).`);
   if (swapNote.length) console.log(`  Swap: ${swapNote.join(", ")}.`);
+
+  // What the Score tab should show for this data
+  const acctLogs = logs as unknown as AcctLog[];
+  const acctSets = sets.map((s) => ({ ...s, weight_kg: s.weight ?? null, plan_date: null })) as unknown as AcctSet[];
+  const swaps = swapDay ? [{ planDate: swapDay.date, from: swapNote[0].split(" → ")[0], to: swapNote[0].split(" → ")[1].split(" ")[0] }] : [];
+  const exercise = (k: string) => exerciseByKey(k);
+  const plan = planFor({ settings, logs: acctLogs.map((l) => ({ ...l, km: l.km ?? null, duration_sec: l.duration_sec ?? null })), skips: [skipDate], moves: [], gatesPending: false, today, swaps, exercise });
+  const score = accountability({ weeks: plan.weeks, logs: acctLogs, sets: acctSets, skips: [{ date: skipDate, createdAt: skippedAt }], today });
+  console.log(`  Score: ${score.score ?? "—"}% (${score.band ?? score.status}; adherence ${score.parts.a}, extra +${score.parts.e}, bests +${score.parts.p}, drops −${score.parts.d}). Missed ${missDate ?? "none"}, short ${partialDate ?? "none"}, extra run ${extraRun}.`);
 }
 
 main().catch((e) => {
