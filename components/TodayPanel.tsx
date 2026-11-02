@@ -15,6 +15,7 @@ import { Chip, DayBlocks } from "./DayView";
 import { useDates } from "./DateLabels";
 import WeekCard, { loggedDates } from "./WeekCard";
 import { MoveSheet, moveNote, moveTargets, type OnMoves } from "./DayCard";
+import { ScoreLink, type ScoreInputs } from "./AccountabilityPanel";
 
 interface Props {
   profile: ProfileRow;
@@ -29,9 +30,11 @@ interface Props {
   onMoves: OnMoves;
   /** The weekly AI check-in card */
   coach?: React.ReactNode;
+  /** The Score tab: its inputs, and how to open it */
+  score?: { inputs: ScoreInputs; open: () => void };
 }
 
-export default function TodayPanel({ profile, settings, weeks, logs, today, fitness, warnings, onLog, onSkip, onMoves, coach }: Props) {
+export default function TodayPanel({ profile, settings, weeks, logs, today, fitness, warnings, onLog, onSkip, onMoves, coach, score }: Props) {
   const day = dayForDate(weeks, today);
   const next = weeks.flatMap((w) => w.days).find((d) => d.date > today && !d.skipped && d.blocks.length);
   const week = weekForDate(weeks, today);
@@ -50,6 +53,7 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
   const missed = week?.days.filter((d) => d.date < today && !d.skipped && !d.fixed && d.blocks.length && !logged.has(d.date)).at(-1);
   const catchMoves = week && missed && !logged.has(today) ? catchUp(week, missed.date, today) : null;
 
+  const scoreShown = !!score;
   const track = useMemo(
     () =>
       onTrack({
@@ -63,8 +67,9 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
         gatesTotal: GATES.length,
         fitness,
         today,
+        scoreShown,
       }),
-    [settings, weeks, logs, sets, profile.pain_areas, warnings, gatesPassed, fitness, today],
+    [settings, weeks, logs, sets, profile.pain_areas, warnings, gatesPassed, fitness, today, scoreShown],
   );
 
   return (
@@ -75,7 +80,7 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
         </div>
       ))}
 
-      <OnTrackCard track={track} />
+      <OnTrackCard track={track}>{score && <ScoreLink inputs={score.inputs} onOpen={score.open} />}</OnTrackCard>
 
       {profile.pain_areas.length > 0 && !logs.some((l) => l.date === today && l.kind === "check") && <CheckInCard areas={profile.pain_areas} today={today} />}
 
@@ -211,7 +216,7 @@ function CatchUpCard({
 
 const STATUS_CLS: Record<OnTrack["status"], string> = { good: "bg-good/15 text-good", hold: "bg-warn/15 text-warn", stop: "bg-bad/15 text-bad" };
 
-function OnTrackCard({ track }: { track: OnTrack }) {
+function OnTrackCard({ track, children }: { track: OnTrack; children?: React.ReactNode }) {
   return (
     <article className="card gap-1.5">
       <div className="flex items-start justify-between gap-2">
@@ -223,6 +228,7 @@ function OnTrackCard({ track }: { track: OnTrack }) {
           {l}
         </p>
       ))}
+      {children}
     </article>
   );
 }

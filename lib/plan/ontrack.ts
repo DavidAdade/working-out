@@ -60,6 +60,8 @@ export function onTrack(o: {
   gatesTotal: number;
   fitness: Fitness;
   today: ISODate;
+  /** The Score tab's link stands in for the sessions line */
+  scoreShown?: boolean;
 }): OnTrack {
   const { settings: s, today } = o;
   const lines: string[] = [];
@@ -101,7 +103,7 @@ export function onTrack(o: {
 
   if (c) {
     const pct = Math.round((c.done / c.planned) * 100);
-    lines.push(`${c.done}/${c.planned} sessions in 4 weeks (${pct}%)`);
+    if (!o.scoreShown) lines.push(`${c.done}/${c.planned} sessions in 4 weeks (${pct}%)`);
     if (pct < 60 && status === "good") status = "hold";
   }
   if (pain.length) lines.push(`Pain this week: ${pain.join(", ")}`);

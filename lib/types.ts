@@ -70,6 +70,20 @@ export interface LogRow {
   queued?: boolean;
 }
 
+/** A skipped day and when it was skipped, for the Score tab */
+export interface SkipRow {
+  date: string;
+  created_at: string | null;
+}
+
+/** A delete noted for the Score tab (activity_events): the only history that otherwise leaves no trace */
+export interface ActivityEventRow {
+  kind: "log_deleted" | "set_deleted";
+  date: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
 /** A profile is ready once the required plan fields are filled in. */
 export function profileToSettings(p: ProfileRow): PlanSettings | null {
   if (!p.start_date || !p.time_trial_date || !p.current_5k_sec || !p.goal_5k_sec) return null;
