@@ -16,11 +16,15 @@ import type { SetRow, Unit } from "@/lib/types";
 import { useDates } from "./DateLabels";
 import { LineChart } from "./charts";
 import { useOpenVideo } from "./VideoModal";
+import { useWorkout } from "./Workout";
+import HoldTimer from "./HoldTimer";
 
 /* ---------- shared state: every logged set, saved optimistically ---------- */
 export interface SaveOpts {
   /** The plan day these sets are for, when done early */
   planDate?: string | null;
+  /** The workout session (its plan date, see lib/plan/workout.ts) to start if it isn't already */
+  session?: string | null;
 }
 
 interface SetsCtx {
@@ -93,6 +97,7 @@ export function SetsProvider({
   children: React.ReactNode;
 }) {
   const { send, notify, onRejected, queue, rest } = useDock();
+  const { ensureStarted } = useWorkout();
   const [sets, setSets] = useState(initial);
   const setsRef = useRef(sets);
   setsRef.current = sets;
@@ -201,9 +206,11 @@ export function SetsProvider({
         if (before.length && !sameDay && optimistic.weight_kg > Math.max(...before) + 0.25) notify({ text: `New best: ${ex?.name ?? keyLabel(row.exercise_key)} ${row.weight} ${row.unit}`, tone: "good" });
       }
       if (ex && !prev) rest.start(restFor(asExercise(ex)), `${ex.name} set ${row.set_no}`);
+      // Logging without tapping Start starts the workout (queued first, so it replays before the set)
+      if (opts.session) ensureStarted(opts.session);
       void send({ id: crypto.randomUUID(), t: "set", input }).then((r) => afterSend(r, () => revert(k, prev, row.date, row.exercise_key, row.set_no)));
     },
-    [afterSend, byKey, notify, rest, revert, send, unit],
+    [afterSend, byKey, ensureStarted, notify, rest, revert, send, unit],
   );
 
   const remove = useCallback<SetsCtx["remove"]>(
@@ -255,10 +262,10 @@ export function fmtWeight(kg: number | null, unit: Unit): string {
   return String(Number(toUnit(kg, unit).toFixed(2)));
 }
 
-/** "40×8" / "×12" / "40s" for one set, in the viewer's unit */
+/** "40×8" / "×12" / "40s" / "10×40s" (a weighted hold) for one set, in the viewer's unit */
 export function fmtSet(s: Pick<SetRow, "weight_kg" | "reps" | "duration_sec">, unit: Unit): string {
-  if (s.duration_sec != null) return `${s.duration_sec}s`;
   const w = s.weight_kg ? fmtWeight(Number(s.weight_kg), unit) : "";
+  if (s.duration_sec != null) return w ? `${w}×${s.duration_sec}s` : `${s.duration_sec}s`;
   return w ? `${w}×${s.reps ?? "?"}` : `×${s.reps ?? "?"}`;
 }
 
@@ -282,9 +289,13 @@ export interface RowProps {
   onSwap?: () => void;
   /** Puts the template exercise back */
   onPutBack?: () => void;
+  /** The workout ended 12+ hours ago: sets are read-only */
+  locked?: boolean;
+  /** The workout session a logged set starts, if it isn't already (see SaveOpts) */
+  session?: string | null;
 }
 
-export function ExerciseRow({ anchorId, line, logDate: planLogDate, planDate, light, dayTitle, open, onToggle, onComplete, swap, onSwap, onPutBack }: RowProps) {
+export function ExerciseRow({ anchorId, line, logDate: planLogDate, planDate, light, dayTitle, open, onToggle, onComplete, swap, onSwap, onPutBack, locked = false, session }: RowProps) {
   const parsed = parseLine(line);
   const { sets, unit, today, openHistory, info, nameOf } = useSets();
   const dates = useDates();
@@ -378,7 +389,21 @@ export function ExerciseRow({ anchorId, line, logDate: planLogDate, planDate, li
         </div>
       )}
       {open && logDate && (
-        <SetTable key={exercise.key} exercise={exercise} target={sized} date={logDate} planDate={planDate} light={light} dayTitle={dayTitle} done={done} onCollapse={onToggle} onComplete={onComplete} actions={swapButtons} />
+        <SetTable
+          key={exercise.key}
+          exercise={exercise}
+          target={sized}
+          date={logDate}
+          planDate={planDate}
+          light={light}
+          dayTitle={dayTitle}
+          done={done}
+          onCollapse={onToggle}
+          onComplete={onComplete}
+          actions={locked ? undefined : swapButtons}
+          locked={locked}
+          session={session}
+        />
       )}
       {open && !logDate && (
         <div className="mb-2 ml-11 flex flex-col gap-1.5 text-sm">
@@ -430,6 +455,8 @@ function SetTable({
   onComplete,
   inset = true,
   actions,
+  locked = false,
+  session,
 }: {
   inset?: boolean;
   /** More buttons for the row's action bar, e.g. Swap */
@@ -443,6 +470,9 @@ function SetTable({
   done: SetRow[];
   onCollapse: () => void;
   onComplete: () => void;
+  /** Read-only: the workout ended 12+ hours ago */
+  locked?: boolean;
+  session?: string | null;
 }) {
   const { sets, unit, isLightDate, save, remove, openHistory } = useSets();
   const dates = useDates();
@@ -454,6 +484,14 @@ function SetTable({
   const [extra, setExtra] = useState(0);
   const rowCount = Math.max(target.sets, done.length ? done[done.length - 1].set_no : 0) + extra;
   const change = done.length >= Math.min(target.sets, prev?.sets.length ?? target.sets) ? compareSession(all, done[0]?.date ?? date) : null;
+  const timed = exercise.load === "time";
+  // Bodyweight and timed work can carry optional weight (weighted plank, dip belt…): on when it did last time
+  const hasWeight = (rows: SetRow[] | undefined) => !!rows?.some((s) => (s.weight_kg ?? 0) > 0);
+  const [addWeight, setAddWeight] = useState(() => hasWeight(done) || hasWeight(prev?.sets));
+  const showWeight = exercise.load === "weight" || addWeight;
+  // The hold timer fills (and at zero, ticks) the first set not yet logged
+  const nextSet = Array.from({ length: rowCount }, (_, i) => i + 1).find((n) => !done.some((d) => d.set_no === n)) ?? rowCount + 1;
+  const [fill, setFill] = useState<{ setNo: number; sec: number; commit: boolean; n: number } | null>(null);
 
   // Move on once the last planned set is ticked; opening an already-finished exercise doesn't count
   const count = useRef(done.length);
@@ -465,7 +503,7 @@ function SetTable({
     if (before < target.sets && done.length >= target.sets) setTimeout(() => completeRef.current(), 600);
   }, [done.length, target.sets]);
 
-  const cols = exercise.load === "weight" ? "grid-cols-[1.25rem_5rem_4rem_2.75rem]" : "grid-cols-[1.25rem_5rem_2.75rem]";
+  const cols = showWeight ? "grid-cols-[1.25rem_5rem_4rem_2.75rem]" : "grid-cols-[1.25rem_5rem_2.75rem]";
 
   return (
     <div className={`mb-2 flex max-w-sm flex-col gap-1.5 ${inset ? "ml-11" : ""}`}>
@@ -476,59 +514,88 @@ function SetTable({
           </span>
         </button>
       )}
-      {suggested != null && !done.length && (
+      {suggested != null && !done.length && !locked && (
         <p className="text-xs font-semibold text-good">
           Every rep last time. Try {Number(suggested.toFixed(2))} {unit}.
         </p>
       )}
+      {timed && !locked && (
+        <HoldTimer
+          exerciseKey={exercise.key}
+          defaultSec={target.sec ?? 30}
+          each={target.each}
+          setNo={nextSet}
+          onDone={(sec, finished) => {
+            if (nextSet > rowCount) setExtra((x) => x + 1);
+            setFill({ setNo: nextSet, sec, commit: finished, n: Date.now() });
+          }}
+        />
+      )}
       <div className={`grid ${cols} items-center gap-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted`}>
         <span>#</span>
-        {exercise.load === "weight" && <span className="text-center">{unit}</span>}
-        <span className="text-center">{exercise.load === "time" ? "Sec" : "Reps"}</span>
+        {showWeight && <span className="text-center">{exercise.load === "weight" ? unit : `+${unit}`}</span>}
+        <span className="text-center">{timed ? "Sec" : "Reps"}</span>
         <span className="text-center">✓</span>
       </div>
-      {Array.from({ length: rowCount }, (_, i) => i + 1).map((n) => (
-        <SetRowView
-          key={`${date}-${n}`}
-          cols={cols}
-          exercise={exercise}
-          setNo={n}
-          logged={done.find((d) => d.set_no === n)}
-          last={prev ? prev.sets.find((s) => s.set_no === n) ?? prev.sets[prev.sets.length - 1] : undefined}
-          suggested={suggested}
-          target={target}
-          onSave={(w, r) =>
-            save(
-              {
-                date,
-                exercise_key: exercise.key,
-                set_no: n,
-                weight: exercise.load === "time" ? null : w,
-                unit,
-                reps: exercise.load === "time" ? null : r,
-                duration_sec: exercise.load === "time" ? r : null,
-                light_week: lightSession,
-              },
-              dayTitle,
-              { planDate },
-            )
-          }
-          onRemove={() => remove(date, exercise.key, n)}
-        />
-      ))}
-      <div className="flex flex-wrap items-center gap-1.5">
-        <button type="button" className="btn-ghost px-3 text-xs" onClick={() => setExtra((x) => x + 1)}>
-          + Set
-        </button>
-        <button type="button" className="btn-ghost px-3 text-xs" onClick={() => openHistory(exercise.key)}>
-          History
-        </button>
-        {actions}
-        {target.each && <span className="text-xs text-muted">Log one side&apos;s reps</span>}
-        <button type="button" className="btn-ghost ml-auto px-3 text-xs" onClick={onCollapse} aria-label={`Collapse ${exercise.name}`}>
-          Collapse ▴
-        </button>
-      </div>
+      {Array.from({ length: rowCount }, (_, i) => i + 1).map((n) => {
+        // What was just logged for the set before this one, else last session's same set
+        const chain = done.filter((d) => d.set_no < n).at(-1);
+        return (
+          <SetRowView
+            key={`${date}-${n}`}
+            cols={cols}
+            exercise={exercise}
+            showWeight={showWeight}
+            setNo={n}
+            logged={done.find((d) => d.set_no === n)}
+            last={chain ?? (prev ? prev.sets.find((s) => s.set_no === n) ?? prev.sets[prev.sets.length - 1] : undefined)}
+            suggested={chain ? null : suggested}
+            target={target}
+            locked={locked}
+            fill={fill?.setNo === n ? fill : null}
+            onFilled={() => setFill(null)}
+            onSave={(w, r) =>
+              save(
+                {
+                  date,
+                  exercise_key: exercise.key,
+                  set_no: n,
+                  weight: showWeight ? w : null,
+                  unit,
+                  reps: timed ? null : r,
+                  duration_sec: timed ? r : null,
+                  light_week: lightSession,
+                },
+                dayTitle,
+                { planDate, session },
+              )
+            }
+            onRemove={() => remove(date, exercise.key, n)}
+          />
+        );
+      })}
+      {locked ? (
+        <p className="text-xs text-muted">Locked: this workout ended over 12 hours ago.</p>
+      ) : (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <button type="button" className="btn-ghost px-3 text-xs" onClick={() => setExtra((x) => x + 1)}>
+            + Set
+          </button>
+          {exercise.load !== "weight" && (
+            <button type="button" aria-pressed={addWeight} className="btn-ghost px-3 text-xs" onClick={() => setAddWeight((v) => !v)}>
+              {addWeight ? "No weight" : "+ Weight"}
+            </button>
+          )}
+          <button type="button" className="btn-ghost px-3 text-xs" onClick={() => openHistory(exercise.key)}>
+            History
+          </button>
+          {actions}
+          {target.each && <span className="text-xs text-muted">Log one side&apos;s {timed ? "time" : "reps"}</span>}
+          <button type="button" className="btn-ghost ml-auto px-3 text-xs" onClick={onCollapse} aria-label={`Collapse ${exercise.name}`}>
+            Collapse ▴
+          </button>
+        </div>
+      )}
       {change && <ChangeBanner change={change} exerciseKey={exercise.key} />}
     </div>
   );
@@ -537,21 +604,32 @@ function SetTable({
 function SetRowView({
   cols,
   exercise,
+  showWeight,
   setNo,
   logged,
   last,
   suggested,
   target,
+  locked,
+  fill,
+  onFilled,
   onSave,
   onRemove,
 }: {
   cols: string;
   exercise: Exercise;
+  /** Weight column: always for weighted lifts, optional for bodyweight and timed work */
+  showWeight: boolean;
   setNo: number;
   logged: SetRow | undefined;
+  /** Where the grey numbers come from: the set just logged before this one, else last session's */
   last: SetRow | undefined;
   suggested: number | null;
   target: Target;
+  locked: boolean;
+  /** Seconds from the hold timer; `commit` ticks the set too */
+  fill: { sec: number; commit: boolean; n: number } | null;
+  onFilled: () => void;
   onSave: (weight: number | null, repsOrSec: number | null) => void;
   onRemove: () => void;
 }) {
@@ -575,14 +653,15 @@ function SetRowView({
     setR(loggedCount);
   }, [loggedWeight, loggedCount]);
 
-  // Grey placeholders: the suggested step up, else last session's numbers, else the plan's target
+  // Grey placeholders: the suggested step up, else the set before / last session's numbers, else the plan's target.
+  // Ticking with a field left empty logs its grey number, so a repeat of the set before is one tap.
   const phW = suggested != null ? String(Number(suggested.toFixed(2))) : last?.weight_kg ? fmtWeight(Number(last.weight_kg), unit) : "";
-  const phR = String((timed ? last?.duration_sec ?? target.sec : last?.reps ?? target.reps) ?? "");
+  const phR = String((timed ? last?.duration_sec ?? target.sec : suggested != null ? target.reps : last?.reps ?? target.reps) ?? "");
   const parse = (v: string) => (v.trim() === "" ? null : Number(v.replace(",", ".")));
 
-  const commit = () => {
-    const weight = parse(w || phW);
-    const count = parse(r || phR);
+  const commit = (countOverride?: number) => {
+    const weight = showWeight ? parse(w || phW) : null;
+    const count = countOverride ?? parse(r || phR);
     if (weight != null && (Number.isNaN(weight) || weight < 0 || weight > 2000)) {
       notify({ text: "Weight should be a number, like 42.5.", tone: "error" });
       weightRef.current?.focus();
@@ -594,22 +673,38 @@ function SetRowView({
     }
     onSave(weight, Math.round(count));
   };
+
+  // The hold timer's seconds: filled in, and ticked when it ran to zero (or saved, on a row already ticked)
+  const commitRef = useRef(commit);
+  commitRef.current = commit;
+  const filledRef = useRef(onFilled);
+  filledRef.current = onFilled;
+  useEffect(() => {
+    if (!fill) return;
+    setR(String(fill.sec));
+    if (fill.commit || logged) commitRef.current(fill.sec);
+    filledRef.current();
+    // Once per fill
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fill?.n]);
+
   // Editing a ticked row saves when you leave the field
   const onBlurEdit = () => logged && (w !== loggedWeight || r !== loggedCount) && commit();
   const selectAll = (e: React.FocusEvent<HTMLInputElement>) => e.currentTarget.select();
-  const field = "min-h-11 w-full rounded-lg border bg-bg px-1 text-center font-mono text-base text-ink placeholder:text-muted/60";
+  const field = "min-h-11 w-full rounded-lg border bg-bg px-1 text-center font-mono text-base text-ink placeholder:text-muted/60 read-only:opacity-70";
 
   return (
     <div className={`grid ${cols} items-center gap-1.5`}>
       <span className="font-mono text-sm text-muted">{setNo}</span>
-      {exercise.load === "weight" && (
+      {showWeight && (
         <input
           ref={weightRef}
-          aria-label={`Set ${setNo} weight (${unit})`}
+          aria-label={`Set ${setNo} ${exercise.load === "weight" ? "weight" : "added weight"} (${unit})`}
           inputMode="decimal"
           enterKeyHint="next"
           value={w}
-          placeholder={phW}
+          placeholder={locked ? "" : phW}
+          readOnly={locked}
           onChange={(e) => setW(e.target.value)}
           onFocus={selectAll}
           onBlur={onBlurEdit}
@@ -622,7 +717,8 @@ function SetRowView({
         inputMode="numeric"
         enterKeyHint="done"
         value={r}
-        placeholder={phR}
+        placeholder={locked ? "" : phR}
+        readOnly={locked}
         onChange={(e) => setR(e.target.value.replace(/\D/g, ""))}
         onFocus={selectAll}
         onBlur={onBlurEdit}
@@ -633,8 +729,9 @@ function SetRowView({
         type="button"
         aria-label={logged ? `Untick set ${setNo}` : `Done set ${setNo}`}
         aria-pressed={!!logged}
+        disabled={locked}
         onClick={() => (logged ? onRemove() : commit())}
-        className={`flex h-11 w-11 items-center justify-center rounded-lg border text-lg font-bold ${logged ? "border-good bg-good text-bg" : "border-line bg-surface text-muted"}`}
+        className={`flex h-11 w-11 items-center justify-center rounded-lg border text-lg font-bold disabled:opacity-60 ${logged ? "border-good bg-good text-bg" : "border-line bg-surface text-muted"}`}
       >
         ✓
       </button>

@@ -16,6 +16,7 @@ import { applySwaps, itemKey, itemLine, rankForSwap, searchScore, swapTarget, sw
 import { onTrack, wins } from "./ontrack.ts";
 import { planToIcs } from "./ics.ts";
 import { addDays } from "./dates.ts";
+import { clampEnd, completion, dayExercises, elapsed, heldSeconds, holdPhases, isLocked, sessionDate, sessionDateFor, sessionState, SWITCH_SEC, type WorkoutSession } from "./workout.ts";
 
 const david: PlanSettings = {
   startDate: "2026-11-16",
@@ -555,4 +556,132 @@ test("swap picker: same muscles first, forgiving search", () => {
   assert.ok(rankForSwap(all, rdl, "goblet").some((e) => e.key === "goblet-squat-abc123"), "custom exercises too");
   assert.deepEqual(rankForSwap(all, rdl, "zzqx"), []);
   assert.ok(searchScore("lat pull", "Lat pulldown", []) > searchScore("lt", "Lat pulldown", []));
+});
+
+/* ---------- workout sessions, completion, hold timer, weighted holds ---------- */
+const T0 = "2026-11-02T18:00:00.000Z";
+const ms = (h: number) => Date.parse(T0) + h * 3600e3;
+const ws = (ended: string | null = null, auto = false): WorkoutSession => ({ plan_date: "2026-11-02", started_at: T0, ended_at: ended, auto_ended: auto });
+
+test("workout sessions: auto-end after 4 hours, locked 12 hours after the end", () => {
+  const open = sessionState(ws(), ms(1));
+  assert.equal(open.active, true);
+  assert.equal(open.locked, false);
+  assert.equal(open.needsAutoEnd, false);
+
+  // Left open: reads as ended at start + 4 h, and asks to be saved that way
+  const late = sessionState(ws(), ms(5));
+  assert.equal(late.active, false);
+  assert.equal(late.endedAt, ms(4));
+  assert.equal(late.autoEnded, true);
+  assert.equal(late.needsAutoEnd, true);
+  assert.equal(late.locked, false);
+  assert.equal(sessionState(ws(), ms(16) - 1).locked, false);
+  assert.equal(sessionState(ws(), ms(16)).locked, true, "never ended: locked 12 h after the automatic end");
+
+  const ended = ws(new Date(ms(1)).toISOString());
+  assert.equal(sessionState(ended, ms(2)).needsAutoEnd, false);
+  assert.equal(sessionState(ended, ms(13) - 1).locked, false);
+  assert.equal(sessionState(ended, ms(13)).locked, true);
+  assert.equal(isLocked(ended, ms(20)), true);
+  assert.equal(isLocked(undefined, ms(20)), false, "no session, no lock");
+
+  // End times are kept between the start and the 4-hour mark
+  assert.deepEqual(clampEnd(T0, new Date(ms(1)).toISOString(), false), { ended_at: new Date(ms(1)).toISOString(), auto_ended: false });
+  assert.deepEqual(clampEnd(T0, new Date(ms(-1)).toISOString(), false), { ended_at: T0, auto_ended: false });
+  assert.deepEqual(clampEnd(T0, new Date(ms(9)).toISOString(), false), { ended_at: new Date(ms(4)).toISOString(), auto_ended: true });
+  assert.equal(elapsed(65e3), "1:05");
+  assert.equal(elapsed(3723e3), "1:02:03");
+});
+
+test("workout sessions: stored under the plan's own date, so they follow a move, every profile", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const wk = generatePlan(p).find((w) => w.phase === "build" && !w.cutback)!;
+    const moves = moveDay(wk, at(wk, 0), at(wk, 1))!;
+    const w = weekForDate(generatePlan(p, { moves }), wk.start)!;
+    const tue = w.days.find((d) => d.date === at(wk, 1))!;
+    assert.equal(sessionDate(tue), at(wk, 0), `${name}: Monday's workout on Tuesday keeps Monday's session`);
+    assert.equal(sessionDateFor(at(wk, 1), moves), at(wk, 0), name);
+    assert.equal(sessionDateFor(at(wk, 3), moves), at(wk, 3), name);
+    assert.equal(sessionDate(wk.days[3]), at(wk, 3), name);
+  }
+});
+
+const logSets = (date: string, key: string, n: number, planDate: string | null = null) =>
+  Array.from({ length: n }, (_, i) => ({ date, plan_date: planDate, exercise_key: key, set_no: i + 1 }));
+
+test("completion: every set, more than planned, or something missing, every profile", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const wk = generatePlan(p).find((w) => w.phase === "build" && !w.cutback)!;
+    const day = wk.days.find((d) => dayExercises(d).length >= 2)!;
+    const list = dayExercises(day);
+    const all = list.flatMap((x) => logSets(day.date, x.key, x.sets));
+    const planned = list.reduce((a, x) => a + x.sets, 0);
+
+    assert.deepEqual(completion(day, []), { planned, done: 0, extraSets: 0, extraExercises: 0, status: "incomplete" }, name);
+    assert.equal(completion(day, all.slice(1)).status, "incomplete", `${name}: one set short`);
+    assert.deepEqual(completion(day, all), { planned, done: planned, extraSets: 0, extraExercises: 0, status: "complete" }, name);
+    // An extra set of something planned
+    const more = [...all, { date: day.date, plan_date: null, exercise_key: list[0].key, set_no: 99 }];
+    assert.equal(completion(day, more).status, "beyond", name);
+    assert.equal(completion(day, more).extraSets, 1, name);
+    // An exercise the day doesn't ask for
+    const bonus = completion(day, [...all, ...logSets(day.date, "burpee", 2)]);
+    assert.equal(bonus.status, "beyond", name);
+    assert.deepEqual([bonus.extraSets, bonus.extraExercises], [2, 1], name);
+    // Extras don't make up for a missing set
+    assert.equal(completion(day, [...all.slice(1), ...logSets(day.date, "burpee", 3)]).status, "incomplete", name);
+    // Done early: sets saved under another date count through plan_date; other days' sets don't
+    assert.equal(completion(day, list.flatMap((x) => logSets(addDays(day.date, -2), x.key, x.sets, day.date))).status, "complete", `${name}: early`);
+    assert.equal(completion(day, list.flatMap((x) => logSets(addDays(day.date, -2), x.key, x.sets))).status, "incomplete", name);
+    // A day with nothing to log
+    const run = wk.days.find((d) => d.blocks.length && !dayExercises(d).length);
+    if (run) assert.equal(completion(run, all).status, "none", name);
+  }
+});
+
+test("completion: swaps count the exercise shown, light weeks ask for 2 sets", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const wk = generatePlan(p).find((w) => w.phase === "build" && !w.cutback)!;
+    const mon = firstLift(wk.days[0])!;
+    const from = mon.p.exercise.key;
+    const swapped = weekForDate(applySwaps(generatePlan(p), [{ planDate: at(wk, 0), from, to: "goblet-squat-abc123" }], lookup), wk.start)!.days[0];
+    const list = dayExercises(swapped);
+    assert.ok(list.some((x) => x.key === "goblet-squat-abc123") && !list.some((x) => x.key === from), name);
+    const all = list.flatMap((x) => logSets(swapped.date, x.key, x.sets));
+    // Sets logged for the original before the swap are neither progress nor extra
+    const c = completion(swapped, [...all, ...logSets(swapped.date, from, 2)]);
+    assert.equal(c.status, "complete", name);
+
+    const cut = generatePlan(p).find((w) => w.cutback && w.days.some((d) => dayExercises(d).length));
+    if (!cut) continue;
+    const light = cut.days.find((d) => dayExercises(d).length)!;
+    assert.ok(dayExercises(light).every((x) => x.sets <= 2), `${name}: light week`);
+  }
+});
+
+test("hold timer: one hold, or both sides with a switch; logs one side's time", () => {
+  assert.deepEqual(holdPhases(30, false).map((p) => p.sec), [30]);
+  const both = holdPhases(30, true);
+  assert.deepEqual(both.map((p) => [p.sec, p.hold]), [[30, true], [SWITCH_SEC, false], [30, true]]);
+  assert.equal(heldSeconds(holdPhases(30, false), 0, 30), 30);
+  assert.equal(heldSeconds(holdPhases(30, false), 0, 12.4), 12, "stopped early");
+  assert.equal(heldSeconds(both, 0, 20), 20, "stopped on the first side");
+  assert.equal(heldSeconds(both, 1, 2), 30, "stopped while switching: the first side counts");
+  assert.equal(heldSeconds(both, 2, 0), 30, "second side not started");
+  assert.equal(heldSeconds(both, 2, 18), 18, "the shorter side");
+  assert.equal(heldSeconds(both, 2, 30), 30);
+});
+
+test("weighted holds: optional weight never turns seconds into a weight lift", () => {
+  const hold = (date: string, kg: number | null, sec: number): SetLike => ({ date, exercise_key: "plank", set_no: 1, weight: kg, unit: "kg", weight_kg: kg, reps: null, duration_sec: sec, light_week: false });
+  const s = sessions([hold("2026-11-02", null, 40), hold("2026-11-09", 10, 45)], "plank");
+  assert.equal(s[0].topKg, null, "weight without reps isn't a working set");
+  assert.equal(s[0].best, 45);
+  assert.equal(compareSession(s, "2026-11-09"), null);
+  assert.equal(bestOn(s, "2026-11-09"), "reps", "longest hold yet");
+  assert.equal(bestOn(sessions([hold("2026-11-02", null, 50), hold("2026-11-09", 20, 45)], "plank"), "2026-11-09"), null);
+  // A weighted bodyweight move (dip belt) still compares by weight
+  const dip = (date: string, kg: number, reps: number): SetLike => ({ date, exercise_key: "pull-up", set_no: 1, weight: kg, unit: "kg", weight_kg: kg, reps, duration_sec: null, light_week: false });
+  assert.equal(bestOn(sessions([dip("2026-11-02", 5, 6), dip("2026-11-09", 7.5, 6)], "pull-up"), "2026-11-09"), "weight");
 });

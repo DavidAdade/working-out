@@ -1,14 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Block, BlockKind } from "@/lib/plan/templates.ts";
 import { dayTitle, type Day } from "@/lib/plan/generate.ts";
 import { daysBetween, dowName } from "@/lib/plan/dates.ts";
 import { parseLine } from "@/lib/plan/exercises.ts";
-import { itemKey } from "@/lib/plan/swaps.ts";
+import { completion, dayExercises, isLocked, LIFT_KINDS, sessionDate } from "@/lib/plan/workout.ts";
 import type { SetRow } from "@/lib/types";
 import { ExerciseRow, fmtSet, planDayOf, useSets } from "./Sets";
 import { SwapSheet, useSwap } from "./SwapSheet";
+import { useWorkout, WorkoutBar } from "./Workout";
 
 const CHIP: Record<BlockKind, { label: string; cls: string }> = {
   run: { label: "Run", cls: "bg-accent text-on-accent" },
@@ -20,8 +21,6 @@ const CHIP: Record<BlockKind, { label: string; cls: string }> = {
   gate: { label: "Gates", cls: "bg-warn/15 text-warn" },
   mobility: { label: "Mobility", cls: "bg-sunk text-ink" },
 };
-
-const LIFT_KINDS: BlockKind[] = ["legs", "upper", "abs", "mobility"];
 
 export function Chip({ kind, label }: { kind: BlockKind; label?: string }) {
   const c = CHIP[kind];
@@ -64,20 +63,23 @@ export function DayBlocks({
   const logDate = day.date <= today ? day.date : early ? today : null;
   const title = day.blocks.filter((b) => LIFT_KINDS.includes(b.kind)).map((b) => b.title).join(" + ") || dayTitle(day);
 
-  // Every loggable exercise in order, so "next" can cross from one block into the next
-  const order = useMemo(
-    () =>
-      day.blocks.flatMap((b, bi) =>
-        LIFT_KINDS.includes(b.kind)
-          ? b.items.flatMap((line, ii) => {
-              const p = parseLine(line);
-              // A swapped line counts the exercise swapped in
-              return p ? [{ id: `${bi}-${ii}`, key: itemKey(b, ii) ?? p.exercise.key, sets: b.light ? Math.min(p.target.sets, 2) : p.target.sets }] : [];
-            })
-          : [],
-      ),
-    [day.blocks],
-  );
+  // Every loggable exercise in order (a swapped line counts the exercise swapped in), so "next" can cross from one block into the next
+  const order = useMemo(() => dayExercises(day), [day]);
+
+  // The workout session: Start / End, auto-started by the first set done today (or early), read-only 12 h after it ends
+  const workout = useWorkout();
+  const sDate = sessionDate(day);
+  const session = workout.get(sDate);
+  const locked = isLocked(session, Date.now());
+  const live = logDate === today && order.length > 0;
+  const done = useMemo(() => completion(day, sets), [day, sets]);
+  // Ticking the day's final planned set celebrates (not on opening a finished day)
+  const lastStatus = useRef(done.status);
+  useEffect(() => {
+    const before = lastStatus.current;
+    lastStatus.current = done.status;
+    if (live && before === "incomplete" && (done.status === "complete" || done.status === "beyond")) workout.celebrate(sDate, done);
+  }, [done, live, sDate, workout]);
   const unfinished = useCallback(
     (x: { key: string; sets: number }) => !logDate || sets.filter((s) => planDayOf(s) === day.date && s.exercise_key === x.key).length < x.sets,
     [sets, logDate, day.date],
@@ -158,6 +160,7 @@ export function DayBlocks({
           {a}
         </div>
       ))}
+      {order.length > 0 && logDate && (live || session) && <WorkoutBar planDate={sDate} canStart={live} completion={done} />}
       {early && order.length > 0 && <p className="text-xs text-muted">Doing this early? Sets save under today and tick off this day.</p>}
       {day.blocks.map((b, bi) =>
         LIFT_KINDS.includes(b.kind) ? (
@@ -170,7 +173,7 @@ export function DayBlocks({
                 const id = `${bi}-${ii}`;
                 const sw = b.swaps?.[ii];
                 const from = sw ? info(sw.from) : undefined;
-                const canSwap = !!swapApi && !!parseLine(line);
+                const canSwap = !!swapApi && !!parseLine(line) && !locked;
                 return (
                   <ExerciseRow
                       key={id}
@@ -182,11 +185,13 @@ export function DayBlocks({
                       dayTitle={title}
                       open={openId === id}
                       onToggle={() => setOpenId((cur) => (cur === id ? null : id))}
+                      locked={locked}
+                      session={live ? sDate : null}
                       onComplete={() => advanceFrom(id)}
                       swap={sw}
                       onSwap={canSwap ? () => setSwapping({ bi, ii }) : undefined}
                       onPutBack={
-                        sw && swapApi
+                        sw && swapApi && !locked
                           ? () => swapApi.swap(b.planDate ?? day.date, sw.from, null, `${from?.name ?? nameOf(sw.from)} is back.`)
                           : undefined
                       }

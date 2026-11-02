@@ -23,6 +23,8 @@ import { DateLabelsProvider, useDates } from "./DateLabels";
 import { SetsProvider } from "./Sets";
 import { SwapProvider, type SwapApi } from "./SwapSheet";
 import type { Swap } from "@/lib/plan/swaps.ts";
+import type { WorkoutSession } from "@/lib/plan/workout.ts";
+import { WorkoutProvider } from "./Workout";
 
 type Tab = "today" | "plan" | "log" | "progress" | "library";
 const TABS: { id: Tab; label: string }[] = [
@@ -42,6 +44,8 @@ export interface DashboardProps {
   moves: Move[];
   /** Exercises swapped for another on one plan day */
   swaps: Swap[];
+  /** Started / ended workouts, by the plan's own date */
+  workouts: WorkoutSession[];
   sets: SetRow[];
   exercises: ExerciseInfo[];
   today: string;
@@ -84,7 +88,7 @@ function queuedLog(i: LogInput): LogRow {
 
 const swapId = (planDate: string, from: string) => `${planDate}|${from}`;
 
-function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swaps: serverSwaps, sets, exercises, today, ai, review }: DashboardProps) {
+function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swaps: serverSwaps, workouts, sets, exercises, today, ai, review }: DashboardProps) {
   const [tab, setTab] = useState<Tab>("today");
   const [logDate, setLogDate] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -229,6 +233,7 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
   return (
     <DateLabelsProvider hide={profile.hide_dates} weeks={weeks}>
       <VideoProvider>
+        <WorkoutProvider initial={workouts}>
         <SetsProvider initial={sets} unit={profile.weight_unit} today={today} weeks={weeks} exercises={exercises}>
           <SwapProvider value={swapApi}>
           <GoalHeader settings={settings} fitness={fitness.sec} thisWeek={thisWeek} daysToTT={daysToTT} />
@@ -271,6 +276,7 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
           {tab === "progress" && <ProgressPanel logs={logs} settings={settings} painAreas={profile.pain_areas} today={today} />}
           </SwapProvider>
         </SetsProvider>
+        </WorkoutProvider>
       </VideoProvider>
     </DateLabelsProvider>
   );

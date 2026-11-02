@@ -18,6 +18,7 @@ import { exerciseByKey, type Load } from "@/lib/plan/exercises.ts";
 import type { Swap } from "@/lib/plan/swaps.ts";
 import { customKey, youtubeId } from "@/lib/plan/catalog.ts";
 import { MUSCLES } from "@/lib/plan/muscles.ts";
+import { clampEnd, isLocked, sessionDateFor, type WorkoutSession } from "@/lib/plan/workout.ts";
 
 /** `values` echoes a failed form back, so the form can keep what was typed (React resets it after every action) */
 export type ActionResult = { ok: true } | { ok: false, error: string, values?: Record<string, string> };
@@ -260,6 +261,7 @@ export async function updateLog(id: string, patch: { kind?: LogKind; rpe?: strin
 export async function deleteLog(id: string): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
   const { data: log } = await supabase.from("logs").select("date, auto").eq("id", id).single<{ date: string; auto: boolean }>();
+  if (log?.auto && (await lockedDay(supabase, user.id, log.date))) return { ok: false, error: LOCKED };
   // An auto entry stands for that day's sets, so deleting it removes them too
   if (log?.auto) await supabase.from("set_logs").delete().eq("user_id", user.id).eq("date", log.date);
   const { error } = await supabase.from("logs").delete().eq("id", id).eq("user_id", user.id);
@@ -299,6 +301,7 @@ export async function upsertSet(input: SetInput): Promise<ActionResult> {
   const reps = num(input.reps, 200);
   const duration_sec = num(input.durationSec, 3600);
   if (reps == null && duration_sec == null) return { ok: false, error: "Add reps or seconds." };
+  if (await lockedDay(supabase, user.id, input.planDate && ISO.test(input.planDate) ? input.planDate : input.date)) return { ok: false, error: LOCKED };
   const { error } = await supabase.from("set_logs").upsert(
     {
       user_id: user.id,
@@ -325,8 +328,79 @@ export async function upsertSet(input: SetInput): Promise<ActionResult> {
 
 export async function deleteSet(date: string, exerciseKey: string, setNo: number): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
+  const { data: row } = await supabase
+    .from("set_logs")
+    .select("date, plan_date")
+    .eq("user_id", user.id)
+    .eq("date", date)
+    .eq("exercise_key", exerciseKey)
+    .eq("set_no", setNo)
+    .maybeSingle<{ date: string; plan_date: string | null }>();
+  if (row && (await lockedDay(supabase, user.id, row.plan_date ?? row.date))) return { ok: false, error: LOCKED };
   const { error } = await supabase.from("set_logs").delete().eq("user_id", user.id).eq("date", date).eq("exercise_key", exerciseKey).eq("set_no", setNo);
   if (error) return { ok: false, error: "Couldn't remove that set." };
+  return { ok: true };
+}
+
+/* ---------- workout sessions: Start / End ---------- */
+type Supabase = Awaited<ReturnType<typeof createClient>>;
+const LOCKED = "This workout ended over 12 hours ago, so its sets are locked.";
+const SESSION_COLS = "plan_date, started_at, ended_at, auto_ended";
+
+/** The session for a shown plan day: stored under the plan's own date, so a moved day maps back through day_moves */
+async function sessionFor(supabase: Supabase, userId: string, shown: string): Promise<WorkoutSession | null> {
+  const { data: move } = await supabase.from("day_moves").select("from:from_date, to:to_date").eq("user_id", userId).eq("to_date", shown).maybeSingle<Move>();
+  const { data } = await supabase
+    .from("workout_sessions")
+    .select(SESSION_COLS)
+    .eq("user_id", userId)
+    .eq("plan_date", sessionDateFor(shown, move ? [move] : []))
+    .maybeSingle<WorkoutSession>();
+  return data ?? null;
+}
+
+/** Sets on this plan day are read-only: its workout ended (or auto-ended) 12 hours ago or more. A failed read doesn't lock. */
+async function lockedDay(supabase: Supabase, userId: string, shown: string): Promise<boolean> {
+  if (!ISO.test(shown)) return false;
+  try {
+    return isLocked(await sessionFor(supabase, userId, shown), Date.now());
+  } catch {
+    return false;
+  }
+}
+
+/** A time from the phone: kept when sane (a tap made offline replays later), else now */
+const phoneTime = (at: string) => {
+  const t = Date.parse(at);
+  const now = Date.now();
+  return new Date(Number.isFinite(t) && t >= now - 7 * 86400e3 ? Math.min(t, now) : now).toISOString();
+};
+
+/** Starts the workout for `planDate` (the plan's own date, see lib/plan/workout.ts). Starting twice keeps the first start. */
+export async function startWorkout(planDate: string, at: string): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  if (!ISO.test(planDate)) return { ok: false, error: "Couldn't start the workout." };
+  const { error } = await supabase
+    .from("workout_sessions")
+    .upsert({ user_id: user.id, plan_date: planDate, started_at: phoneTime(at) }, { onConflict: "user_id,plan_date", ignoreDuplicates: true });
+  if (error) return { ok: false, error: "Couldn't start the workout. Try again." };
+  return { ok: true };
+}
+
+/** Ends it at `at`, capped at 4 hours after the start (that counts as auto-ended). Ending an ended workout changes nothing. */
+export async function endWorkout(planDate: string, at: string, auto = false): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  if (!ISO.test(planDate)) return { ok: false, error: "Couldn't end the workout." };
+  const { data: cur } = await supabase.from("workout_sessions").select(SESSION_COLS).eq("user_id", user.id).eq("plan_date", planDate).maybeSingle<WorkoutSession>();
+  if (!cur || cur.ended_at) return { ok: true };
+  const { error } = await supabase
+    .from("workout_sessions")
+    .update(clampEnd(cur.started_at, phoneTime(at), !!auto))
+    .eq("user_id", user.id)
+    .eq("plan_date", planDate)
+    .is("ended_at", null);
+  if (error) return { ok: false, error: "Couldn't end the workout. Try again." };
+  revalidatePath("/");
   return { ok: true };
 }
 
