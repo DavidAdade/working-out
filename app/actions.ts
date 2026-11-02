@@ -13,7 +13,7 @@ import { builtinRows } from "@/lib/plan/catalog.ts";
 import { isEquipment } from "@/lib/plan/equipment.ts";
 import { aiEnabled, generateReview, type Review } from "@/lib/coach/review";
 import { MIN_RACE_GAP_WEEKS, type Move } from "@/lib/plan/generate.ts";
-import { GATES, profileToSettings, type LogKind, type LogRow, type ProfileRow, type SetRow, type Unit } from "@/lib/types";
+import { GATES, REST_CHOICES, profileToSettings, type LogKind, type LogRow, type ProfileRow, type SetRow, type Unit } from "@/lib/types";
 import { exerciseByKey, type Load } from "@/lib/plan/exercises.ts";
 import type { Swap } from "@/lib/plan/swaps.ts";
 import { customKey, youtubeId } from "@/lib/plan/catalog.ts";
@@ -78,6 +78,7 @@ export async function saveSettings(_: unknown, form: FormData): Promise<ActionRe
     display_name: str("display_name"),
     timezone: str("timezone") ?? "America/Toronto",
     rest_timer: form.get("rest_timer") === "on",
+    rest_seconds: REST_CHOICES.includes(Number(form.get("rest_seconds"))) ? Number(form.get("rest_seconds")) : null,
     start_date: str("start_date"),
     recovery_start: injury ? str("recovery_start") : null,
     returning_from_injury: injury,

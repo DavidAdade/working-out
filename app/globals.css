@@ -50,7 +50,7 @@ body {
 }
 
 body {
-  font-family: Figtree, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--font-body), Figtree, system-ui, -apple-system, "Segoe UI", sans-serif;
   font-size: 15px;
   line-height: 1.5;
   padding-left: max(16px, env(safe-area-inset-left, 0px));

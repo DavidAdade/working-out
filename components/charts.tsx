@@ -38,7 +38,7 @@ export function LineChart({
         {ticks.map((v) => (
           <g key={v}>
             <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="rgb(var(--line))" />
-            <text x={L - 6} y={y(v) + 4} textAnchor="end" fontSize={13} fill="rgb(var(--muted))" fontFamily="JetBrains Mono, monospace">
+            <text x={L - 6} y={y(v) + 4} textAnchor="end" fontSize={13} fill="rgb(var(--muted))" className="font-mono">
               {yFmt(v)}
             </text>
           </g>
@@ -92,7 +92,7 @@ export function BarChart({ values, labels, yFmt, height = 200 }: { values: numbe
           return (
             <g key={k}>
               <line x1={L} x2={W - R} y1={y(v)} y2={y(v)} stroke="rgb(var(--line))" />
-              <text x={L - 6} y={y(v) + 4} textAnchor="end" fontSize={13} fill="rgb(var(--muted))" fontFamily="JetBrains Mono, monospace">
+              <text x={L - 6} y={y(v) + 4} textAnchor="end" fontSize={13} fill="rgb(var(--muted))" className="font-mono">
                 {yFmt(v)}
               </text>
             </g>

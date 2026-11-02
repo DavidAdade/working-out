@@ -2,8 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { checkUser } from "./user";
 
-// Token routes (calendar feed, Apple Health) check their own key instead of a session
-const PUBLIC_PATHS = ["/login", "/auth", "/cal/", "/api/health"];
+// Token routes (calendar feed, Apple Health, the push sender) check their own key instead of a session; the push worker script loads signed out
+const PUBLIC_PATHS = ["/login", "/auth", "/cal/", "/api/health", "/api/push/due", "/sw-push.js"];
 
 /** Refreshes the session cookie on every request and sends signed-out visitors to /login (and signed-in ones away from it). */
 export async function updateSession(request: NextRequest) {
