@@ -28,7 +28,7 @@ import { SupersetProvider, useSupersetLinks } from "./Superset";
 import OfflineBanner, { goLive } from "./OfflineBanner";
 import { saveSnapshot } from "@/lib/offline";
 import type { Swap } from "@/lib/plan/swaps.ts";
-import type { SupersetLink } from "@/lib/plan/supersets.ts";
+import { SUPERSETS_ON, type SupersetLink } from "@/lib/plan/supersets.ts";
 import type { WorkoutSession } from "@/lib/plan/workout.ts";
 import { WorkoutProvider } from "./Workout";
 import { CopyProvider, type CopyApi } from "./CopySheet";
@@ -218,7 +218,7 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
   const byKey = useMemo(() => new Map(exercises.map((e) => [e.key, e])), [exercises]);
   const gatesPending = settings.returningFromInjury && GATES.some((g) => !profile.gates?.[g.key]);
   const { weeks, fitness, warnings } = useMemo(
-    () => planFor({ settings, logs, skips: optimisticSkips, moves: optimisticMoves, gatesPending, today, swaps, exercise: (k) => byKey.get(k), supersets, copies }),
+    () => planFor({ settings, logs, skips: optimisticSkips, moves: optimisticMoves, gatesPending, today, swaps, exercise: (k) => byKey.get(k), supersets: SUPERSETS_ON ? supersets : undefined, copies }),
     [settings, logs, optimisticSkips, optimisticMoves, gatesPending, today, swaps, byKey, supersets, copies],
   );
   // A skip made here and not yet reloaded was made today
@@ -333,7 +333,7 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
         <WorkoutProvider initial={workouts}>
         <SetsProvider initial={sets} unit={profile.weight_unit} today={today} weeks={weeks} exercises={exercises}>
           <SwapProvider value={swapApi}>
-          <SupersetProvider value={supersetApi}>
+          <SupersetProvider value={SUPERSETS_ON ? supersetApi : null}>
           <CopyProvider value={copyApi}>
           <GoalHeader settings={settings} fitness={fitness.sec} thisWeek={thisWeek} daysToTT={daysToTT} />
 

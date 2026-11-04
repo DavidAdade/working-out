@@ -11,6 +11,9 @@ import type { Block } from "./templates.ts";
 import { parseLine } from "./exercises.ts";
 import { LIFT_KINDS } from "./workout.ts";
 
+/** Supersets are switched off for now: no link buttons, and saved links don't group or change the logging flow */
+export const SUPERSETS_ON = false;
+
 export interface SupersetLink {
   /** The plan's own date for the workout (Block.planDate), not the day it's shown on after a move */
   planDate: ISODate;
