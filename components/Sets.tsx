@@ -676,13 +676,15 @@ function SetTable({
         </div>
       )}
       {change && <ChangeBanner change={change} exerciseKey={exercise.key} />}
-      {peek && <QuickHistory name={exercise.name} past={all.filter((s) => s.date < date).slice(0, 3)} onClose={() => setPeek(false)} />}
+      {peek && <QuickHistory exercise={exercise} past={all.filter((s) => s.date < date).slice(0, 3)} onClose={() => setPeek(false)} />}
     </div>
   );
 }
 
 /** The last few sessions of one exercise, set by set: a glance mid-workout, then back to logging */
-function QuickHistory({ name, past, onClose }: { name: string; past: Session[]; onClose: () => void }) {
+function QuickHistory({ exercise, past, onClose }: { exercise: Exercise; past: Session[]; onClose: () => void }) {
+  const name = exercise.name;
+  const timed = exercise.load === "time";
   const { unit } = useSets();
   const dates = useDates();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -717,22 +719,36 @@ function QuickHistory({ name, past, onClose }: { name: string; past: Session[]; 
           </button>
         </div>
         <ul className="flex flex-col">
-          {past.map((s) => (
-            <li key={s.date} className="flex flex-col gap-1.5 border-t border-line py-2.5 first:border-t-0">
-              <div className="flex items-baseline justify-between gap-2">
-                <b>{dates.day(s.date)}</b>
-                {s.light && <span className="text-xs text-muted">light week</span>}
-              </div>
-              <div className="flex flex-wrap gap-1.5">
+          {past.map((s) => {
+            // The same columns as logging: weight when it's a weighted lift or extra weight was added that day
+            const showWeight = exercise.load === "weight" || s.sets.some((x) => (x.weight_kg ?? 0) > 0);
+            const cols = showWeight ? "grid-cols-[1.25rem_5rem_4rem_2.75rem]" : "grid-cols-[1.25rem_5rem_2.75rem]";
+            const cell = "flex min-h-11 items-center justify-center rounded-lg border border-good/60 bg-bg px-1 font-mono text-base text-ink";
+            return (
+              <li key={s.date} className="flex max-w-sm flex-col gap-1.5 border-t border-line py-3 first:border-t-0 first:pt-1">
+                <div className="flex items-baseline justify-between gap-2">
+                  <b>{dates.day(s.date)}</b>
+                  {s.light && <span className="text-xs text-muted">light week</span>}
+                </div>
+                <div className={`grid ${cols} items-center gap-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-muted`}>
+                  <span>#</span>
+                  {showWeight && <span className="text-center">{exercise.load === "weight" ? unit : `+${unit}`}</span>}
+                  <span className="text-center">{timed ? "Sec" : "Reps"}</span>
+                  <span className="text-center">✓</span>
+                </div>
                 {s.sets.map((x) => (
-                  <span key={x.set_no} className="rounded-md bg-sunk px-2 py-1 font-mono text-sm">
-                    <span className="text-muted">{x.set_no} · </span>
-                    {fmtSet(x, unit)}
-                  </span>
+                  <div key={x.set_no} className={`grid ${cols} items-center gap-1.5`}>
+                    <span className="font-mono text-sm text-muted">{x.set_no}</span>
+                    {showWeight && <span className={cell}>{x.weight_kg ? fmtWeight(Number(x.weight_kg), unit) : "–"}</span>}
+                    <span className={cell}>{(timed ? x.duration_sec : x.reps) ?? "–"}</span>
+                    <span aria-hidden className="flex h-11 w-11 items-center justify-center rounded-lg border border-good bg-good text-lg font-bold text-bg">
+                      ✓
+                    </span>
+                  </div>
                 ))}
-              </div>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       </div>
     </div>
