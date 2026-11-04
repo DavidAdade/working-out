@@ -4,7 +4,7 @@
 // Browser only. Every call fails softly: no storage just means no offline copy.
 
 /** Bump when the Dashboard's props change shape, so an old copy is never fed to new code */
-export const CACHE_VERSION = 3;
+export const CACHE_VERSION = 4;
 
 const DB = "workoutflex";
 const STORE = "kv";

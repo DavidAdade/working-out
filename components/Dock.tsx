@@ -6,7 +6,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { addLog, deleteSet, endWorkout, setSwap, startWorkout, upsertSet, type ActionResult, type LogInput, type SetInput } from "@/app/actions";
+import { addLog, deleteSet, endWorkout, setSupersetLink, setSwap, startWorkout, upsertSet, type ActionResult, type LogInput, type SetInput } from "@/app/actions";
 import { RestTimerView } from "./RestTimer";
 import SyncSheet, { type Refused, type SyncResult } from "./SyncSheet";
 
@@ -16,6 +16,8 @@ export type Op =
   | { id: string; t: "log"; input: LogInput }
   /** Swap the template exercise `from` on plan day `planDate` for `to`; null puts it back */
   | { id: string; t: "swap"; planDate: string; from: string; to: string | null }
+  /** Link the template exercise `key` on plan day `planDate` to the next line in its block (a superset), or unlink it */
+  | { id: string; t: "superset"; planDate: string; key: string; on: boolean }
   /** Start / End the workout stored under `planDate` (the plan's own date); `at` is the phone's ISO time of the tap */
   | { id: string; t: "workout-start"; planDate: string; at: string }
   | { id: string; t: "workout-end"; planDate: string; at: string; auto: boolean };
@@ -48,6 +50,7 @@ function run(op: Op): Promise<ActionResult> {
   if (op.t === "set") return upsertSet(op.input);
   if (op.t === "unset") return deleteSet(op.date, op.key, op.setNo);
   if (op.t === "swap") return setSwap(op.planDate, op.from, op.to);
+  if (op.t === "superset") return setSupersetLink(op.planDate, op.key, op.on);
   if (op.t === "workout-start") return startWorkout(op.planDate, op.at);
   if (op.t === "workout-end") return endWorkout(op.planDate, op.at, op.auto);
   return addLog(op.input);

@@ -189,6 +189,22 @@ export async function setSwap(planDate: string, from: string, to: string | null)
   return { ok: true };
 }
 
+/* ---------- supersets on one plan day ---------- */
+/**
+ * Links the template exercise `key` on plan day `planDate` (the plan's own date, before moves) to the line
+ * after it in its block, or unlinks it. Always the template's key, never a swapped-in one.
+ */
+export async function setSupersetLink(planDate: string, key: string, on: boolean): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  if (!ISO.test(planDate) || !KEY.test(key) || !exerciseByKey(key)) return { ok: false, error: "Couldn't change that superset." };
+  const { error } = on
+    ? await supabase.from("superset_links").upsert({ user_id: user.id, plan_date: planDate, key, created_at: new Date().toISOString() }, { onConflict: "user_id,plan_date,key" })
+    : await supabase.from("superset_links").delete().eq("user_id", user.id).eq("plan_date", planDate).eq("key", key);
+  if (error) return { ok: false, error: "Couldn't change that superset. Try again." };
+  revalidatePath("/");
+  return { ok: true };
+}
+
 /* ---------- logs ---------- */
 const KINDS: LogKind[] = ["run", "test", "strength", "walk", "check"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

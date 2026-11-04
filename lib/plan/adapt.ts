@@ -7,6 +7,7 @@ import { generatePlan, isHard, type Day, type Move, type PlanSettings, type Week
 import { painWarnings, type LogLike, type Warning } from "./warnings.ts";
 import { fitness5k, type Fitness, type TestLike } from "./paces.ts";
 import { applySwaps, type ExerciseLookup, type Swap } from "./swaps.ts";
+import { applySupersets, type SupersetLink } from "./supersets.ts";
 
 export interface AdaptInput {
   today: ISODate;
@@ -51,7 +52,7 @@ export function adaptPlan(weeks: Week[], { today, gatesPending, warnings }: Adap
 
 /**
  * The plan as the app shows it: paces from the latest test, moves and skips folded in, pain and gates applied
- * to the coming week, then exercise swaps (which need `exercise` to name custom exercises).
+ * to the coming week, then exercise swaps (which need `exercise` to name custom exercises), then supersets.
  */
 export function planFor(o: {
   settings: PlanSettings;
@@ -62,10 +63,13 @@ export function planFor(o: {
   today: ISODate;
   swaps?: Iterable<Swap>;
   exercise?: ExerciseLookup;
+  /** Supersets, applied after swaps */
+  supersets?: Iterable<SupersetLink>;
 }): { weeks: Week[]; fitness: Fitness; warnings: Warning[] } {
   const fitness = fitness5k(o.settings.current5kSec, o.logs, o.today);
   const warnings = painWarnings(o.logs, o.today);
   const adapted = adaptPlan(generatePlan(o.settings, { skips: o.skips, moves: o.moves, fitness5kSec: fitness.sec }), { today: o.today, gatesPending: o.gatesPending, warnings });
-  const weeks = o.swaps && o.exercise ? applySwaps(adapted, o.swaps, o.exercise) : adapted;
+  const swapped = o.swaps && o.exercise ? applySwaps(adapted, o.swaps, o.exercise) : adapted;
+  const weeks = o.supersets ? applySupersets(swapped, o.supersets) : swapped;
   return { weeks, fitness, warnings };
 }

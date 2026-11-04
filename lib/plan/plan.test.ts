@@ -16,7 +16,8 @@ import { applySwaps, itemKey, itemLine, rankForSwap, searchScore, swapTarget, sw
 import { onTrack, wins } from "./ontrack.ts";
 import { planToIcs } from "./ics.ts";
 import { addDays, daysBetween } from "./dates.ts";
-import { clampEnd, completion, dayExercises, elapsed, heldSeconds, holdPhases, isLocked, sessionDate, sessionDateFor, sessionState, SWITCH_SEC, type WorkoutSession } from "./workout.ts";
+import { clampEnd, completion, dayExercises, elapsed, heldSeconds, holdPhases, isLocked, nextInRound, sessionDate, sessionDateFor, sessionState, SWITCH_SEC, type WorkoutSession } from "./workout.ts";
+import { applySupersets } from "./supersets.ts";
 import { accountability, runCredit, type AcctLog, type AcctSet, type AccountabilityInput } from "./accountability.ts";
 
 const david: PlanSettings = {
@@ -658,6 +659,128 @@ test("completion: swaps count the exercise shown, light weeks ask for 2 sets", (
     if (!cut) continue;
     const light = cut.days.find((d) => dayExercises(d).length)!;
     assert.ok(dayExercises(light).every((x) => x.sets <= 2), `${name}: light week`);
+  }
+});
+
+/* ---------- supersets ---------- */
+const keyAt = (b: Week["days"][number]["blocks"][number], i: number) => parseLine(b.items[i])!.exercise.key;
+const liftBlocks = (d: Week["days"][number]) => d.blocks.filter((b) => dayExercises({ blocks: [b] }).length >= 3);
+const groupsOn = (w: Week) => w.days.flatMap((d) => d.blocks.filter((b) => b.supersets).map((b) => ({ d, b })));
+
+test("supersets: shown on the day, letters per day, follow a move and a Thursday fold, survive a swap, every profile", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const plan = generatePlan(p);
+    const wk = plan.find((w) => w.phase === "build" && !w.cutback)!;
+    const [first, second] = liftBlocks(wk.days[0]);
+    const link = (i: number, b = first, planDate = at(wk, 0)) => ({ planDate, key: keyAt(b, i) });
+
+    // A pair, then a group of three, then two pairs in one block and one in the next
+    const pair = weekForDate(applySupersets(plan, [link(0)]), wk.start)!;
+    assert.deepEqual(pair.days[0].blocks.find((b) => b.title === first.title)!.supersets, [[0, 1]], name);
+    const list = dayExercises(pair.days[0]);
+    assert.deepEqual(list.slice(0, 2).map((x) => x.group), [{ letter: "A", pos: 1, size: 2 }, { letter: "A", pos: 2, size: 2 }], name);
+    assert.ok(list.slice(2).every((x) => !x.group), name);
+    const three = weekForDate(applySupersets(plan, [link(0), link(1)]), wk.start)!;
+    assert.deepEqual(three.days[0].blocks.find((b) => b.title === first.title)!.supersets, [[0, 1, 2]], name);
+    const many = weekForDate(applySupersets(plan, [link(0), link(2), link(0, second)]), wk.start)!;
+    assert.deepEqual(many.days[0].blocks.find((b) => b.title === first.title)!.supersets, [[0, 1], [2, 3]], name);
+    assert.deepEqual([...new Set(dayExercises(many.days[0]).flatMap((x) => (x.group ? [x.group.letter] : [])))], ["A", "B", "C"], `${name}: letters run across the day`);
+    // Template text is untouched
+    assert.deepEqual(many.days[0].blocks.find((b) => b.title === first.title)!.items, first.items, name);
+
+    // Monday's workout moved to Tuesday: the superset goes with it
+    const moved = weekForDate(applySupersets(generatePlan(p, { moves: moveDay(wk, at(wk, 0), at(wk, 1))! }), [link(0)]), wk.start)!;
+    assert.deepEqual(groupsOn(moved).map((x) => x.d.date), [at(wk, 1)], name);
+
+    // Thursday skipped: its upper body folds into another day and keeps its superset
+    const upper = wk.days[3].blocks.find((b) => b.carry)!;
+    const folded = weekForDate(applySupersets(generatePlan(p, { skips: [at(wk, 3)] }), [link(0, upper, at(wk, 3))]), wk.start)!;
+    const hit = groupsOn(folded).filter((x) => !x.d.skipped);
+    assert.equal(hit.length, 1, name);
+    assert.equal(hit[0].b.foldedFrom, "Thu", name);
+    assert.deepEqual(hit[0].b.supersets, [[0, 1]], name);
+
+    // Swapping either exercise keeps the group, and it logs under the exercise swapped in
+    for (const i of [0, 1]) {
+      const swapped = applySwaps(plan, [{ planDate: at(wk, 0), from: keyAt(first, i), to: "goblet-squat-abc123" }], lookup);
+      const day = weekForDate(applySupersets(swapped, [link(0)]), wk.start)!.days[0];
+      assert.deepEqual(day.blocks.find((b) => b.title === first.title)!.supersets, [[0, 1]], `${name}: swap ${i}`);
+      assert.equal(dayExercises(day)[i].key, "goblet-squat-abc123", name);
+      assert.equal(dayExercises(day)[i].group?.letter, "A", name);
+    }
+  }
+});
+
+test("supersets: stale rows and links to a line that isn't an exercise are ignored; applying twice", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const plan = generatePlan(p);
+    const wk = plan.find((w) => w.phase === "build" && !w.cutback)!;
+    const [first] = liftBlocks(wk.days[0]);
+    const last = first.items.length - 1;
+    // Not on that plan day (Tuesday is a run), the block's last line, or a key that isn't there at all
+    for (const links of [[{ planDate: at(wk, 1), key: keyAt(first, 0) }], [{ planDate: at(wk, 0), key: keyAt(first, last) }], [{ planDate: at(wk, 0), key: "deleted-thing-abc123" }]])
+      assert.equal(groupsOn(weekForDate(applySupersets(plan, links), wk.start)!).length, 0, name);
+    // The next line is a note, not an exercise
+    const noted: Week[] = plan.map((w) => (w !== wk ? w : { ...w, days: w.days.map((d, di) => (di ? d : { ...d, blocks: d.blocks.map((b) => (b !== first ? b : { ...b, items: [b.items[0], "Rest 2 min", ...b.items.slice(1)] })) })) }));
+    assert.equal(groupsOn(weekForDate(applySupersets(noted, [{ planDate: at(wk, 0), key: keyAt(first, 0) }]), wk.start)!).length, 0, name);
+
+    // Idempotent, and no rows removes the overlay
+    const once = applySupersets(plan, [{ planDate: at(wk, 0), key: keyAt(first, 0) }]);
+    assert.deepEqual(applySupersets(once, [{ planDate: at(wk, 0), key: keyAt(first, 0) }]), once, name);
+    assert.equal(groupsOn(weekForDate(applySupersets(once, []), wk.start)!).length, 0, name);
+
+    // planFor applies them after swaps
+    const shown = planFor({ settings: p, logs: [], skips: [], moves: [], gatesPending: false, today: wk.start, supersets: [{ planDate: at(wk, 0), key: keyAt(first, 0) }] });
+    assert.equal(groupsOn(weekForDate(shown.weeks, wk.start)!).length, 1, name);
+  }
+});
+
+test("supersets: round by round, rest after the round, uneven groups, extra sets", () => {
+  const ex = (id: string, sets: number, pos: number, size: number, letter = "A") => ({ id, key: id, sets, group: { letter, pos, size } });
+  const counts = (m: Record<string, number>) => (k: string) => m[k] ?? 0;
+  const pair = [ex("a", 3, 1, 2), ex("b", 3, 2, 2), { id: "c", key: "c", sets: 3 }];
+  assert.deepEqual(nextInRound(pair, "a", 1, counts({})), { next: "b", rest: false, groupDone: false }, "A1 → A2, no rest");
+  assert.deepEqual(nextInRound(pair, "b", 1, counts({ a: 1 })), { next: "a", rest: true, groupDone: false }, "A2 rests, back to A1");
+  assert.deepEqual(nextInRound(pair, "b", 1, counts({ a: 1, b: 1 })), { next: "a", rest: true, groupDone: false }, "already counted");
+  assert.deepEqual(nextInRound(pair, "b", 3, counts({ a: 3, b: 2 })), { next: null, rest: true, groupDone: true }, "group done");
+  assert.deepEqual(nextInRound(pair, "a", 4, counts({ a: 3, b: 3 })), { next: null, rest: true, groupDone: false }, "an extra set rests and stays");
+  assert.deepEqual(nextInRound(pair, "c", 1, counts({})), { next: null, rest: true, groupDone: false }, "not in a superset");
+  // Logged out of order: A2 first, then A1 ends the round
+  assert.deepEqual(nextInRound(pair, "a", 1, counts({ b: 1 })), { next: "a", rest: true, groupDone: false });
+
+  // 3 sets and 4: round 4 is B alone, resting after each
+  const uneven = [ex("a", 3, 1, 2), ex("b", 4, 2, 2)];
+  assert.deepEqual(nextInRound(uneven, "a", 3, counts({ a: 2, b: 2 })), { next: "b", rest: false, groupDone: false });
+  assert.deepEqual(nextInRound(uneven, "b", 3, counts({ a: 3, b: 2 })), { next: "b", rest: true, groupDone: false });
+  assert.deepEqual(nextInRound(uneven, "b", 4, counts({ a: 3, b: 3 })), { next: null, rest: true, groupDone: true });
+
+  // A group of three: A1 → A2 → A3, then rest and back to A1
+  const three = [ex("a", 3, 1, 3), ex("b", 3, 2, 3), ex("c", 3, 3, 3)];
+  assert.deepEqual(nextInRound(three, "a", 2, counts({ a: 1, b: 1, c: 1 })), { next: "b", rest: false, groupDone: false });
+  assert.deepEqual(nextInRound(three, "b", 2, counts({ a: 2, b: 1, c: 1 })), { next: "c", rest: false, groupDone: false });
+  assert.deepEqual(nextInRound(three, "c", 2, counts({ a: 2, b: 2, c: 1 })), { next: "a", rest: true, groupDone: false });
+});
+
+test("supersets: light weeks and completion, every profile", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const plan = generatePlan(p);
+    const wk = plan.find((w) => w.phase === "build" && !w.cutback)!;
+    const [first] = liftBlocks(wk.days[0]);
+    const day = weekForDate(applySupersets(plan, [{ planDate: at(wk, 0), key: keyAt(first, 0) }]), wk.start)!.days[0];
+    const list = dayExercises(day);
+    const all = list.flatMap((x) => logSets(day.date, x.key, x.sets));
+    // Grouping changes the order of logging, never how much the day asks for
+    for (const sets of [[], all.slice(1), all, [...all, ...logSets(day.date, "burpee", 2)]]) assert.deepEqual(completion(day, sets), completion(wk.days[0], sets), name);
+
+    const cut = plan.find((w) => w.cutback && w.days.some((d) => liftBlocks(d).length));
+    if (!cut) continue;
+    const cd = cut.days.find((d) => liftBlocks(d).length)!;
+    const cb = liftBlocks(cd)[0];
+    const light = weekForDate(applySupersets(plan, [{ planDate: cb.planDate!, key: keyAt(cb, 0) }]), cut.start)!.days.find((d) => d.date === cd.date)!;
+    const [a, b] = dayExercises(light);
+    assert.deepEqual([a.sets, b.sets, a.group?.letter, b.group?.letter], [2, 2, "A", "A"], `${name}: light week`);
+    const count = (m: Record<string, number>) => (k: string) => m[k] ?? 0;
+    assert.deepEqual(nextInRound([a, b], b.id, 2, count({ [a.key]: 2, [b.key]: 1 })), { next: null, rest: true, groupDone: true }, name);
   }
 });
 

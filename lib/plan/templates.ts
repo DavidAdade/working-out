@@ -19,6 +19,8 @@ export interface Block {
   planDate?: string;
   /** Exercises the person swapped, by item index (see swaps.ts). `items` keep the template text */
   swaps?: Record<number, ItemSwap>;
+  /** Supersets: item indexes done back to back, round by round (see supersets.ts) */
+  supersets?: number[][];
 }
 
 /** One template line shown as another exercise. `target` keeps the original's sets */

@@ -10,6 +10,7 @@ import { asExercise, type ExerciseInfo } from "@/lib/plan/catalog.ts";
 import { itemKey } from "@/lib/plan/swaps.ts";
 import type { ExerciseVideo } from "@/lib/plan/videos.ts";
 import type { ItemSwap } from "@/lib/plan/templates.ts";
+import type { RoundStep } from "@/lib/plan/workout.ts";
 import { deleteExercise } from "@/app/actions";
 import MuscleMap, { MuscleChips } from "./MuscleMap";
 import { compareSession, sessions, suggestWeight, toUnit, type Change, type Session } from "@/lib/plan/progress.ts";
@@ -26,6 +27,8 @@ export interface SaveOpts {
   planDate?: string | null;
   /** The workout session (its plan date, see lib/plan/workout.ts) to start if it isn't already */
   session?: string | null;
+  /** The rest a new set starts: a superset's (its longest, after the round) or none mid-round; else the exercise's own */
+  rest?: { sec: number; label: string } | false;
 }
 
 interface SetsCtx {
@@ -66,7 +69,7 @@ export const keyLabel = (key: string) => {
 };
 
 /** Rest after a set: longer for heavy compound lifts */
-const restFor = (e: Exercise) => (e.load !== "weight" ? 60 : /deadlift|squat|press|row|pulldown|step-up/i.test(e.name) ? 120 : 90);
+export const restFor = (e: Exercise) => (e.load !== "weight" ? 60 : /deadlift|squat|press|row|pulldown|step-up/i.test(e.name) ? 120 : 90);
 
 const rowFromInput = (i: SetInput, unit: Unit): SetRow => ({
   id: `tmp-${i.date}-${i.exerciseKey}-${i.setNo}`,
@@ -213,7 +216,7 @@ export function SetsProvider({
         const sameDay = cur.some((s) => s.exercise_key === row.exercise_key && s.date === row.date && Number(s.weight_kg) >= optimistic.weight_kg!);
         if (before.length && !sameDay && optimistic.weight_kg > Math.max(...before) + 0.25) notify({ text: `New best: ${ex?.name ?? keyLabel(row.exercise_key)} ${row.weight} ${row.unit}`, tone: "good" });
       }
-      if (ex && !prev) rest.start(restFor(asExercise(ex)), `${ex.name} set ${row.set_no}`);
+      if (ex && !prev && opts.rest !== false) rest.start(opts.rest?.sec ?? restFor(asExercise(ex)), opts.rest?.label ?? `${ex.name} set ${row.set_no}`);
       // Logging without tapping Start starts the workout (queued first, so it replays before the set)
       if (opts.session) ensureStarted(opts.session);
       void send({ id: crypto.randomUUID(), t: "set", input }).then((r) => afterSend(r, () => revert(k, prev, row.date, row.exercise_key, row.set_no)));
@@ -301,9 +304,49 @@ export interface RowProps {
   locked?: boolean;
   /** The workout session a logged set starts, if it isn't already (see SaveOpts) */
   session?: string | null;
+  /** In a superset: "A1", "A2"… shown before the name */
+  badge?: string;
+  /** In a superset, while logging: what happens after each new set (replaces onComplete) */
+  superset?: SupersetFlow;
+  /** "Superset with next": left out when the next line can't join */
+  onLink?: () => void;
+  /** Takes this row out of its superset */
+  onUnlink?: () => void;
 }
 
-export function ExerciseRow({ anchorId, line, logDate: planLogDate, planDate, light, dayTitle, open, onToggle, onComplete, swap, onSwap, onPutBack, locked = false, session }: RowProps) {
+/** How a row in a superset moves on: no rest mid-round, one rest after the round, then the next exercise */
+export interface SupersetFlow {
+  letter: string;
+  /** The group's longest rest */
+  restSec: number;
+  /** Where to go after set `setNo` of this row (see nextInRound) */
+  after: (setNo: number) => RoundStep;
+  /** Open (and scroll to) another exercise in the group */
+  onNext: (id: string) => void;
+  /** Every set of the group is done: on to the next exercise of the day */
+  onGroupDone: () => void;
+}
+
+export function ExerciseRow({
+  anchorId,
+  line,
+  logDate: planLogDate,
+  planDate,
+  light,
+  dayTitle,
+  open,
+  onToggle,
+  onComplete,
+  swap,
+  onSwap,
+  onPutBack,
+  locked = false,
+  session,
+  badge,
+  superset,
+  onLink,
+  onUnlink,
+}: RowProps) {
   const parsed = parseLine(line);
   const { sets, unit, today, openHistory, info, nameOf } = useSets();
   const dates = useDates();
@@ -327,7 +370,7 @@ export function ExerciseRow({ anchorId, line, logDate: planLogDate, planDate, li
   const name = swap ? swap.name : parsed.name;
   // Sets logged for the original before the swap: never moved, shown read-only under the row
   const before = swap ? sets.filter((s) => planDayOf(s) === planDate && s.exercise_key === swap.from).sort((a, b) => a.set_no - b.set_no) : [];
-  const swapButtons = (onSwap || (swap && onPutBack)) && (
+  const swapButtons = (onSwap || (swap && onPutBack) || onLink || onUnlink) && (
     <>
       {onSwap && (
         <button type="button" className="btn-ghost px-3 text-xs" onClick={onSwap}>
@@ -337,6 +380,16 @@ export function ExerciseRow({ anchorId, line, logDate: planLogDate, planDate, li
       {swap && onPutBack && (
         <button type="button" className="btn-ghost px-3 text-xs" onClick={onPutBack}>
           Put back
+        </button>
+      )}
+      {onLink && (
+        <button type="button" className="btn-ghost px-3 text-xs" onClick={onLink}>
+          Superset with next
+        </button>
+      )}
+      {onUnlink && (
+        <button type="button" className="btn-ghost px-3 text-xs" onClick={onUnlink}>
+          Unlink
         </button>
       )}
     </>
@@ -355,6 +408,7 @@ export function ExerciseRow({ anchorId, line, logDate: planLogDate, planDate, li
         {video ? <VideoButton onClick={() => openVideo(video)} label={video.name} /> : <span className="w-11 flex-none" />}
         <button type="button" aria-expanded={open} onClick={onToggle} className="flex min-h-11 min-w-0 flex-1 items-center gap-2 text-left">
           <span className="min-w-0 flex-1 break-words">
+            {badge && <span className="mr-1.5 font-mono text-[0.8rem] font-semibold text-accent-ink">{badge}</span>}
             <span className="font-medium">{name}</span> <span className="whitespace-nowrap font-mono text-[0.8rem] text-muted">{targetText}</span>
             {swap && <span className="block text-xs text-muted">⇄ Swapped from {nameOf(swap.from)}</span>}
           </span>
@@ -407,10 +461,11 @@ export function ExerciseRow({ anchorId, line, logDate: planLogDate, planDate, li
           dayTitle={dayTitle}
           done={done}
           onCollapse={onToggle}
-          onComplete={onComplete}
+          onComplete={superset ? () => {} : onComplete}
           actions={locked ? undefined : swapButtons}
           locked={locked}
           session={session}
+          superset={superset}
         />
       )}
       {open && !logDate && (
@@ -465,6 +520,7 @@ function SetTable({
   actions,
   locked = false,
   session,
+  superset,
 }: {
   inset?: boolean;
   /** More buttons for the row's action bar, e.g. Swap */
@@ -481,6 +537,8 @@ function SetTable({
   /** Read-only: the workout ended 12+ hours ago */
   locked?: boolean;
   session?: string | null;
+  /** In a superset: rest once per round and open the next exercise (onComplete isn't used) */
+  superset?: SupersetFlow;
 }) {
   const { sets, unit, isLightDate, save, remove } = useSets();
   const dates = useDates();
@@ -511,6 +569,9 @@ function SetTable({
     count.current = done.length;
     if (before < target.sets && done.length >= target.sets) setTimeout(() => completeRef.current(), 600);
   }, [done.length, target.sets]);
+  // Called after the move-on delay, so it sees the set just logged
+  const supersetRef = useRef(superset);
+  supersetRef.current = superset;
 
   const cols = showWeight ? "grid-cols-[1.25rem_5rem_4rem_2.75rem]" : "grid-cols-[1.25rem_5rem_2.75rem]";
 
@@ -563,7 +624,9 @@ function SetTable({
             locked={locked}
             fill={fill?.setNo === n ? fill : null}
             onFilled={() => setFill(null)}
-            onSave={(w, r) =>
+            onSave={(w, r) => {
+              // A new set in a superset: on to the next exercise in the round, or rest once the round is over
+              const step = superset && !done.some((d) => d.set_no === n) ? superset.after(n) : null;
               save(
                 {
                   date,
@@ -576,9 +639,14 @@ function SetTable({
                   light_week: lightSession,
                 },
                 dayTitle,
-                { planDate, session },
-              )
-            }
+                { planDate, session, rest: step && superset ? step.rest && { sec: superset.restSec, label: `Superset ${superset.letter}, round ${n}` } : undefined },
+              );
+              if (step)
+                setTimeout(() => {
+                  if (step.groupDone) supersetRef.current?.onGroupDone();
+                  else if (step.next) supersetRef.current?.onNext(step.next);
+                }, 400);
+            }}
             onRemove={() => remove(date, exercise.key, n)}
           />
         );

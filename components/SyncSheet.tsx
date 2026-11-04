@@ -34,6 +34,7 @@ function describe(op: Op): string {
   }
   if (op.t === "unset") return `Remove ${label(op.key)} set ${op.setNo} · ${fmtDay(op.date)}`;
   if (op.t === "swap") return `${op.to ? `Swap ${label(op.from)} for ${label(op.to)}` : `Put back ${label(op.from)}`} · ${fmtDay(op.planDate)}`;
+  if (op.t === "superset") return `${op.on ? "Superset" : "Unlink"} ${label(op.key)} ${op.on ? "with" : "from"} the next exercise · ${fmtDay(op.planDate)}`;
   if (op.t === "workout-start") return `Start workout · ${fmtDay(op.planDate)}`;
   if (op.t === "workout-end") return `End workout · ${fmtDay(op.planDate)}`;
   const i = op.input;
