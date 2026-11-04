@@ -5,7 +5,7 @@
 // Writes go through the Dock outbox, so Start and End work with no signal and replay in order before later sets.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { celebrate as celebrate_sound, prime } from "@/lib/audio";
+import { fanfare, prime } from "@/lib/audio";
 import { useDock } from "./Dock";
 import { elapsed, sessionState, type Completion, type WorkoutSession } from "@/lib/plan/workout.ts";
 import Confetti from "./Confetti";
@@ -16,7 +16,8 @@ interface WorkoutCtx {
   start: (planDate: string) => void;
   /** Starts it unless it's already started (logging a set does this) */
   ensureStarted: (planDate: string) => void;
-  end: (planDate: string) => void;
+  /** Ends it; with the day's completion, also cheers (a finished day) or sums up what was done */
+  end: (planDate: string, c?: Completion) => void;
   /** Confetti for a finished day; "beyond" is the bigger one. Once per day and level. */
   celebrate: (planDate: string, c: Completion) => void;
 }
@@ -101,15 +102,6 @@ export function WorkoutProvider({ initial, children }: { initial: WorkoutSession
     },
     [write],
   );
-  const end = useCallback(
-    (planDate: string) => {
-      // On the tap, so the celebration sound can play over music
-      prime();
-      endAt(planDate, new Date().toISOString(), false);
-    },
-    [endAt],
-  );
-
   // A workout left open past 4 hours ended then: save it that way whenever it's seen, now or while the app stays open
   useEffect(() => {
     const check = () => {
@@ -126,23 +118,41 @@ export function WorkoutProvider({ initial, children }: { initial: WorkoutSession
 
   const [burst, setBurst] = useState<{ id: number; big: boolean } | null>(null);
   const celebrated = useRef(new Map<string, "complete" | "beyond">());
-  const celebrate = useCallback(
-    (planDate: string, c: Completion) => {
+  /** Confetti and the fanfare, once per day and level; the message shows either way */
+  const cheer = useCallback(
+    (planDate: string, c: Completion, text: string) => {
       if (c.status !== "complete" && c.status !== "beyond") return;
       const before = celebrated.current.get(planDate);
-      if (before === "beyond" || before === c.status) return;
-      celebrated.current.set(planDate, c.status);
-      const big = c.status === "beyond";
-      setBurst({ id: Date.now(), big });
-      celebrate_sound();
-      notify({
-        text: big
-          ? `You went the extra mile: ${c.extraSets} more set${c.extraSets === 1 ? "" : "s"} than planned${c.extraExercises ? `, ${c.extraExercises} extra exercise${c.extraExercises === 1 ? "" : "s"}` : ""}. You pushed harder today.`
-          : "Every set done. Workout complete!",
-        tone: "good",
-      });
+      if (before !== "beyond" && before !== c.status) {
+        celebrated.current.set(planDate, c.status);
+        setBurst({ id: Date.now(), big: c.status === "beyond" });
+        fanfare();
+      }
+      notify({ text, tone: "good" });
     },
     [notify],
+  );
+  const celebrate = useCallback(
+    (planDate: string, c: Completion) => {
+      const before = celebrated.current.get(planDate);
+      if (before === "beyond" || before === c.status) return;
+      cheer(planDate, c, c.status === "beyond" ? extraMile(c) : "Every set done. Workout complete!");
+    },
+    [cheer],
+  );
+
+  const end = useCallback(
+    (planDate: string, c?: Completion) => {
+      // On the tap, so the celebration sound can play over music
+      prime();
+      const s = ref.current.get(planDate);
+      endAt(planDate, new Date().toISOString(), false);
+      if (!c || !s || s.ended_at) return;
+      const mins = Math.max(1, Math.round((Date.now() - Date.parse(s.started_at)) / 60e3));
+      if (c.status === "complete" || c.status === "beyond") cheer(planDate, c, c.status === "beyond" ? extraMile(c) : finished(c, mins));
+      else if (c.done) notify({ text: `Workout saved: ${c.done} of ${c.planned} sets in ${mins} min. Every session counts.`, tone: "good" });
+    },
+    [cheer, endAt, notify],
   );
 
   const value = useMemo<WorkoutCtx>(
@@ -157,9 +167,53 @@ export function WorkoutProvider({ initial, children }: { initial: WorkoutSession
   );
 }
 
+const extraMile = (c: Completion) =>
+  `You went the extra mile: ${c.extraSets} more set${c.extraSets === 1 ? "" : "s"} than planned${c.extraExercises ? `, ${c.extraExercises} extra exercise${c.extraExercises === 1 ? "" : "s"}` : ""}. You pushed harder today.`;
+
+/** Said on End when every planned set is in */
+const finished = (c: Completion, mins: number) => {
+  const lines = [
+    `All ${c.planned} sets in ${mins} min. That's how it's done.`,
+    `Every set, start to finish. Showing up like this is what makes the difference.`,
+    `${c.planned} for ${c.planned}. Rest up, you earned it.`,
+    `Workout complete in ${mins} min. Future you says thanks.`,
+    `Nothing skipped, nothing left. Great session.`,
+  ];
+  return lines[Math.floor(Math.random() * lines.length)];
+};
+
+/** Sets done as a ring that fills, with the count inside; turns green with a tick when every set is in */
+function ProgressRing({ done, planned }: { done: number; planned: number }) {
+  const r = 19;
+  const c = 2 * Math.PI * r;
+  const p = planned ? Math.min(1, done / planned) : 0;
+  const full = planned > 0 && done >= planned;
+  return (
+    <div className="relative h-11 w-11 flex-none" role="img" aria-label={`${done} of ${planned} sets done`}>
+      <svg viewBox="0 0 44 44" className="h-full w-full -rotate-90" aria-hidden>
+        <circle cx="22" cy="22" r={r} fill="none" strokeWidth="4" className="stroke-line" />
+        <circle
+          cx="22"
+          cy="22"
+          r={r}
+          fill="none"
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - p)}
+          className={`transition-[stroke-dashoffset] duration-500 ease-out motion-reduce:transition-none ${full ? "stroke-good" : "stroke-accent"}`}
+        />
+      </svg>
+      <span aria-hidden className="absolute inset-0 flex items-center justify-center font-mono text-[0.68rem] font-semibold leading-none tabular-nums">
+        {full ? <span className="text-base text-good">✓</span> : `${done}/${planned}`}
+      </span>
+    </div>
+  );
+}
+
 /** Start / End and the elapsed time for one day's workout; read-only notice once its sets are locked. */
 export function WorkoutBar({ planDate, canStart, completion }: { planDate: string; canStart: boolean; completion: Completion }) {
-  const { get, start, end, celebrate } = useWorkout();
+  const { get, start, end } = useWorkout();
   const s = get(planDate);
   const [now, setNow] = useState(() => Date.now());
   const st = s ? sessionState(s, now) : null;
@@ -183,21 +237,17 @@ export function WorkoutBar({ planDate, canStart, completion }: { planDate: strin
   }
   if (st.active)
     return (
-      <div className="flex items-center gap-2 rounded-lg border border-accent/60 bg-accent/10 px-3 py-1.5" role="timer" aria-live="off">
+      <div className="flex items-center gap-2.5 rounded-lg border border-accent/60 bg-accent/10 px-3 py-1.5" role="timer" aria-live="off">
+        <ProgressRing done={completion.done} planned={completion.planned} />
         <div className="min-w-0 flex-1">
           <div className="font-display text-2xl font-bold leading-none tabular-nums">{elapsed(now - st.startedAt)}</div>
-          <div className="text-xs text-muted">
-            Workout in progress · {completion.done}/{completion.planned} sets
-          </div>
+          <div className="text-xs text-muted">Workout in progress</div>
         </div>
         <button
           type="button"
           className="btn"
-          onClick={() => {
-            end(planDate);
-            // Finished or beyond: celebrate (once); anything missing: just marked done
-            celebrate(planDate, completion);
-          }}
+          // Finished or beyond: a cheer (confetti once); anything missing: a short summary
+          onClick={() => end(planDate, completion)}
         >
           End workout
         </button>

@@ -482,10 +482,11 @@ function SetTable({
   locked?: boolean;
   session?: string | null;
 }) {
-  const { sets, unit, isLightDate, save, remove, openHistory } = useSets();
+  const { sets, unit, isLightDate, save, remove } = useSets();
   const dates = useDates();
   const all = useMemo(() => sessions(sets, exercise.key), [sets, exercise.key]);
   const prev = all.find((s) => s.date < date);
+  const [peek, setPeek] = useState(false);
   const lightSession = light || isLightDate(planDate);
   // Every set hit the top of the range last time: the grey numbers move up a step
   const suggested = lightSession || exercise.load !== "weight" ? null : suggestWeight(all.find((s) => s.date < date && !s.light), target, unit);
@@ -516,7 +517,7 @@ function SetTable({
   return (
     <div className={`mb-2 flex max-w-sm flex-col gap-1.5 ${inset ? "ml-11" : ""}`}>
       {prev && (
-        <button type="button" onClick={() => openHistory(exercise.key, prev.date)} className="flex min-h-11 items-center text-left text-xs text-muted">
+        <button type="button" onClick={() => setPeek(true)} className="flex min-h-11 items-center text-left text-xs text-muted">
           <span>
             Last ({dates.day(prev.date)}): <span className="font-mono">{prev.sets.map((x) => fmtSet(x, unit)).join(", ")}</span>
           </span>
@@ -594,9 +595,11 @@ function SetTable({
               {addWeight ? "No weight" : "+ Weight"}
             </button>
           )}
-          <button type="button" className="btn-ghost px-3 text-xs" onClick={() => openHistory(exercise.key)}>
-            History
-          </button>
+          {prev && (
+            <button type="button" className="btn-ghost px-3 text-xs" onClick={() => setPeek(true)}>
+              History
+            </button>
+          )}
           {actions}
           {target.each && <span className="text-xs text-muted">Log one side&apos;s {timed ? "time" : "reps"}</span>}
           <button type="button" className="btn-ghost ml-auto px-3 text-xs" onClick={onCollapse} aria-label={`Collapse ${exercise.name}`}>
@@ -605,6 +608,65 @@ function SetTable({
         </div>
       )}
       {change && <ChangeBanner change={change} exerciseKey={exercise.key} />}
+      {peek && <QuickHistory name={exercise.name} past={all.filter((s) => s.date < date).slice(0, 3)} onClose={() => setPeek(false)} />}
+    </div>
+  );
+}
+
+/** The last few sessions of one exercise, set by set: a glance mid-workout, then back to logging */
+function QuickHistory({ name, past, onClose }: { name: string; past: Session[]; onClose: () => void }) {
+  const { unit } = useSets();
+  const dates = useDates();
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeRef.current?.focus({ preventScroll: true });
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = overflow;
+    };
+  }, [onClose]);
+
+  return (
+    <div className="fixed inset-0 z-[55] flex items-end justify-center overscroll-contain bg-black/60 sm:items-center sm:p-4" onClick={onClose} role="presentation">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${name}: last sessions`}
+        onClick={(e) => e.stopPropagation()}
+        className="flex max-h-[70dvh] w-full max-w-[480px] flex-col gap-2 overflow-y-auto rounded-t-2xl border border-line bg-surface p-4 pb-[max(16px,env(safe-area-inset-bottom,0px))] sm:rounded-2xl"
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="label">Last {past.length === 1 ? "session" : `${past.length} sessions`}</div>
+            <h3 className="break-words font-display text-xl font-bold">{name}</h3>
+          </div>
+          <button ref={closeRef} type="button" className="btn-ghost" onClick={onClose}>
+            Done
+          </button>
+        </div>
+        <ul className="flex flex-col">
+          {past.map((s) => (
+            <li key={s.date} className="flex flex-col gap-1.5 border-t border-line py-2.5 first:border-t-0">
+              <div className="flex items-baseline justify-between gap-2">
+                <b>{dates.day(s.date)}</b>
+                {s.light && <span className="text-xs text-muted">light week</span>}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {s.sets.map((x) => (
+                  <span key={x.set_no} className="rounded-md bg-sunk px-2 py-1 font-mono text-sm">
+                    <span className="text-muted">{x.set_no} · </span>
+                    {fmtSet(x, unit)}
+                  </span>
+                ))}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }

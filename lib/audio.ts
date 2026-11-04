@@ -67,7 +67,9 @@ function close() {
 /** Whether we're inside a tap. Safari 16.4+ has the User Activation API; without it, assume not. */
 const tapping = () => !!(navigator as Navigator & { userActivation?: { isActive: boolean } }).userActivation?.isActive;
 
-function play(notes: [at: number, freq: number, len: number, vol: number][]) {
+type Note = [at: number, freq: number, len: number, vol: number, wave?: OscillatorType];
+
+function play(notes: Note[]) {
   if (typeof document === "undefined" || document.visibilityState !== "visible") return;
   // Outside a tap, only an already-open context is used: a sound never creates one on load or on return
   if (ctx ? !ambient() : !tapping() || !prime()) return;
@@ -76,11 +78,14 @@ function play(notes: [at: number, freq: number, len: number, vol: number][]) {
     if (c.state !== "running" || c !== ctx) return;
     try {
       const t0 = c.currentTime + 0.02;
-      for (const [at, f, len, vol] of notes) {
+      for (const [at, f, len, vol, wave] of notes) {
         const o = c.createOscillator();
         const g = c.createGain();
+        o.type = wave ?? "sine";
         o.frequency.value = f;
-        g.gain.setValueAtTime(vol, t0 + at);
+        // A 10 ms fade-in, so no note starts with a click
+        g.gain.setValueAtTime(0.0001, t0 + at);
+        g.gain.linearRampToValueAtTime(vol, t0 + at + 0.01);
         g.gain.exponentialRampToValueAtTime(0.001, t0 + at + len);
         o.connect(g).connect(c.destination);
         o.start(t0 + at);
@@ -120,4 +125,16 @@ export const celebrate = () =>
     [0.1, 880, 0.12, 0.15],
     [0.2, 1100, 0.12, 0.15],
     [0.3, 1320, 0.3, 0.18],
+  ]);
+
+/** A whole workout done: a quick rising C-major run that lands on a ringing chord, about 1.8 s */
+export const fanfare = () =>
+  play([
+    [0, 523.25, 0.3, 0.11, "triangle"],
+    [0.11, 659.25, 0.3, 0.11, "triangle"],
+    [0.22, 783.99, 0.3, 0.11, "triangle"],
+    [0.36, 1046.5, 1.45, 0.13, "triangle"],
+    [0.36, 659.25, 1.3, 0.06],
+    [0.36, 783.99, 1.3, 0.06],
+    [0.36, 2093, 0.8, 0.025],
   ]);

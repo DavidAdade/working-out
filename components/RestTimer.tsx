@@ -65,6 +65,8 @@ function letSleep() {
 
 /** How long a finished timer stays up as "Go" */
 const SHOW_DONE_MS = 8000;
+/** A rest that ran out while the app was in the background (or closed by iOS) stays up this long once you're back */
+const SHOW_MISSED_MS = 60_000;
 /** The app cancels the push this close to the end if it's open, and chimes instead */
 const HANDOVER_MS = 2000;
 
@@ -120,9 +122,10 @@ export function RestTimerProvider({
   }, [pushOn]);
 
   // A timer started on another page or before a reload carries on. It makes no sound here: that waits for a tap.
+  // One that ran out while the app was away still shows, as "Rest over", so it doesn't just vanish.
   useEffect(() => {
     const t = read(key);
-    if (t && t.endsAt > Date.now()) setTimer(t);
+    if (t && t.endsAt > Date.now() - SHOW_MISSED_MS) setTimer(t);
     else if (t) save(null);
   }, [key, save]);
 
@@ -188,7 +191,8 @@ export function RestTimerProvider({
         else if (left <= 5) tick();
       }
       last = left;
-      if (ms <= 0) finish(Math.max(0, SHOW_DONE_MS + ms));
+      // Ended just now on screen: "Go" for a few seconds. Ended while away: up for longer once you're looking.
+      if (ms <= 0 && document.visibilityState === "visible") finish(live && ms > -1500 ? Math.max(0, SHOW_DONE_MS + ms) : SHOW_MISSED_MS);
     };
     const iv = setInterval(check, 200);
     // Back after a reload or from the background: a tap re-opens audio for the chime (it's never opened by itself)
@@ -213,6 +217,8 @@ export function RestTimerProvider({
   );
 }
 
+const ago = (sec: number) => (sec < 60 ? `${sec}s` : `${Math.round(sec / 60)} min`);
+
 /** The countdown card. Goes inside a bottom stack like the Dock's; use RestTimerDock on pages without one. */
 export function RestTimerView() {
   const s = useContext(StateCtx);
@@ -235,7 +241,9 @@ export function RestTimerView() {
     >
       <div className="min-w-0 flex-1">
         <div className="font-display text-2xl font-bold leading-none tabular-nums">{left > 0 ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` : "Go"}</div>
-        <div className={`truncate text-xs ${left <= 0 ? "" : "text-muted"}`}>{left > 0 ? `Rest · ${timer.label}` : "Rest over. Next set."}</div>
+        <div className={`truncate text-xs ${left <= 0 ? "" : "text-muted"}`}>
+          {left > 0 ? `Rest · ${timer.label}` : left > -10 ? "Rest over. Next set." : `Rest ended ${ago(-left)} ago. Next set.`}
+        </div>
       </div>
       {left > 0 && (
         <>

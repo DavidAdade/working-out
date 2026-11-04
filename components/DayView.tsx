@@ -40,6 +40,26 @@ function SimpleBlock({ block }: { block: Block }) {
   );
 }
 
+/**
+ * Bring the next exercise into view once the finished one has closed: its top just under the sticky tab bar
+ * (which, with the iPhone's safe area, is taller than a scroll margin), and no scroll at all if it's already in
+ * the top half of the screen.
+ */
+function scrollToRow(id: string) {
+  // Two frames: the closed row's height is gone from the layout by then
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const nav = document.querySelector<HTMLElement>('nav[role="tablist"]');
+      const top = (nav ? Math.max(0, nav.getBoundingClientRect().bottom) : 0) + 8;
+      const y = el.getBoundingClientRect().top;
+      if (y >= top && y <= window.innerHeight * 0.5) return;
+      window.scrollTo({ top: Math.max(0, window.scrollY + y - top), behavior: "smooth" });
+    }),
+  );
+}
+
 /** All blocks for one day. Lifts are compact rows; one opens at a time and the next opens when you finish. */
 export function DayBlocks({
   day,
@@ -138,7 +158,7 @@ export function DayBlocks({
     const i = order.findIndex((x) => x.id === id);
     const next = order.slice(i + 1).find(unfinished) ?? order.slice(0, i).find(unfinished);
     setOpenId(next?.id ?? null);
-    if (next) requestAnimationFrame(() => document.getElementById(`ex-${day.date}-${next.id}`)?.scrollIntoView({ block: "start", behavior: "smooth" }));
+    if (next) scrollToRow(`ex-${day.date}-${next.id}`);
   };
 
   if (day.skipped)
