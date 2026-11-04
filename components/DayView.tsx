@@ -8,6 +8,7 @@ import { parseLine } from "@/lib/plan/exercises.ts";
 import { completion, dayExercises, isLocked, LIFT_KINDS, nextInRound, sessionDate, type DayExercise } from "@/lib/plan/workout.ts";
 import { groupOf, loggable } from "@/lib/plan/supersets.ts";
 import { asExercise } from "@/lib/plan/catalog.ts";
+import { itemKey, itemLine } from "@/lib/plan/swaps.ts";
 import type { SetRow } from "@/lib/types";
 import { ExerciseRow, fmtSet, planDayOf, restFor, useSets, type SupersetFlow } from "./Sets";
 import { SwapSheet, useSwap } from "./SwapSheet";
@@ -90,6 +91,7 @@ export function DayBlocks({
   day,
   onSkip,
   onMove,
+  onCopy,
   today,
   logOpen = false,
 }: {
@@ -97,6 +99,8 @@ export function DayBlocks({
   onSkip?: (date: string, skip: boolean) => void;
   /** Opens the move sheet; left out when the day can't move */
   onMove?: () => void;
+  /** Opens the "Swap for another day" sheet; left out when the day can't take another workout */
+  onCopy?: () => void;
   today: string;
   logOpen?: boolean;
 }) {
@@ -312,11 +316,16 @@ export function DayBlocks({
         </div>
       )}
       {sheet}
-      {(onMove || (onSkip && day.skippable)) && (
+      {(onMove || onCopy || (onSkip && day.skippable)) && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           {onMove && (
             <button className="btn-ghost" onClick={onMove}>
               Move to another day
+            </button>
+          )}
+          {onCopy && (
+            <button className="btn-ghost" onClick={onCopy}>
+              Swap for another day
             </button>
           )}
           {onSkip && day.skippable && (
@@ -325,6 +334,44 @@ export function DayBlocks({
             </button>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+/** A day's workout read-only, for the "Swap for another day" preview. Lift lines open their exercise sheet. */
+export function PreviewBlocks({ blocks }: { blocks: Block[] }) {
+  const { openHistory } = useSets();
+  return (
+    <div className="flex flex-col gap-3">
+      {blocks.map((b, bi) =>
+        LIFT_KINDS.includes(b.kind) ? (
+          <div key={b.title + bi} className="flex flex-col">
+            <div className="flex flex-wrap items-center gap-1.5 font-semibold">
+              {b.title} <Chip kind={b.kind} />
+            </div>
+            <ul className="flex flex-col divide-y divide-line">
+              {b.items.map((_, ii) => {
+                const key = itemKey(b, ii);
+                return (
+                  <li key={ii}>
+                    {key ? (
+                      <button type="button" onClick={() => openHistory(key)} className="flex min-h-11 w-full items-center gap-2 text-left text-[0.92rem]">
+                        <span className="min-w-0 flex-1 break-words">{itemLine(b, ii)}</span>
+                        <span aria-hidden className="text-muted">›</span>
+                      </button>
+                    ) : (
+                      <span className="flex min-h-11 items-center text-[0.92rem] text-muted">{itemLine(b, ii)}</span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+            {b.note && <p className="text-xs text-muted">{b.note}</p>}
+          </div>
+        ) : (
+          <SimpleBlock key={b.title + bi} block={b} />
+        ),
       )}
     </div>
   );

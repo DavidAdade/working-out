@@ -31,6 +31,8 @@ import type { Swap } from "@/lib/plan/swaps.ts";
 import type { SupersetLink } from "@/lib/plan/supersets.ts";
 import type { WorkoutSession } from "@/lib/plan/workout.ts";
 import { WorkoutProvider } from "./Workout";
+import { CopyProvider, type CopyApi } from "./CopySheet";
+import type { DayCopy } from "@/lib/plan/generate.ts";
 
 type Tab = "today" | "plan" | "log" | "score" | "progress" | "library";
 const TABS: { id: Tab; label: string }[] = [
@@ -53,6 +55,8 @@ export interface DashboardProps {
   swaps: Swap[];
   /** Supersets: a template exercise linked to the next one on one plan day */
   supersets: SupersetLink[];
+  /** Plan days doing another day's workout instead */
+  copies: DayCopy[];
   /** Started / ended workouts, by the plan's own date */
   workouts: WorkoutSession[];
   sets: SetRow[];
@@ -74,10 +78,10 @@ export interface DashboardProps {
  */
 export default function Dashboard({ offline, ...props }: DashboardProps & { offline?: { savedAt: number } }) {
   // Every fresh load from the server is saved on this phone for next time there's no signal
-  const { profile, settings, logs, skips, moves, swaps, supersets, workouts, sets, exercises, today, ai, review, push, score } = props;
+  const { profile, settings, logs, skips, moves, swaps, supersets, copies, workouts, sets, exercises, today, ai, review, push, score } = props;
   useEffect(() => {
-    if (!offline) void saveSnapshot<DashboardProps>(profile.id, { profile, settings, logs, skips, moves, swaps, supersets, workouts, sets, exercises, today, ai, review, push, score });
-  }, [offline, profile, settings, logs, skips, moves, swaps, supersets, workouts, sets, exercises, today, ai, review, push, score]);
+    if (!offline) void saveSnapshot<DashboardProps>(profile.id, { profile, settings, logs, skips, moves, swaps, supersets, copies, workouts, sets, exercises, today, ai, review, push, score });
+  }, [offline, profile, settings, logs, skips, moves, swaps, supersets, copies, workouts, sets, exercises, today, ai, review, push, score]);
 
   return (
     <RestTimerProvider userId={profile.id} enabled={profile.rest_timer} seconds={profile.rest_seconds ?? null} push={props.push}>
@@ -114,7 +118,7 @@ function queuedLog(i: LogInput): LogRow {
 
 const swapId = (planDate: string, from: string) => `${planDate}|${from}`;
 
-function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swaps: serverSwaps, supersets: serverSupersets, workouts, sets, exercises, today, ai, review, offline, score }: DashboardProps & { offline: boolean }) {
+function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swaps: serverSwaps, supersets: serverSupersets, copies: serverCopies, workouts, sets, exercises, today, ai, review, offline, score }: DashboardProps & { offline: boolean }) {
   const [tab, setTab] = useState<Tab>("today");
   const [logDate, setLogDate] = useState<string | null>(null);
   const [, startTransition] = useTransition();
@@ -183,11 +187,39 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
   swapsRef.current = swaps;
   const { links: supersets, api: supersetApi } = useSupersetLinks(serverSupersets);
 
+  // Copied days, the same way: the server's, then the outbox, then ones made here not shown back yet
+  const [localCopies, setLocalCopies] = useState<Map<string, string | null>>(() => new Map());
+  const localCopiesRef = useRef(localCopies);
+  localCopiesRef.current = localCopies;
+  const copies = useMemo(() => {
+    const m = new Map<string, string | null>(serverCopies.map((c) => [c.planDate, c.source]));
+    for (const op of queue) if (op.t === "copy") m.set(op.planDate, op.source);
+    for (const [k, source] of localCopies) m.set(k, source);
+    return [...m].flatMap(([planDate, source]) => (source ? [{ planDate, source }] : []));
+  }, [serverCopies, queue, localCopies]);
+  useEffect(() => {
+    setLocalCopies((cur) => {
+      if (!cur.size) return cur;
+      const server = new Map(serverCopies.map((c) => [c.planDate, c.source]));
+      const next = new Map([...cur].filter(([k, source]) => (server.get(k) ?? null) !== source));
+      return next.size === cur.size ? cur : next;
+    });
+  }, [serverCopies]);
+  useEffect(
+    () =>
+      onRejected((op) => {
+        if (op.t === "copy") setLocalCopies((cur) => new Map([...cur].filter(([k]) => k !== op.planDate)));
+      }),
+    [onRejected],
+  );
+  const copiesRef = useRef(copies);
+  copiesRef.current = copies;
+
   const byKey = useMemo(() => new Map(exercises.map((e) => [e.key, e])), [exercises]);
   const gatesPending = settings.returningFromInjury && GATES.some((g) => !profile.gates?.[g.key]);
   const { weeks, fitness, warnings } = useMemo(
-    () => planFor({ settings, logs, skips: optimisticSkips, moves: optimisticMoves, gatesPending, today, swaps, exercise: (k) => byKey.get(k), supersets }),
-    [settings, logs, optimisticSkips, optimisticMoves, gatesPending, today, swaps, byKey, supersets],
+    () => planFor({ settings, logs, skips: optimisticSkips, moves: optimisticMoves, gatesPending, today, swaps, exercise: (k) => byKey.get(k), supersets, copies }),
+    [settings, logs, optimisticSkips, optimisticMoves, gatesPending, today, swaps, byKey, supersets, copies],
   );
   // A skip made here and not yet reloaded was made today
   const scoreInputs = useMemo<ScoreInputs>(
@@ -263,6 +295,32 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
     [swap],
   );
 
+  const copy = useCallback<CopyApi["copy"]>(
+    (planDate, source, note) => {
+      const before = copiesRef.current.find((c) => c.planDate === planDate)?.source ?? null;
+      const hadLocal = localCopiesRef.current.has(planDate);
+      const prevLocal = localCopiesRef.current.get(planDate);
+      setLocalCopies((cur) => new Map(cur).set(planDate, source));
+      const undo = { label: "Undo", run: () => copy(planDate, before, before ? "Swap changed back." : "Swap undone.") };
+      // Through the outbox like exercise swaps, so it replays before any sets logged on the new workout
+      void send({ id: crypto.randomUUID(), t: "copy", planDate, source }).then((r) => {
+        if (r === "sent") notify({ text: note, tone: "good", action: undo });
+        else if (r === "queued") notify({ text: `${note} Saved on this phone. Syncs when you're back online.`, action: undo });
+        else {
+          setLocalCopies((cur) => {
+            const next = new Map(cur);
+            if (hadLocal) next.set(planDate, prevLocal ?? null);
+            else next.delete(planDate);
+            return next;
+          });
+          notify({ text: r.error, tone: "error" });
+        }
+      });
+    },
+    [notify, send],
+  );
+  const copyApi = useMemo<CopyApi>(() => ({ weeks, copy }), [weeks, copy]);
+
   const openLog = (date: string) => {
     setLogDate(date);
     setTab("log");
@@ -276,6 +334,7 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
         <SetsProvider initial={sets} unit={profile.weight_unit} today={today} weeks={weeks} exercises={exercises}>
           <SwapProvider value={swapApi}>
           <SupersetProvider value={supersetApi}>
+          <CopyProvider value={copyApi}>
           <GoalHeader settings={settings} fitness={fitness.sec} thisWeek={thisWeek} daysToTT={daysToTT} />
 
           <nav className="sticky top-[env(safe-area-inset-top,0px)] z-10 grid grid-cols-6 gap-1 bg-bg py-1.5" role="tablist">
@@ -316,6 +375,7 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
           {tab === "score" && <AccountabilityPanel inputs={scoreInputs} onLog={openLog} onToday={() => openTab("today")} />}
           {tab === "library" && <LibraryPanel />}
           {tab === "progress" && <ProgressPanel logs={logs} settings={settings} painAreas={profile.pain_areas} today={today} />}
+          </CopyProvider>
           </SupersetProvider>
           </SwapProvider>
         </SetsProvider>

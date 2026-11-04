@@ -6,7 +6,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { addLog, deleteSet, endWorkout, setSupersetLink, setSwap, startWorkout, upsertSet, type ActionResult, type LogInput, type SetInput } from "@/app/actions";
+import { addLog, deleteSet, endWorkout, setDayCopy, setSupersetLink, setSwap, startWorkout, upsertSet, type ActionResult, type LogInput, type SetInput } from "@/app/actions";
 import { RestTimerView } from "./RestTimer";
 import SyncSheet, { type Refused, type SyncResult } from "./SyncSheet";
 
@@ -20,7 +20,9 @@ export type Op =
   | { id: string; t: "superset"; planDate: string; key: string; on: boolean }
   /** Start / End the workout stored under `planDate` (the plan's own date); `at` is the phone's ISO time of the tap */
   | { id: string; t: "workout-start"; planDate: string; at: string }
-  | { id: string; t: "workout-end"; planDate: string; at: string; auto: boolean };
+  | { id: string; t: "workout-end"; planDate: string; at: string; auto: boolean }
+  /** Plan day `planDate` does the workout of plan day `source` instead; null puts its own back */
+  | { id: string; t: "copy"; planDate: string; source: string | null };
 
 export type SendResult = "sent" | "queued" | { error: string };
 
@@ -53,6 +55,7 @@ function run(op: Op): Promise<ActionResult> {
   if (op.t === "superset") return setSupersetLink(op.planDate, op.key, op.on);
   if (op.t === "workout-start") return startWorkout(op.planDate, op.at);
   if (op.t === "workout-end") return endWorkout(op.planDate, op.at, op.auto);
+  if (op.t === "copy") return setDayCopy(op.planDate, op.source);
   return addLog(op.input);
 }
 

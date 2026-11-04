@@ -8,6 +8,8 @@
 //   E  extra work, up to +8, only in weeks that are already kept and only when the plan isn't easing off
 //   P  new bests, +0.5 each up to +3        D  lifts that dropped 5%+, −0.5 each down to −2
 // Rest days, cutback weeks, moved days and pain or gate changes all count as doing the plan.
+// A day swapped for another day's workout (Day.copy) is scored on the workout done; when its intensity doesn't
+// match (intensity.ts), the day's credit is multiplied by fit.credit (0.5 to 1) while its units stay full.
 
 import { addDays, daysBetween, dowName, mondayOf, type ISODate } from "./dates.ts";
 import { adaptPlan } from "./adapt.ts";
@@ -133,6 +135,7 @@ export type FeedKind =
   | "run_short"
   | "moved"
   | "swapped"
+  | "copied"
   | "weight_up"
   | "weight_same"
   | "weight_down";
@@ -255,6 +258,10 @@ interface Tally {
   extraLogs: AcctLog[];
   extraU: number;
   skipNote?: "late";
+  /** Credit multiplier: below 1 on a copied workout whose intensity doesn't match */
+  copyF: number;
+  /** "W7 Wed": where a copied workout came from */
+  copyFrom?: string;
 }
 
 /** Planned minutes or km, and the credit for what was logged. */
@@ -387,6 +394,8 @@ export function accountability(input: AccountabilityInput): Accountability {
       extraSets: new Map(),
       extraLogs: [],
       extraU: 0,
+      copyF: hit?.day.copy && !hit.day.copy.fit.match ? hit.day.copy.fit.credit : 1,
+      copyFrom: hit?.day.copy ? `${weekAt.get(mondayOf(hit.day.copy.from))?.label ?? ""} ${dowName(hit.day.copy.from)}`.trim() : undefined,
     };
     tallies.push(t);
     const daySets = new Map(setsByDay.get(date) ?? []);
@@ -471,10 +480,11 @@ export function accountability(input: AccountabilityInput): Accountability {
       if (made && made > t.date) t.skipNote = "late";
     } else if (t.state === "planned") {
       t.fullU = liftU + runU + t.walkU;
-      const c = liftC + runC + t.walkC;
+      const raw = liftC + runC + t.walkC;
+      const c = raw * t.copyF;
       const logged = t.active || c > 0;
       if (t.date === today) {
-        t.u = c;
+        t.u = raw;
         t.c = c;
         t.counted = c > 0;
       } else if (!logged && t.date === yesterday) {
@@ -626,7 +636,7 @@ export function accountability(input: AccountabilityInput): Accountability {
     }
   }
   const order: Record<FeedKind, number> = {
-    done: 0, partial: 0, missed: 0, grace: 0, skipped: 0, skipped_late: 0, done_other_day: 1, moved: 1, run_short: 2, sets_short: 3, swapped: 4,
+    done: 0, partial: 0, missed: 0, grace: 0, skipped: 0, skipped_late: 0, done_other_day: 1, moved: 1, run_short: 2, sets_short: 3, swapped: 4, copied: 1,
     weight_up: 5, weight_same: 5, weight_down: 5, set_extra: 6, exercise_extra: 6, extra_workout: 6, ended_early: 7, set_deleted: 8, log_deleted: 8,
   };
   feed.sort((x, y) => (x.date !== y.date ? (x.date < y.date ? 1 : -1) : order[x.kind] - order[y.kind]));
@@ -672,7 +682,7 @@ function glyphOf(t: Tally, today: ISODate): Glyph {
   if (t.state === "skipped") return "skipped";
   if (t.state === "rest") return extra ? "extra" : "rest";
   if (t.grace) return "grace";
-  const full = t.fullU > 0 && t.c >= t.fullU - 1e-9;
+  const full = t.fullU > 0 && t.c >= t.fullU * t.copyF - 1e-9;
   if (t.date === today) return full ? "done" : "today";
   if (t.c <= 0) return "missed";
   if (!full) return "partial";
@@ -691,11 +701,13 @@ function feedFor(t: Tally, noExtra: string | null, name: (k: string) => string, 
   } else if (t.state === "planned") {
     const liftU = t.lines.reduce((s, l) => s + l.u, 0);
     const liftC = t.lines.reduce((s, l) => s + l.c, 0);
+    // All of it done: a mismatched copy's lower credit counts as all of it here
+    const want = t.fullU * t.copyF;
     if (t.grace) out.push({ id: id("grace"), kind: "grace", date: t.date, tone: "neutral", title: `${title}: not logged yet`, detail: "Log it today and it counts in full", delta: "not counted yet" });
     else if (t.date === today) {
-      if (t.c > 0) out.push({ id: id("today"), kind: t.c >= t.fullU ? "done" : "partial", date: t.date, tone: "good", title: `${title}: in progress`, delta: liftU ? `${liftC}/${liftU} sets` : "counted" });
+      if (t.c > 0) out.push({ id: id("today"), kind: t.c >= want - 1e-9 ? "done" : "partial", date: t.date, tone: "good", title: `${title}: in progress`, delta: liftU ? `${liftC}/${liftU} sets` : "counted" });
     } else if (t.c <= 0) out.push({ id: id("miss"), kind: "missed", date: t.date, tone: "bad", title: `Missed: ${title}`, delta: "missed" });
-    else if (t.c >= t.fullU - 1e-9) out.push({ id: id("done"), kind: "done", date: t.date, tone: "good", title: liftU ? `${title}: all ${liftU} sets` : title, detail: t.eased ? "Eased by the plan: counts as kept" : undefined, delta: "full credit" });
+    else if (t.c >= want - 1e-9) out.push({ id: id("done"), kind: "done", date: t.date, tone: "good", title: liftU ? `${title}: all ${liftU} sets` : title, detail: t.eased ? "Eased by the plan: counts as kept" : undefined, delta: "full credit" });
     else out.push({ id: id("part"), kind: "partial", date: t.date, tone: "neutral", title: liftU && liftC < liftU ? `${title}: ${liftC} of ${liftU} sets` : `${title}: part done`, delta: liftU && liftC < liftU ? `${liftC}/${liftU} sets` : `${Math.round((100 * t.c) / t.fullU)}%` });
 
     if (t.day?.movedFrom && t.date <= today) out.push({ id: id("moved"), kind: "moved", date: t.date, tone: "neutral", title: `Moved from ${dowName(t.day.movedFrom)}`, delta: "no change" });
@@ -706,6 +718,13 @@ function feedFor(t: Tally, noExtra: string | null, name: (k: string) => string, 
     if (!t.grace && t.c > 0)
       for (const l of t.lines)
         if (l.key && l.c < l.u) out.push({ id: id("short", l.key), kind: "sets_short", date: t.date, tone: "neutral", key: l.key, title: `${l.name}: ${l.c} of ${l.u} sets`, delta: `${l.c}/${l.u} sets` });
+    const copy = t.day?.copy;
+    if (copy && t.date <= today && !t.grace && (copy.fit.match || t.c > 0))
+      out.push(
+        copy.fit.match
+          ? { id: id("copy"), kind: "copied", date: t.date, tone: "neutral", title: `Did ${t.copyFrom}'s workout instead`, detail: "Intensity matches this day's", delta: "same credit" }
+          : { id: id("copy"), kind: "copied", date: t.date, tone: "bad", title: `Did ${t.copyFrom}'s workout instead`, detail: "Intensity doesn't match this day's", delta: `${Math.round(copy.fit.credit * 100)}% credit` },
+      );
     for (const b of t.blocks)
       for (const s of Object.values(b.swaps ?? {})) if (t.date <= today) out.push({ id: id("swap", s.from), kind: "swapped", date: t.date, tone: "neutral", key: s.to, title: `${name(s.from)} swapped for ${s.name}`, delta: "same credit" });
   }

@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { generatePlan, dayTitle, weekForDate, moveDay, catchUp, isHard, type PlanSettings, type Week } from "./generate.ts";
+import { generatePlan, dayTitle, weekForDate, dayForDate, moveDay, catchUp, isHard, canCopy, copyNote, type PlanSettings, type Week } from "./generate.ts";
+import { compareDays, dayIntensity, COPY_TOLERANCE } from "./intensity.ts";
 import { painWarnings } from "./warnings.ts";
 import { parseDuration, duration, pace } from "./format.ts";
 import { weekday } from "./dates.ts";
@@ -1124,5 +1125,188 @@ test("accountability: the same history scores the same from any profile's start"
     });
     assert.ok(scores[0] != null && scores[0] < 100, `${name}: ${scores}`);
     assert.equal(new Set(scores).size, 1, `${name}: ${scores}`);
+  }
+});
+
+/* ---------- swap for another day: intensity and day copies ---------- */
+const own = (d: Week["days"][number]) => d.blocks.map((b) => b.title);
+const fitOf = (a: Week["days"][number], b: Week["days"][number]) => compareDays(dayIntensity(a), dayIntensity(b));
+
+test("intensity: cutback lift days are lighter, build sessions match, long runs grow, every profile", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const weeks = generatePlan(p);
+    for (const cut of weeks.filter((w) => w.cutback)) {
+      const before = weeks[weeks.indexOf(cut) - 1];
+      // Monday's legs + pull + core, deloaded to 2 sets: more than the tolerance below the week before
+      const fit = fitOf(before.days[0], cut.days[0]);
+      assert.equal(fit.reason, "easier", `${name} ${cut.label}: ${fit.ratio}`);
+      assert.ok(fit.ratio < 1 - COPY_TOLERANCE, `${name} ${cut.label}`);
+    }
+    const sessionDays = weeks.filter((w) => w.phase === "build" && !w.cutback).map((w) => w.days[2]).filter((d) => dayIntensity(d).hard);
+    assert.ok(sessionDays.length >= 2, name);
+    for (const a of sessionDays) for (const b of sessionDays) assert.ok(fitOf(a, b).match, `${name}: ${dayTitle(a)} vs ${dayTitle(b)}`);
+    const longs = weeks.flatMap((w) => w.days).filter((d) => d.blocks.length === 1 && d.blocks[0].km).sort((a, b) => a.blocks[0].km! - b.blocks[0].km!);
+    for (let i = 1; i < longs.length; i++) assert.ok(dayIntensity(longs[i]).total >= dayIntensity(longs[i - 1]).total, `${name}: ${dayTitle(longs[i])}`);
+  }
+});
+
+test("intensity: a different kind of day or effort never matches, and credit stays at half or more", () => {
+  const weeks = generatePlan(PROFILES.september);
+  const wk = weeks.find((w) => w.phase === "build" && !w.cutback && w.days[2].blocks.some(isHard))!;
+  const [mon, tue, wed] = wk.days;
+  assert.equal(fitOf(mon, tue).reason, "type", "lift day vs run day");
+  assert.equal(fitOf(mon, tue).credit, 0.5);
+  const easyWed = weeks.find((w) => w.phase === "base" && !w.days[2].blocks.some((b) => b.kind === "test"))!.days[2];
+  assert.equal(fitOf(easyWed, wed).reason, "hard", "easy Wednesday vs a session");
+  const all = weeks.flatMap((w) => w.days);
+  for (const a of all)
+    for (const b of all) {
+      const f = fitOf(a, b);
+      assert.ok(f.credit >= 0.5 && f.credit <= 1, `${a.date} vs ${b.date}`);
+      assert.equal(f.match, f.credit === 1);
+    }
+});
+
+test("day copies: blocks replaced and keyed to the target, follow a move and a skip, every profile", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const plain = generatePlan(p);
+    const builds = plain.filter((w) => w.phase === "build" && !w.cutback);
+    const [a, b] = [builds[0], builds.at(-1)!];
+    // Tuesday does the other week's long run
+    const copy = { planDate: at(a, 1), source: at(b, 4) };
+    const copied = generatePlan(p, { copies: [copy] });
+    const tue = weekForDate(copied, a.start)!.days[1];
+    assert.deepEqual(own(tue), own(b.days[4]), name);
+    assert.ok(tue.blocks.every((x) => x.planDate === at(a, 1)), `${name}: keyed to the target`);
+    assert.equal(tue.copy?.from, at(b, 4));
+    assert.deepEqual(tue.copy?.replaced.map((x) => x.title), own(a.days[1]));
+    assert.equal(tue.copy?.fit.reason, "harder", name);
+    // The source keeps its own workout
+    assert.deepEqual(own(weekForDate(copied, b.start)!.days[4]), own(b.days[4]));
+
+    // Tuesday moved to Thursday (they trade places): the copy goes with it
+    const moved = weekForDate(generatePlan(p, { copies: [copy], moves: moveDay(a, at(a, 1), at(a, 3))! }), a.start)!;
+    const thu = moved.days.find((d) => d.movedFrom === at(a, 1))!;
+    assert.equal(thu.date, at(a, 3), name);
+    assert.deepEqual(own(thu), own(b.days[4]), `${name}: copy follows the move`);
+
+    // Thursday does another week's Wednesday and is skipped: its push work still folds, onto Monday
+    const skipped = weekForDate(generatePlan(p, { copies: [{ planDate: at(a, 3), source: at(b, 2) }], skips: [at(a, 3)] }), a.start)!;
+    const carry = b.days[2].blocks.filter((x) => x.carry).map((x) => x.title);
+    assert.ok(carry.length, name);
+    const folded = skipped.days.flatMap((d) => d.blocks.filter((x) => x.foldedFrom === "Thu"));
+    assert.deepEqual(folded.map((x) => x.title), carry, `${name}: the copied carry block folds`);
+    assert.ok(folded.every((x) => x.planDate === at(a, 3)), name);
+  }
+});
+
+test("day copies: no chains, and tests, the time trial and the race are never copied or replaced", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const plain = generatePlan(p);
+    const builds = plain.filter((w) => w.phase === "build" && !w.cutback);
+    const [a, b, c] = [builds[0], builds[1], builds.at(-1)!];
+    // a Tue ← b Fri and b Fri ← c Fri: a's Tuesday gets b's own long run, not c's
+    const w = generatePlan(p, { copies: [{ planDate: at(a, 1), source: at(b, 4) }, { planDate: at(b, 4), source: at(c, 4) }] });
+    assert.deepEqual(own(dayForDate(w, at(a, 1))!), own(b.days[4]), name);
+    assert.deepEqual(own(dayForDate(w, at(b, 4))!), own(c.days[4]), name);
+
+    const tt = plain.flatMap((x) => x.days).find((d) => d.fixed)!;
+    const testDay = plain.flatMap((x) => x.days).find((d) => !d.fixed && d.blocks.some((x) => x.kind === "test"))!;
+    for (const copy of [{ planDate: tt.date, source: at(a, 1) }, { planDate: at(a, 1), source: tt.date }, { planDate: testDay.date, source: at(a, 1) }, { planDate: at(a, 1), source: testDay.date }]) {
+      const g = generatePlan(p, { copies: [copy] });
+      assert.deepEqual(own(dayForDate(g, copy.planDate)!), own(dayForDate(plain, copy.planDate)!), `${name}: ${JSON.stringify(copy)}`);
+      assert.equal(dayForDate(g, copy.planDate)!.copy, undefined);
+      assert.equal(canCopy(plain, copy.planDate, copy.source, plain[0].start, new Set()), "Tests, the time trial and the race stay as planned.");
+    }
+  }
+});
+
+test("day copies: canCopy refuses past, logged and same days and run-walk clashes", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const plain = generatePlan(p);
+    const builds = plain.filter((w) => w.phase === "build" && !w.cutback);
+    const [a, b] = [builds[0], builds.at(-1)!];
+    const before = addDays(a.start, -1);
+    assert.equal(canCopy(plain, at(a, 1), at(b, 1), before, new Set()), null, name);
+    // The same week is fine too
+    assert.equal(canCopy(plain, at(a, 1), at(a, 0), before, new Set()), null, name);
+    assert.equal(canCopy(plain, at(a, 1), at(a, 1), before, new Set()), "That's this day's own workout.");
+    assert.equal(canCopy(plain, at(a, 1), at(b, 1), at(a, 2), new Set()), "That day has passed.");
+    assert.equal(canCopy(plain, at(a, 1), at(b, 1), before, new Set([at(a, 1)])), "Something is already logged that day.");
+    assert.equal(canCopy(plain, at(a, 1), "2001-01-01", before, new Set()), "That day isn't in the plan.");
+    assert.equal(canCopy(generatePlan(p, { skips: [at(a, 1)] }), at(a, 1), at(b, 1), before, new Set()), "Restore the day first.");
+    // A moved day is found by its plan date and judged on the date it's shown on
+    const moved = generatePlan(p, { moves: moveDay(a, at(a, 1), at(a, 3))! });
+    assert.equal(canCopy(moved, at(a, 1), at(b, 1), at(a, 2), new Set()), null, `${name}: shown on Thursday, still ahead`);
+    assert.equal(canCopy(moved, at(a, 1), at(b, 1), before, new Set([at(a, 3)])), "Something is already logged that day.");
+
+    const ret = plain.find((w) => w.phase === "return");
+    if (!ret) continue;
+    // A run-walk on Monday sits next to Tuesday's
+    const runDay = ret.days.find((d) => d.blocks.some((x) => x.kind === "run"))!;
+    assert.equal(canCopy(plain, at(ret, 0), runDay.date, addDays(ret.start, -1), new Set()), "Run-walk days can't fall back to back.", name);
+    assert.deepEqual(own(dayForDate(generatePlan(p, { copies: [{ planDate: at(ret, 0), source: runDay.date }] }), at(ret, 0))!), own(ret.days[0]), `${name}: ignored by the plan`);
+  }
+});
+
+test("day copies: a hard copy into a week with a session gets a note", () => {
+  const plain = generatePlan(PROFILES.september);
+  const [a, b] = plain.filter((w) => w.phase === "build" && !w.cutback && w.days[2].blocks.some(isHard));
+  assert.match(copyNote(plain, at(a, 1), at(b, 2)) ?? "", /already this week's hard session/);
+  assert.equal(copyNote(plain, at(a, 2), at(b, 2)), null, "replacing the session itself");
+  assert.equal(copyNote(plain, at(a, 1), at(b, 1)), null);
+});
+
+test("day copies: swaps on a copied day only apply to exercises it shows", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const plain = generatePlan(p);
+    const builds = plain.filter((w) => w.phase === "build" && !w.cutback);
+    const [a, b] = [builds[0], builds.at(-1)!];
+    const monKey = firstLift(a.days[0])!.p.exercise.key;
+    // Monday swapped an exercise, then took a run instead: the swap has nothing to apply to
+    const ran = applySwaps(generatePlan(p, { copies: [{ planDate: at(a, 0), source: at(b, 1) }] }), [{ planDate: at(a, 0), from: monKey, to: "goblet-squat-abc123" }], lookup);
+    assert.equal(findSwap(weekForDate(ran, a.start)!, monKey).length, 0, name);
+    // Thursday takes Monday's lifts: a swap keyed to Thursday applies to them
+    const key = firstLift(b.days[0])!.p.exercise.key;
+    const lifted = applySwaps(generatePlan(p, { copies: [{ planDate: at(a, 3), source: at(b, 0) }] }), [{ planDate: at(a, 3), from: key, to: "goblet-squat-abc123" }], lookup);
+    const hit = findSwap(weekForDate(lifted, a.start)!, key);
+    assert.equal(hit.length, 1, name);
+    assert.equal(hit[0].d.date, at(a, 3));
+  }
+});
+
+test("accountability: a matched copy done scores like the plan, a mismatched one counts for less", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const builds = generatePlan(p).filter((w) => w.phase === "build" && !w.cutback);
+    const a = builds.at(-1)!;
+    const target = at(a, 1);
+    // Only the copied day is in the window, so adherence is its own credit
+    const score = (source: string) => {
+      const weeks = generatePlan(p, { copies: [{ planDate: target, source }] });
+      return acct(weeks, addDays(target, 1), logPlan(weeks, target, target), { horizon: target });
+    };
+    // Another week's Tuesday within the tolerance: a match
+    const tue = builds.filter((w) => w !== a).map((w) => w.days[1]).find((d) => fitOf(a.days[1], d).match);
+    assert.ok(tue, name);
+    const matched = score(tue!.date);
+    assert.equal(matched.parts.a, 100, name);
+    const same = matched.feed.find((f) => f.kind === "copied");
+    assert.equal(same?.tone, "neutral");
+    assert.equal(same?.delta, "same credit");
+    // Tuesday's easy run swapped for a lift day: a different type, so half credit
+    const lift = score(at(builds[0], 0));
+    assert.equal(lift.parts.a, 50, name);
+    const bad = lift.feed.find((f) => f.kind === "copied");
+    assert.equal(bad?.tone, "bad");
+    assert.equal(bad?.delta, "50% credit");
+    assert.ok(lift.feed.some((f) => f.kind === "done" && f.date === target), `${name}: all of it was done`);
+    // This week's long run on its easy day: harder by more than the tolerance, credit 1 − the gap
+    const fit = dayForDate(generatePlan(p, { copies: [{ planDate: target, source: at(a, 4) }] }), target)!.copy!.fit;
+    assert.ok(!fit.match && fit.credit < 1, name);
+    assert.equal(score(at(a, 4)).parts.a, Math.round(fit.credit * 1000) / 10, name);
+    // Not done: a plain miss, nothing more
+    const missed = acct(generatePlan(p, { copies: [{ planDate: target, source: at(builds[0], 0) }] }), addDays(target, 2), { sets: [], logs: [] }, { horizon: target });
+    assert.ok(missed.feed.some((f) => f.kind === "missed" && f.date === target), name);
+    assert.ok(!missed.feed.some((f) => f.kind === "copied"), name);
   }
 });
