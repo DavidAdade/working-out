@@ -3,7 +3,7 @@
 
 import { addDays, type ISODate } from "./dates.ts";
 import type { Block } from "./templates.ts";
-import { generatePlan, isHard, type Day, type Move, type PlanSettings, type Week } from "./generate.ts";
+import { generatePlan, isHard, type Day, type DayCopy, type Move, type PlanSettings, type Week } from "./generate.ts";
 import { painWarnings, type LogLike, type Warning } from "./warnings.ts";
 import { fitness5k, type Fitness, type TestLike } from "./paces.ts";
 import { applySwaps, type ExerciseLookup, type Swap } from "./swaps.ts";
@@ -62,10 +62,12 @@ export function planFor(o: {
   today: ISODate;
   swaps?: Iterable<Swap>;
   exercise?: ExerciseLookup;
+  /** Days doing another day's workout instead (applied before moves and skips) */
+  copies?: Iterable<DayCopy>;
 }): { weeks: Week[]; fitness: Fitness; warnings: Warning[] } {
   const fitness = fitness5k(o.settings.current5kSec, o.logs, o.today);
   const warnings = painWarnings(o.logs, o.today);
-  const adapted = adaptPlan(generatePlan(o.settings, { skips: o.skips, moves: o.moves, fitness5kSec: fitness.sec }), { today: o.today, gatesPending: o.gatesPending, warnings });
+  const adapted = adaptPlan(generatePlan(o.settings, { skips: o.skips, moves: o.moves, copies: o.copies, fitness5kSec: fitness.sec }), { today: o.today, gatesPending: o.gatesPending, warnings });
   const weeks = o.swaps && o.exercise ? applySwaps(adapted, o.swaps, o.exercise) : adapted;
   return { weeks, fitness, warnings };
 }

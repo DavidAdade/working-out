@@ -16,6 +16,7 @@ import { useDates } from "./DateLabels";
 import WeekCard, { loggedDates } from "./WeekCard";
 import { MoveSheet, moveNote, moveTargets, type OnMoves } from "./DayCard";
 import { ScoreLink, type ScoreInputs } from "./AccountabilityPanel";
+import { CopiedLine, CopySheet, copyable, useCopy } from "./CopySheet";
 
 interface Props {
   profile: ProfileRow;
@@ -48,6 +49,8 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
   const canStartNext = !!next && daysBetween(today, next.date) < 7;
   const logged = useMemo(() => loggedDates(logs, sets), [logs, sets]);
   const [moving, setMoving] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const canCopy = !!useCopy() && !!day && copyable(day) && !logged.has(today);
   const canMove = !!week && !!day && !day.fixed && !logged.has(today) && moveTargets(week, today, today, logged).some((t) => t.moves);
   // The most recent workout this week that wasn't done or skipped
   const missed = week?.days.filter((d) => d.date < today && !d.skipped && !d.fixed && d.blocks.length && !logged.has(d.date)).at(-1);
@@ -97,7 +100,9 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
             </div>
             <Chip kind={dayKind(day)} />
           </div>
-          <DayBlocks day={day} onSkip={onSkip} onMove={canMove ? () => setMoving(true) : undefined} today={today} logOpen />
+          <CopiedLine day={day} logged={logged} />
+          <DayBlocks day={day} onSkip={onSkip} onMove={canMove ? () => setMoving(true) : undefined} onCopy={canCopy ? () => setCopying(true) : undefined} today={today} logOpen />
+          {copying && <CopySheet day={day} today={today} logged={logged} onClose={() => setCopying(false)} />}
           {moving && week && (
             <MoveSheet
               week={week}

@@ -4,7 +4,7 @@ import { checkUser } from "@/lib/supabase/user";
 import { profileToSettings, type ActivityEventRow, type LogRow, type ProfileRow, type SetRow, type SkipRow } from "@/lib/types";
 import { builtinRows, type ExerciseInfo } from "@/lib/plan/catalog.ts";
 import { addDays, mondayOf, safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
-import type { Move } from "@/lib/plan/generate.ts";
+import type { DayCopy, Move } from "@/lib/plan/generate.ts";
 import type { Swap } from "@/lib/plan/swaps.ts";
 import type { WorkoutSession } from "@/lib/plan/workout.ts";
 import type { SavedReview } from "@/components/CoachCard";
@@ -29,6 +29,7 @@ export default async function Home() {
     .limit(400)
     .returns<WorkoutSession[]>()
     .then((r) => r);
+  const copiesRead = supabase.from("day_copies").select("planDate:plan_date, source:source_date").returns<DayCopy[]>().then((r) => r);
   const reads = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle<ProfileRow>(),
     supabase.from("logs").select("*").order("date", { ascending: false }).order("created_at", { ascending: false }).limit(1000).returns<LogRow[]>(),
@@ -49,6 +50,9 @@ export default async function Home() {
   // Before migration 0010 is applied the table is missing: no sessions yet, rather than an error screen
   const workouts = await workoutsRead;
   if (workouts.error && !["42P01", "PGRST205"].includes(workouts.error.code)) throw new Error("Couldn't load your data");
+  // The same before migration 0012: no copied days
+  const copies = await copiesRead;
+  if (copies.error && !["42P01", "PGRST205"].includes(copies.error.code)) throw new Error("Couldn't load your data");
   // Built-ins from code fill any gap, e.g. before the first sync has run
   const byKey = new Map(builtinRows().map((e) => [e.key, e]));
   for (const e of exercises ?? []) byKey.set(e.key, e);
@@ -74,6 +78,7 @@ export default async function Home() {
       skips={(skips ?? []).map((s) => s.date)}
       moves={moves ?? []}
       swaps={swaps ?? []}
+      copies={copies.data ?? []}
       workouts={workouts.data ?? []}
       exercises={[...byKey.values()].sort((a, b) => a.name.localeCompare(b.name))}
       sets={(sets ?? []).map((s) => ({ ...s, weight: s.weight == null ? null : Number(s.weight), weight_kg: s.weight_kg == null ? null : Number(s.weight_kg) }))}

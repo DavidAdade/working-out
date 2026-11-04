@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { anonClient } from "@/lib/supabase/anon";
-import { generatePlan, type Move } from "@/lib/plan/generate.ts";
+import { generatePlan, type DayCopy, type Move } from "@/lib/plan/generate.ts";
 import { fitness5k } from "@/lib/plan/paces.ts";
 import { safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
 import { planToIcs } from "@/lib/plan/ics.ts";
@@ -15,7 +15,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
   const token = (await params).token.replace(/\.ics$/, "");
   if (!/^[\w-]{20,64}$/.test(token)) return new Response("Not found", { status: 404 });
   const { data } = await anonClient().rpc("calendar_feed", { p_token: token });
-  const feed = data as { profile: ProfileRow; skips: string[]; moves?: Move[]; swaps?: { date: string; from: string; to: string; name: string; load: Load }[]; tests: { date: string; kind: string; km: number | null; duration_sec: number | null }[] } | null;
+  const feed = data as { profile: ProfileRow; skips: string[]; moves?: Move[]; copies?: DayCopy[]; swaps?: { date: string; from: string; to: string; name: string; load: Load }[]; tests: { date: string; kind: string; km: number | null; duration_sec: number | null }[] } | null;
   const settings = feed ? profileToSettings(feed.profile) : null;
   if (!feed || !settings) return new Response("Not found", { status: 404 });
   const today = todayIn(safeTimeZone(feed.profile.timezone));
@@ -23,7 +23,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
   const swaps = feed.swaps ?? [];
   const named = new Map(swaps.map((s) => [s.to, { name: s.name, load: s.load }]));
   const weeks = applySwaps(
-    generatePlan(settings, { skips: feed.skips, moves: feed.moves ?? [], fitness5kSec: fitness.sec }),
+    generatePlan(settings, { skips: feed.skips, moves: feed.moves ?? [], copies: feed.copies ?? [], fitness5kSec: fitness.sec }),
     swaps.map((s) => ({ planDate: s.date, from: s.from, to: s.to })),
     (key) => named.get(key),
   );

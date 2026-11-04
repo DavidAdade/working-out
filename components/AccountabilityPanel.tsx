@@ -57,6 +57,7 @@ const KIND_GLYPH: Record<FeedKind, string> = {
   log_deleted: "–",
   ended_early: "■",
   swapped: "⇄",
+  copied: "⇄",
   weight_up: "▲",
   weight_same: "=",
   weight_down: "▼",
@@ -257,6 +258,7 @@ function HowScored() {
       <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm text-muted">
         <li>Doing the plan as shown is 100%. Every planned set, run and walk counts, and recent days count more than older ones.</li>
         <li>Rest days, cutback weeks, moved days, swapped exercises and pain or gate changes all count as sticking to the plan.</li>
+        <li>Doing another day&apos;s workout instead counts in full when its intensity matches. When it doesn&apos;t, that day counts 50 to 80%.</li>
         <li>A skipped day counts half: better than a silent miss. Yesterday doesn&apos;t count against you until today is over.</li>
         <li>Extra work adds up to 8 points, but only in weeks you&apos;re already keeping and never when the plan says ease off.</li>
         <li>New bests add a little; a lift 5% lighter than last time takes a little off. The same weight again is full marks.</li>

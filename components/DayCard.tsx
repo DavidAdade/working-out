@@ -6,6 +6,7 @@ import { dayTitle, moveDay, type Day, type Move, type Week } from "@/lib/plan/ge
 import type { BlockKind } from "@/lib/plan/templates.ts";
 import { Chip, DayBlocks } from "./DayView";
 import { useDates } from "./DateLabels";
+import { CopiedLine, CopySheet, copyable, useCopy } from "./CopySheet";
 
 /** Saves a week's moves; `note` is shown once it's saved, with an Undo */
 export type OnMoves = (week: ISODate, moves: Move[], note?: string) => void;
@@ -56,6 +57,8 @@ export default function DayCard({
   // Closed days render nothing inside, so a week stays light
   const [isOpen, setOpen] = useState(isToday && !todayAbove);
   const [moving, setMoving] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const canCopy = !!useCopy() && copyable(day) && !done && day.date >= today;
   const kinds = [...new Set(day.blocks.map((b) => b.kind))] as BlockKind[];
   const canMove = !day.skipped && !day.fixed && !done && moveTargets(week, day.date, today, logged).some((t) => t.moves);
   const undo = day.movedFrom && !done && !logged.has(day.movedFrom) ? moveDay(week, day.date, day.movedFrom) : null;
@@ -90,6 +93,8 @@ export default function DayCard({
             <span className="text-xs font-semibold text-accent-ink">Today</span>
           ) : day.movedFrom ? (
             <span className="text-xs font-semibold text-muted">Moved</span>
+          ) : day.copy ? (
+            <span className="text-xs font-semibold text-muted">Swapped</span>
           ) : null}
           <span aria-hidden className="text-muted transition-transform group-open/day:rotate-180">
             ▾
@@ -108,13 +113,15 @@ export default function DayCard({
               )}
             </div>
           )}
+          <CopiedLine day={day} logged={logged} />
           {todayAbove && isToday ? (
             <p className="text-sm text-muted">Today&apos;s workout is above.</p>
           ) : (
-            <DayBlocks day={day} onSkip={onSkip} today={today} onMove={canMove ? () => setMoving(true) : undefined} />
+            <DayBlocks day={day} onSkip={onSkip} today={today} onMove={canMove ? () => setMoving(true) : undefined} onCopy={canCopy ? () => setCopying(true) : undefined} />
           )}
         </div>
       )}
+      {copying && <CopySheet day={day} today={today} logged={logged} onClose={() => setCopying(false)} />}
       {moving && (
         <MoveSheet
           week={week}

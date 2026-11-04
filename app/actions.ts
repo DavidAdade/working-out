@@ -12,7 +12,7 @@ import { planFor } from "@/lib/plan/adapt.ts";
 import { builtinRows } from "@/lib/plan/catalog.ts";
 import { isEquipment } from "@/lib/plan/equipment.ts";
 import { aiEnabled, generateReview, type Review } from "@/lib/coach/review";
-import { MIN_RACE_GAP_WEEKS, type Move } from "@/lib/plan/generate.ts";
+import { canCopy, generatePlan, MIN_RACE_GAP_WEEKS, type DayCopy, type Move } from "@/lib/plan/generate.ts";
 import { GATES, REST_CHOICES, profileToSettings, type LogKind, type LogRow, type ProfileRow, type SetRow, type Unit } from "@/lib/types";
 import { exerciseByKey, type Load } from "@/lib/plan/exercises.ts";
 import type { Swap } from "@/lib/plan/swaps.ts";
@@ -185,6 +185,45 @@ export async function setSwap(planDate: string, from: string, to: string | null)
       .upsert({ user_id: user.id, plan_date: planDate, from_key: from, to_key: to, created_at: new Date().toISOString() }, { onConflict: "user_id,plan_date,from_key" });
     if (error) return { ok: false, error: "Couldn't swap that exercise. Try again." };
   }
+  revalidatePath("/");
+  return { ok: true };
+}
+
+/* ---------- do another day's workout instead ---------- */
+/** Before migration 0012 is applied the table is missing: no copies, rather than an error */
+const MISSING_TABLE = ["42P01", "PGRST205"];
+
+/**
+ * The plan day `planDate` does the workout the plan put on `source` instead (both the plan's own dates, before moves);
+ * `source` null puts the day's own workout back. That day's exercise swaps go too: they were made on the old workout.
+ */
+export async function setDayCopy(planDate: string, source: string | null): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  if (!ISO.test(planDate) || (source != null && (!ISO.test(source) || source === planDate))) return { ok: false, error: "Couldn't swap that day." };
+  if (source != null) {
+    // A moved day stays in its week, and sets done early log up to 6 days before: two weeks of history covers it
+    const from = addDays(mondayOf(planDate), -7);
+    const to = addDays(mondayOf(planDate), 7);
+    const [{ data: profile }, moves, copies, sets, logs, session] = await Promise.all([
+      supabase.from("profiles").select("*").eq("id", user.id).single<ProfileRow>(),
+      supabase.from("day_moves").select("from:from_date, to:to_date").returns<Move[]>(),
+      supabase.from("day_copies").select("planDate:plan_date, source:source_date").returns<DayCopy[]>(),
+      supabase.from("set_logs").select("date, plan_date").gte("date", from).lt("date", to).returns<{ date: string; plan_date: string | null }[]>(),
+      supabase.from("logs").select("date, kind, auto").gte("date", from).lt("date", to).returns<{ date: string; kind: string; auto: boolean }[]>(),
+      supabase.from("workout_sessions").select("plan_date").eq("plan_date", planDate).maybeSingle(),
+    ]);
+    const settings = profile ? profileToSettings(profile) : null;
+    if (!profile || !settings) return { ok: false, error: "Set up your plan first." };
+    if (moves.error || sets.error || logs.error || (copies.error && !MISSING_TABLE.includes(copies.error.code))) return { ok: false, error: "Couldn't swap that day. Try again." };
+    if (session.data) return { ok: false, error: "That workout has started, so it stays as it is." };
+    // The sheet's rules, on the plan as shown: moves place the day, other copies are what a source day holds
+    const weeks = generatePlan(settings, { moves: moves.data ?? [], copies: (copies.data ?? []).filter((c) => c.planDate !== planDate) });
+    const logged = new Set([...(sets.data ?? []).map((s) => s.plan_date ?? s.date), ...(logs.data ?? []).filter((l) => l.kind !== "check" && !l.auto).map((l) => l.date)]);
+    const why = canCopy(weeks, planDate, source, todayIn(safeTimeZone(profile.timezone)), logged);
+    if (why) return { ok: false, error: why };
+  }
+  const { error } = await supabase.rpc("set_day_copy", { p_plan_date: planDate, p_source: source });
+  if (error) return { ok: false, error: source ? "Couldn't swap that day. Try again." : "Couldn't put that day back. Try again." };
   revalidatePath("/");
   return { ok: true };
 }
@@ -513,20 +552,22 @@ export async function weeklyReview(refresh = false): Promise<ReviewResult> {
   if (!aiEnabled()) return { ok: false, error: "The AI check-in is turned off." };
 
   const from = addDays(today, -60);
-  const [{ data: logs }, { data: sets }, { data: skips }, { data: moves }, { data: exercises }, { data: swaps }] = await Promise.all([
+  const [{ data: logs }, { data: sets }, { data: skips }, { data: moves }, { data: exercises }, { data: swaps }, { data: copies }] = await Promise.all([
     supabase.from("logs").select("*").gte("date", from).order("date", { ascending: false }).returns<LogRow[]>(),
     supabase.from("set_logs").select("id, date, exercise_key, set_no, weight, unit, weight_kg, reps, duration_sec, light_week, plan_date").gte("date", from).returns<SetRow[]>(),
     supabase.from("day_overrides").select("date").eq("status", "skipped").returns<{ date: string }[]>(),
     supabase.from("day_moves").select("from:from_date, to:to_date").returns<Move[]>(),
     supabase.from("exercises").select("key, name, load").returns<{ key: string; name: string; load: Load }[]>(),
     supabase.from("exercise_swaps").select("planDate:plan_date, from:from_key, to:to_key").gte("plan_date", addDays(today, -21)).returns<Swap[]>(),
+    // Missing before migration 0012: no copies
+    supabase.from("day_copies").select("planDate:plan_date, source:source_date").returns<DayCopy[]>(),
   ]);
   const cleanLogs = (logs ?? []).map((l) => ({ ...l, km: l.km == null ? null : Number(l.km) }));
   const cleanSets = (sets ?? []).map((s) => ({ ...s, weight_kg: s.weight_kg == null ? null : Number(s.weight_kg) }));
   const gatesPending = settings.returningFromInjury && GATES.some((g) => !profile.gates?.[g.key]);
   const known = new Map<string, { name: string; load: Load }>([...builtinRows().map((e) => [e.key, e] as const), ...(exercises ?? []).map((e) => [e.key, e] as const)]);
   // Swaps included, so a swapped-out exercise doesn't read as a gap and the coming week shows what's really planned
-  const { weeks, fitness, warnings } = planFor({ settings, logs: cleanLogs, skips: (skips ?? []).map((s) => s.date), moves: moves ?? [], gatesPending, today, swaps: swaps ?? [], exercise: (k) => known.get(k) });
+  const { weeks, fitness, warnings } = planFor({ settings, logs: cleanLogs, skips: (skips ?? []).map((s) => s.date), moves: moves ?? [], gatesPending, today, swaps: swaps ?? [], exercise: (k) => known.get(k), copies: copies ?? [] });
   const names = new Map([...known].map(([k, e]) => [k, e.name] as const));
 
   let review: Review;

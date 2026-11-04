@@ -36,6 +36,7 @@ function describe(op: Op): string {
   if (op.t === "swap") return `${op.to ? `Swap ${label(op.from)} for ${label(op.to)}` : `Put back ${label(op.from)}`} · ${fmtDay(op.planDate)}`;
   if (op.t === "workout-start") return `Start workout · ${fmtDay(op.planDate)}`;
   if (op.t === "workout-end") return `End workout · ${fmtDay(op.planDate)}`;
+  if (op.t === "copy") return `${op.source ? `Do ${fmtDay(op.source)}'s workout` : "Put back the planned workout"} · ${fmtDay(op.planDate)}`;
   const i = op.input;
   return `${i.title.trim() || `${i.kind.charAt(0).toUpperCase()}${i.kind.slice(1)} session`}${i.km.trim() ? ` ${i.km} km` : ""} · ${fmtDay(i.date)}`;
 }

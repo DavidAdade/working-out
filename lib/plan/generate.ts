@@ -2,6 +2,7 @@ import { addDays, daysBetween, mondayOf, dowName, weekday, type ISODate } from "
 import { duration, pace, predict, HALF_KM } from "./format.ts";
 import { goalPace, trainingPaces } from "./paces.ts";
 import { ABS, LEGS, UPPER, light, type Block } from "./templates.ts";
+import { compareDays, dayIntensity, type CopyFit } from "./intensity.ts";
 
 export type Phase = "recovery" | "return" | "base" | "build" | "sharpen" | "tt" | "half" | "taper" | "race";
 
@@ -43,6 +44,8 @@ export interface Day {
   fixed: boolean;
   /** The date the plan put this workout on, when the person moved it within the week */
   movedFrom?: ISODate;
+  /** This day does another day's workout instead (see DayCopy); `replaced` is its own, for comparing and Undo */
+  copy?: { from: ISODate; fit: CopyFit; replaced: Block[] };
   alerts: string[];
 }
 
@@ -63,12 +66,23 @@ export interface GenerateOptions {
   fitness5kSec?: number;
   /** Workouts the person moved to another day of the same week */
   moves?: Iterable<Move>;
+  /** Days that do another day's workout instead */
+  copies?: Iterable<DayCopy>;
 }
 
 /** The workout the plan put on `from` is done on `to`, in the same Mon–Sun week. */
 export interface Move {
   from: ISODate;
   to: ISODate;
+}
+
+/**
+ * The workout the plan put on `source` is done on `planDate` instead of that day's own, anywhere in the program.
+ * Both are the plan's own dates (before moves), so a copy follows its day when it moves, like exercise swaps.
+ */
+export interface DayCopy {
+  planDate: ISODate;
+  source: ISODate;
 }
 
 /** Weeks between the time trial week and the race week, so the race gets its own taper */
@@ -285,6 +299,8 @@ export function generatePlan(s: PlanSettings, opts: GenerateOptions = {}): Week[
     weeks.push({ label: `W${i}`, index: i, start: ws, phase, cutback: cut, days, notes });
   }
 
+  // Copies first, on the template, so moves, skips and folds treat a copied day like any other
+  applyCopies(weeks, opts.copies ?? []);
   const moves = new Map([...(opts.moves ?? [])].map((m) => [m.from, m.to]));
   for (const w of weeks) {
     // Moves first, so skips and folding see the days where the person does them
@@ -323,11 +339,15 @@ export function arrange(w: Week, moves: Map<ISODate, ISODate>): ISODate[] | null
     if (d.fixed || dates[i] < w.start || dates[i] >= end) return null;
   }
   if (new Set(dates).size !== dates.length) return null;
-  if (w.phase === "return") {
-    const runs = w.days.flatMap((d, i) => (d.blocks.some((b) => b.kind === "run") ? [dates[i]] : [])).sort();
-    if (runs.some((r, i) => i > 0 && daysBetween(runs[i - 1], r) === 1)) return null;
-  }
+  if (runsBackToBack(w, dates)) return null;
   return dates;
+}
+
+/** Return weeks only: run-walk days on `dates` (in `w.days` order) would fall back to back */
+function runsBackToBack(w: Week, dates: ISODate[], blocks = w.days.map((d) => d.blocks)): boolean {
+  if (w.phase !== "return") return false;
+  const runs = w.days.flatMap((_, i) => (blocks[i].some((b) => b.kind === "run") ? [dates[i]] : [])).sort();
+  return runs.some((r, i) => i > 0 && daysBetween(runs[i - 1], r) === 1);
 }
 
 /**
@@ -381,6 +401,63 @@ function applyMoves(w: Week, moves: Map<ISODate, ISODate>) {
     const next = w.days.find((x) => x !== d && tough(x) && Math.abs(daysBetween(d.date, x.date)) === 1);
     if (next) d.alerts.push(`${dayTitle(next)} is the day ${next.date > d.date ? "after" : "before"}. Two hard days in a row: keep one easy if your legs feel heavy.`);
   }
+}
+
+/* ---------- copying another day's workout ---------- */
+
+/** Tests, the time trial and the race set paces and goals: they're never copied, or copied over */
+const copyLocked = (d: Day) => d.fixed || ownBlocks(d).some((b) => b.kind === "test");
+
+/** A day's own workout as the plan wrote it: before a copy replaced it, without folded blocks or swaps */
+export function ownBlocks(d: Day): Block[] {
+  return (d.copy?.replaced ?? d.blocks.filter((b) => !b.foldedFrom)).map(({ swaps: _s, ...b }) => b);
+}
+
+/** The plan's own date for a shown day (before moves): what copies and swaps are keyed by */
+export const planDateOf = (d: Day): ISODate => d.movedFrom ?? d.date;
+
+function applyCopies(weeks: Week[], copies: Iterable<DayCopy>) {
+  const at = new Map(weeks.flatMap((w) => w.days.map((d) => [d.date, { w, d, own: d.blocks }] as const)));
+  for (const c of copies) {
+    const to = at.get(c.planDate);
+    const from = at.get(c.source);
+    // Copies that no longer fit (a settings change, a test day) are ignored, like moves. Always the template: no chains
+    if (!to || !from || to === from || copyLocked(to.d) || copyLocked(from.d)) continue;
+    const i = to.w.days.indexOf(to.d);
+    const blocks = from.own.map((b) => ({ ...b, planDate: to.d.date }));
+    if (runsBackToBack(to.w, to.w.days.map((d) => d.date), to.w.days.map((d, j) => (j === i ? blocks : d.blocks)))) continue;
+    to.d.copy = { from: from.d.date, fit: compareDays(dayIntensity({ blocks: to.own }), dayIntensity({ blocks: from.own })), replaced: to.own };
+    to.d.blocks = blocks;
+  }
+}
+
+/**
+ * Why the day the plan put on `planDate` can't do `source`'s workout instead, or null when it can (both plan dates).
+ * `weeks` is the plan as shown (moves and copies applied); `logged` holds shown dates with anything logged
+ * (sets by their plan day). The server also refuses a day whose workout has started.
+ */
+export function canCopy(weeks: Week[], planDate: ISODate, source: ISODate, today: ISODate, logged: Set<ISODate>): string | null {
+  const all = weeks.flatMap((w) => w.days.map((d) => ({ w, d })));
+  const to = all.find((x) => planDateOf(x.d) === planDate);
+  const from = all.find((x) => planDateOf(x.d) === source);
+  if (!to || !from) return "That day isn't in the plan.";
+  if (to === from) return "That's this day's own workout.";
+  if (copyLocked(to.d) || copyLocked(from.d)) return "Tests, the time trial and the race stay as planned.";
+  if (to.d.date < today) return "That day has passed.";
+  if (to.d.skipped) return "Restore the day first.";
+  if (logged.has(to.d.date)) return "Something is already logged that day.";
+  const blocks = to.w.days.map((d) => (d === to.d ? ownBlocks(from.d) : d.blocks));
+  if (runsBackToBack(to.w, to.w.days.map((d) => d.date), blocks)) return "Run-walk days can't fall back to back.";
+  return null;
+}
+
+/** Advice, never a block: a hard workout copied into a week that already has one */
+export function copyNote(weeks: Week[], planDate: ISODate, source: ISODate): string | null {
+  const w = weeks.find((x) => x.days.some((d) => planDateOf(d) === planDate));
+  const from = weeks.flatMap((x) => x.days).find((d) => planDateOf(d) === source);
+  if (!w || !from || !ownBlocks(from).some(isHard)) return null;
+  const other = w.days.find((d) => planDateOf(d) !== planDate && !d.skipped && d.blocks.some(isHard));
+  return other ? `${dayTitle(other)} is already this week's hard session. Two in one week: keep one easy if your legs feel heavy.` : null;
 }
 
 /** Order in which skipped upper-body work looks for a new home. */
