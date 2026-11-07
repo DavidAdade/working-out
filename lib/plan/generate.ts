@@ -46,6 +46,8 @@ export interface Day {
   movedFrom?: ISODate;
   /** This day does another day's workout instead (see DayCopy); `replaced` is its own, for comparing and Undo */
   copy?: { from: ISODate; fit: CopyFit; replaced: Block[] };
+  /** A workout added on a rest day (a DayCopy whose planDate the plan leaves free): extra work, never a planned day */
+  added?: boolean;
   alerts: string[];
 }
 
@@ -79,6 +81,7 @@ export interface Move {
 /**
  * The workout the plan put on `source` is done on `planDate` instead of that day's own, anywhere in the program.
  * Both are the plan's own dates (before moves), so a copy follows its day when it moves, like exercise swaps.
+ * When the plan has no workout on `planDate` (a rest day) the copy adds one there instead (Day.added).
  */
 export interface DayCopy {
   planDate: ISODate;
@@ -422,13 +425,43 @@ function applyCopies(weeks: Week[], copies: Iterable<DayCopy>) {
     const to = at.get(c.planDate);
     const from = at.get(c.source);
     // Copies that no longer fit (a settings change, a test day) are ignored, like moves. Always the template: no chains
-    if (!to || !from || to === from || copyLocked(to.d) || copyLocked(from.d)) continue;
+    if (!from || copyLocked(from.d)) continue;
+    if (!to) {
+      addDay(weeks, c.planDate, from.d.date, from.own);
+      continue;
+    }
+    if (to === from || copyLocked(to.d)) continue;
     const i = to.w.days.indexOf(to.d);
     const blocks = from.own.map((b) => ({ ...b, planDate: to.d.date }));
     if (runsBackToBack(to.w, to.w.days.map((d) => d.date), to.w.days.map((d, j) => (j === i ? blocks : d.blocks)))) continue;
     to.d.copy = { from: from.d.date, fit: compareDays(dayIntensity({ blocks: to.own }), dayIntensity({ blocks: from.own })), replaced: to.own };
     to.d.blocks = blocks;
   }
+}
+
+/** The program week a date falls in (Mon–Sun), moved days or not */
+const weekOf = (weeks: Week[], date: ISODate) => weeks.find((w) => date >= w.start && date < addDays(w.start, 7));
+
+/** An added day: nothing of its own to compare with, so it's always a "match" and its own blocks are empty */
+const ADDED_FIT: CopyFit = { ratio: 1, match: true, reason: "ok", credit: 1 };
+
+function addDay(weeks: Week[], date: ISODate, source: ISODate, own: Block[]) {
+  const w = weekOf(weeks, date);
+  if (!w || w.days.some((d) => d.date === date) || !own.length) return;
+  const day: Day = {
+    date,
+    blocks: own.map((b) => ({ ...b, planDate: date })),
+    skipped: false,
+    // Undo removes it; skipped work never folds onto it
+    skippable: false,
+    fixed: false,
+    added: true,
+    copy: { from: source, fit: ADDED_FIT, replaced: [] },
+    alerts: [],
+  };
+  const days = [...w.days, day].sort((a, b) => (a.date < b.date ? -1 : 1));
+  if (runsBackToBack(w, days.map((d) => d.date), days.map((d) => d.blocks))) return;
+  w.days = days;
 }
 
 /**
@@ -439,9 +472,11 @@ function applyCopies(weeks: Week[], copies: Iterable<DayCopy>) {
 export function canCopy(weeks: Week[], planDate: ISODate, source: ISODate, today: ISODate, logged: Set<ISODate>): string | null {
   const all = weeks.flatMap((w) => w.days.map((d) => ({ w, d })));
   const to = all.find((x) => planDateOf(x.d) === planDate);
+  if (!to) return canAdd(weeks, planDate, source, today, logged);
   const from = all.find((x) => planDateOf(x.d) === source);
-  if (!to || !from) return "That day isn't in the plan.";
+  if (!from) return "That day isn't in the plan.";
   if (to === from) return "That's this day's own workout.";
+  if (!ownBlocks(from.d).length) return "That day has no workout of its own.";
   if (copyLocked(to.d) || copyLocked(from.d)) return "Tests, the time trial and the race stay as planned.";
   if (to.d.date < today) return "That day has passed.";
   if (to.d.skipped) return "Restore the day first.";
@@ -451,11 +486,43 @@ export function canCopy(weeks: Week[], planDate: ISODate, source: ISODate, today
   return null;
 }
 
-/** Advice, never a block: a hard workout copied into a week that already has one */
+/**
+ * Why `source`'s workout can't be added on the rest day `date` (a shown date with no workout), or null when it can.
+ * Same rules as copying, plus: inside the program, and not a day whose own workout was moved away (that date
+ * still keys the moved workout, so move it back instead).
+ */
+export function canAdd(weeks: Week[], date: ISODate, source: ISODate, today: ISODate, logged: Set<ISODate>): string | null {
+  const w = weekOf(weeks, date);
+  const all = weeks.flatMap((x) => x.days);
+  const from = all.find((d) => planDateOf(d) === source);
+  if (!w) return "That day isn't in the plan.";
+  if (!from) return "That day isn't in the plan.";
+  if (all.some((d) => d.date === date)) return "That day already has a workout.";
+  if (all.some((d) => planDateOf(d) === date)) return "This day's own workout was moved. Move it back to train here.";
+  if (!ownBlocks(from).length) return "That day has no workout of its own.";
+  if (copyLocked(from)) return "Tests, the time trial and the race stay as planned.";
+  if (date < today) return "That day has passed.";
+  if (logged.has(date)) return "Something is already logged that day.";
+  const days = [...w.days.map((d) => ({ date: d.date, blocks: d.blocks })), { date, blocks: ownBlocks(from) }].sort((a, b) => (a.date < b.date ? -1 : 1));
+  if (runsBackToBack(w, days.map((d) => d.date), days.map((d) => d.blocks))) return "Run-walk days can't fall back to back.";
+  return null;
+}
+
+/** Advice, never a block: a hard workout copied into a week that already has one, or added next to a hard day */
 export function copyNote(weeks: Week[], planDate: ISODate, source: ISODate): string | null {
-  const w = weeks.find((x) => x.days.some((d) => planDateOf(d) === planDate));
+  const shown = weeks.flatMap((x) => x.days).find((d) => planDateOf(d) === planDate);
+  const w = shown ? weeks.find((x) => x.days.includes(shown)) : weekOf(weeks, planDate);
   const from = weeks.flatMap((x) => x.days).find((d) => planDateOf(d) === source);
-  if (!w || !from || !ownBlocks(from).some(isHard)) return null;
+  if (!w || !from) return null;
+  const own = ownBlocks(from);
+  if (!shown || shown.added) {
+    // Added on a rest day: the rest was there for a reason
+    const date = shown?.date ?? planDate;
+    const next = w.days.find((d) => d !== shown && !d.skipped && d.blocks.some((b) => isHard(b) || !!b.km) && Math.abs(daysBetween(date, d.date)) === 1);
+    if (next && own.some((b) => isHard(b) || !!b.km)) return `${dayTitle(next)} is the day ${next.date > date ? "after" : "before"}. Two hard days in a row: keep one easy if your legs feel heavy.`;
+    return next ? `${dayTitle(next)} is the day ${next.date > date ? "after" : "before"}: keep this one easy if you're sore.` : null;
+  }
+  if (!own.some(isHard)) return null;
   const other = w.days.find((d) => planDateOf(d) !== planDate && !d.skipped && d.blocks.some(isHard));
   return other ? `${dayTitle(other)} is already this week's hard session. Two in one week: keep one easy if your legs feel heavy.` : null;
 }

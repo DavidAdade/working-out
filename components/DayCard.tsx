@@ -6,7 +6,7 @@ import { dayTitle, moveDay, type Day, type Move, type Week } from "@/lib/plan/ge
 import type { BlockKind } from "@/lib/plan/templates.ts";
 import { Chip, DayBlocks } from "./DayView";
 import { useDates } from "./DateLabels";
-import { CopiedLine, CopySheet, copyable, useCopy } from "./CopySheet";
+import { CopiedLine, CopySheet, copyable, restDay, useCopy } from "./CopySheet";
 
 /** Saves a week's moves; `note` is shown once it's saved, with an Undo */
 export type OnMoves = (week: ISODate, moves: Move[], note?: string) => void;
@@ -94,7 +94,7 @@ export default function DayCard({
           ) : day.movedFrom ? (
             <span className="text-xs font-semibold text-muted">Moved</span>
           ) : day.copy ? (
-            <span className="text-xs font-semibold text-muted">Swapped</span>
+            <span className="text-xs font-semibold text-muted">{day.added ? "Added" : "Swapped"}</span>
           ) : null}
           <span aria-hidden className="text-muted transition-transform group-open/day:rotate-180">
             ▾
@@ -198,6 +198,25 @@ export function MoveSheet({ week, day, today, logged, onClose, onPick }: { week:
         </ul>
         <p className="text-xs text-muted">Workouts stay in their week. Past days, logged days and the time trial or race can&apos;t take a move.</p>
       </div>
+    </div>
+  );
+}
+
+/** A rest day from today on, with "Add a workout": repeats any workout from the plan here (an added day) */
+export function RestRow({ date, today, logged }: { date: ISODate; today: ISODate; logged: Set<ISODate> }) {
+  const dates = useDates();
+  const [adding, setAdding] = useState(false);
+  return (
+    <div className="grid min-h-11 grid-cols-[2.75rem_1fr_auto] items-center gap-2.5 rounded-[10px] border border-dashed border-line px-3 py-1.5">
+      <span className="flex flex-col leading-tight text-muted">
+        <b>{dowName(date)}</b>
+        {!dates.hide && <span className="text-xs">{fmtShort(date)}</span>}
+      </span>
+      <span className="text-sm text-muted">{date === today ? "Rest day · today" : "Rest day"}</span>
+      <button className="min-h-11 px-1 text-sm font-semibold text-ink underline underline-offset-2" onClick={() => setAdding(true)}>
+        Add a workout
+      </button>
+      {adding && <CopySheet day={restDay(date)} today={today} logged={logged} onClose={() => setAdding(false)} />}
     </div>
   );
 }

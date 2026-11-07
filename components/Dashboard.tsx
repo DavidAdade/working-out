@@ -301,7 +301,7 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
       const hadLocal = localCopiesRef.current.has(planDate);
       const prevLocal = localCopiesRef.current.get(planDate);
       setLocalCopies((cur) => new Map(cur).set(planDate, source));
-      const undo = { label: "Undo", run: () => copy(planDate, before, before ? "Swap changed back." : "Swap undone.") };
+      const undo = { label: "Undo", run: () => copy(planDate, before, before ? "Swap changed back." : "Undone.") };
       // Through the outbox like exercise swaps, so it replays before any sets logged on the new workout
       void send({ id: crypto.randomUUID(), t: "copy", planDate, source }).then((r) => {
         if (r === "sent") notify({ text: note, tone: "good", action: undo });

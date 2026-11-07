@@ -16,7 +16,7 @@ import { useDates } from "./DateLabels";
 import WeekCard, { loggedDates } from "./WeekCard";
 import { MoveSheet, moveNote, moveTargets, type OnMoves } from "./DayCard";
 import { ScoreLink, type ScoreInputs } from "./AccountabilityPanel";
-import { CopiedLine, CopySheet, copyable, useCopy } from "./CopySheet";
+import { CopiedLine, CopySheet, copyable, restDates, restDay, useCopy } from "./CopySheet";
 
 interface Props {
   profile: ProfileRow;
@@ -50,10 +50,14 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
   const logged = useMemo(() => loggedDates(logs, sets), [logs, sets]);
   const [moving, setMoving] = useState(false);
   const [copying, setCopying] = useState(false);
-  const canCopy = !!useCopy() && !!day && copyable(day) && !logged.has(today);
+  const copyApi = useCopy();
+  const canCopy = !!copyApi && !!day && copyable(day) && !logged.has(today);
+  // A rest day: repeat any workout from the plan today, as extra work
+  const canAddToday = !!copyApi && !day && !!week && restDates(week, today, logged).includes(today);
+  const [adding, setAdding] = useState(false);
   const canMove = !!week && !!day && !day.fixed && !logged.has(today) && moveTargets(week, today, today, logged).some((t) => t.moves);
   // The most recent workout this week that wasn't done or skipped
-  const missed = week?.days.filter((d) => d.date < today && !d.skipped && !d.fixed && d.blocks.length && !logged.has(d.date)).at(-1);
+  const missed = week?.days.filter((d) => d.date < today && !d.skipped && !d.fixed && !d.added && d.blocks.length && !logged.has(d.date)).at(-1);
   const catchMoves = week && missed && !logged.has(today) ? catchUp(week, missed.date, today) : null;
 
   const scoreShown = !!score;
@@ -136,12 +140,18 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
                 Restore today
               </button>
             )}
+            {canAddToday && (
+              <button className="btn-ghost" onClick={() => setAdding(true)}>
+                Add a workout
+              </button>
+            )}
             {canStartNext && !early && (
               <button className="btn-ghost" onClick={() => setEarly(true)}>
                 Start {dates.hide ? "the next session" : `${dowName(next!.date)}'s session`} now
               </button>
             )}
           </div>
+          {adding && <CopySheet day={restDay(today)} today={today} logged={logged} onClose={() => setAdding(false)} />}
           {early && next && (
             <div className="border-t border-line pt-2.5">
               <div className="label mb-1">

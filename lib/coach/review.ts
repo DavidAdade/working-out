@@ -58,7 +58,7 @@ export function context(o: { name: string | null; weeks: Week[]; logs: LogRow[];
   const loggedDates = new Set([...o.logs.filter((l) => l.kind !== "check").map((l) => l.date), ...o.sets.map((s) => s.plan_date ?? s.date)]);
   const coming = planned.filter(({ d }) => d.date >= o.today && d.date < addDays(o.today, 7));
   const line = ({ w, d }: { w: Week; d: Week["days"][number] }) =>
-    `${d.date} ${dowName(d.date)} [${PHASE_NAMES[w.phase]}${w.cutback ? ", cutback" : ""}] ${d.skipped ? "SKIPPED" : d.blocks.map((b) => b.title).join(" + ")}${d.skippable && !d.skipped ? "" : " (can't skip)"}`;
+    `${d.date} ${dowName(d.date)} [${PHASE_NAMES[w.phase]}${w.cutback ? ", cutback" : ""}] ${d.skipped ? "SKIPPED" : d.blocks.map((b) => b.title).join(" + ")}${d.added ? " (extra workout the athlete added on a rest day)" : d.skippable && !d.skipped ? "" : " (can't skip)"}`;
   const swapped = swapsShown(o.weeks)
     .filter((s) => s.date >= addDays(o.today, -7) && s.date < addDays(o.today, 7))
     .map((s) => `swapped ${o.names.get(s.from) ?? s.from} → ${s.name} (${dowName(s.date)} ${s.date})`);

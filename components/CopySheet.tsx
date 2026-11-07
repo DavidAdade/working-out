@@ -3,10 +3,11 @@
 // "Swap for another day": a plan day does another day's workout instead, from anywhere in the program.
 // Every candidate is compared by intensity (lib/plan/intensity.ts): a match counts in full, anything else can
 // still be picked but is warned about, and costs Score credit once done. Saved as a day copy (DayCopy in generate.ts).
+// On a rest day it's "Add a workout": the same sheet without the intensity comparison (an added day is extra work).
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { dowName, fmtShort, type ISODate } from "@/lib/plan/dates.ts";
-import { canCopy, copyNote, dayTitle, ownBlocks, planDateOf, weekForDate, PHASE_NAMES, type Day, type Week } from "@/lib/plan/generate.ts";
+import { addDays, dowName, fmtShort, type ISODate } from "@/lib/plan/dates.ts";
+import { canAdd, canCopy, copyNote, dayTitle, ownBlocks, planDateOf, weekForDate, PHASE_NAMES, type Day, type Week } from "@/lib/plan/generate.ts";
 import { compareDays, dayIntensity, fitBadge, fitWarning, COPY_TOLERANCE, type CopyFit, type Intensity } from "@/lib/plan/intensity.ts";
 import type { BlockKind } from "@/lib/plan/templates.ts";
 import { Chip, PreviewBlocks } from "./DayView";
@@ -27,6 +28,21 @@ export const useCopy = () => useContext(Ctx);
 
 /** Tests, the time trial and the race never take another workout */
 export const copyable = (day: Day) => !day.fixed && !day.skipped && !ownBlocks(day).some((b) => b.kind === "test");
+
+/** A rest day as a day with nothing on it: what the sheet takes to add a workout there */
+export const restDay = (date: ISODate): Day => ({
+  date,
+  blocks: [],
+  skipped: false,
+  skippable: false,
+  fixed: false,
+  alerts: [],
+});
+
+/** The free days of a week from `today` on (no workout shown, not logged): where "Add a workout" is offered */
+export function restDates(week: Week, today: ISODate, logged: Set<ISODate>): ISODate[] {
+  return [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(week.start, i)).filter((d) => d >= today && !logged.has(d) && !week.days.some((x) => x.date === d));
+}
 
 /** "W7 Wed": a plan date by its week and weekday */
 const where = (weeks: Week[], date: ISODate) => `${weekForDate(weeks, date)?.label ?? ""} ${dowName(date)}`.trim();
@@ -55,15 +71,19 @@ export function CopiedLine({ day, logged }: { day: Day; logged: Set<ISODate> }) 
     <div className="flex flex-col text-sm text-muted">
       <div className="flex items-center justify-between gap-2">
         <span>
-          Copied from {where(api.weeks, from)}
+          {day.added ? "Added on a rest day, from" : "Copied from"} {where(api.weeks, from)}
           {dates.hide ? "" : ` ${fmtShort(from)}`}
         </span>
         {!logged.has(day.date) && (
-          <button className="min-h-11 px-1 font-semibold text-ink underline underline-offset-2" onClick={() => api.copy(planDateOf(day), null, `${own} is back on ${dowName(day.date)}.`)}>
-            Undo
+          <button
+            className="min-h-11 px-1 font-semibold text-ink underline underline-offset-2"
+            onClick={() => api.copy(planDateOf(day), null, day.added ? `${dowName(day.date)} is a rest day again.` : `${own} is back on ${dowName(day.date)}.`)}
+          >
+            {day.added ? "Remove" : "Undo"}
           </button>
         )}
       </div>
+      {day.added && <span>Extra work: counts toward your Score once the week is on track.</span>}
       {!fit.match && <span className="text-warn">Intensity doesn&apos;t match: counts as {Math.round(fit.credit * 100)}% of this day in your Score.</span>}
     </div>
   );
@@ -77,22 +97,33 @@ export function CopySheet({ day, today, logged, onClose }: { day: Day; today: IS
   const [picked, setPicked] = useState<Candidate | null>(null);
   const weeks = api?.weeks;
   const planDate = planDateOf(day);
+  // A rest day, or a workout already added on one: nothing of its own to compare with
+  const adding = !ownBlocks(day).length;
 
   const { orig, list, closest } = useMemo(() => {
     const orig = dayIntensity({ blocks: ownBlocks(day) });
     const list: Candidate[] = (weeks ?? []).flatMap((week) =>
       week.days
-        .filter((d) => planDateOf(d) !== planDate)
+        // Added days have no workout of their own to copy
+        .filter((d) => planDateOf(d) !== planDate && ownBlocks(d).length)
         .map((d) => {
           const cand = dayIntensity({ blocks: ownBlocks(d) });
           const source = planDateOf(d);
-          return { week, day: d, source, cand, fit: compareDays(orig, cand), why: day.copy?.from === source ? "Doing this one now." : canCopy(weeks!, planDate, source, today, logged) };
+          const fit = adding ? { ratio: 1, match: true, reason: "ok" as const, credit: 1 } : compareDays(orig, cand);
+          const why = day.copy?.from === source ? "Doing this one now." : day.added || !adding ? canCopy(weeks!, planDate, source, today, logged) : canAdd(weeks!, planDate, source, today, logged);
+          return { week, day: d, source, cand, fit, why };
         }),
     );
     const gap = (c: Candidate) => Math.abs(c.fit.ratio - 1);
-    const closest = list.filter((c) => c.fit.match && !c.why).sort((a, b) => gap(a) - gap(b)).slice(0, 5);
+    // Adding: this week's workouts first, they're the ones the plan has you ready for
+    const closest = adding
+      ? list.filter((c) => !c.why && c.week.start === weekForDate(weeks ?? [], day.date)?.start).slice(0, 5)
+      : list
+          .filter((c) => c.fit.match && !c.why)
+          .sort((a, b) => gap(a) - gap(b))
+          .slice(0, 5);
     return { orig, list, closest };
-  }, [weeks, day, planDate, today, logged]);
+  }, [weeks, day, planDate, today, logged, adding]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -133,15 +164,20 @@ export function CopySheet({ day, today, logged, onClose }: { day: Day; today: IS
             </span>
           )}
         </span>
-        <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${c.fit.match ? "bg-good/15 text-good" : "bg-warn/15 text-warn"}`}>{fitBadge(c.fit, c.cand)}</span>
+        {adding ? (
+          <span />
+        ) : (
+          <span className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${c.fit.match ? "bg-good/15 text-good" : "bg-warn/15 text-warn"}`}>{fitBadge(c.fit, c.cand)}</span>
+        )}
       </button>
     </li>
   );
 
   const confirm = (c: Candidate) => {
     const name = dayTitle({ ...c.day, blocks: ownBlocks(c.day) });
+    const on = day.date === today ? "today" : dowName(day.date);
     const cost = c.fit.match ? "" : ` It counts as ${Math.round(c.fit.credit * 100)}% in your Score.`;
-    api.copy(planDate, c.source, `Doing ${where(weeks, c.source)}'s ${name} on ${day.date === today ? "today" : dowName(day.date)} instead.${cost}`);
+    api.copy(planDate, c.source, adding ? `Added ${where(weeks, c.source)}'s ${name} on ${on}.` : `Doing ${where(weeks, c.source)}'s ${name} on ${on} instead.${cost}`);
     onClose();
   };
 
@@ -151,29 +187,34 @@ export function CopySheet({ day, today, logged, onClose }: { day: Day; today: IS
         key={picked?.source ?? "list"}
         role="dialog"
         aria-modal="true"
-        aria-label={`Swap ${title} for another day`}
+        aria-label={adding ? `Add a workout on ${dowName(day.date)}` : `Swap ${title} for another day`}
         onClick={(e) => e.stopPropagation()}
         className={`flex max-h-[85dvh] w-full max-w-[520px] flex-col gap-3 overflow-y-auto rounded-t-2xl border border-line bg-surface p-4 sm:rounded-2xl ${picked ? "pb-0" : "pb-[max(16px,env(safe-area-inset-bottom,0px))]"}`}
       >
         {picked ? (
-          <Preview candidate={picked} orig={orig} weeks={weeks} planDate={planDate} closeRef={closeRef} onBack={() => setPicked(null)} onUse={() => confirm(picked)} />
+          <Preview candidate={picked} adding={adding} orig={orig} weeks={weeks} planDate={planDate} closeRef={closeRef} onBack={() => setPicked(null)} onUse={() => confirm(picked)} />
         ) : (
           <>
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="label">Swap for another day</div>
-                <h3 className="truncate font-display text-xl font-bold">{title}</h3>
+                <div className="label">{adding ? "Add a workout" : "Swap for another day"}</div>
+                <h3 className="truncate font-display text-xl font-bold">{adding ? (day.added ? `${dates.day(day.date)} · ${title}` : `${dates.day(day.date)} · Rest day`) : title}</h3>
               </div>
               <button ref={closeRef} className="btn-ghost" onClick={onClose}>
                 Cancel
               </button>
             </div>
-            <p className="text-sm text-muted">
-              Do another day&apos;s workout here instead. A match is the same kind of day within {Math.round(COPY_TOLERANCE * 100)}% of this one&apos;s intensity; anything else counts for less in your Score.
-            </p>
+            {adding ? (
+              <p className="text-sm text-muted">Repeat any workout from your plan on this rest day. Your planned days stay as they are, and what you log here counts as extra work in your Score.</p>
+            ) : (
+              <p className="text-sm text-muted">
+                Do another day&apos;s workout here instead. A match is the same kind of day within {Math.round(COPY_TOLERANCE * 100)}% of this one&apos;s intensity; anything else counts for less in
+                your Score.
+              </p>
+            )}
             {closest.length > 0 && (
               <section className="flex flex-col gap-1.5">
-                <div className="label">Closest match</div>
+                <div className="label">{adding ? "This week" : "Closest match"}</div>
                 <ul className="flex flex-col gap-1.5">{closest.map((c) => row(c, true))}</ul>
               </section>
             )}
@@ -201,6 +242,7 @@ export function CopySheet({ day, today, logged, onClose }: { day: Day; today: IS
 /** Step 2: the candidate day and all its workouts, with the warning when it doesn't match. */
 function Preview({
   candidate: c,
+  adding,
   orig,
   weeks,
   planDate,
@@ -209,6 +251,7 @@ function Preview({
   onUse,
 }: {
   candidate: Candidate;
+  adding: boolean;
   orig: Intensity;
   weeks: Week[];
   planDate: ISODate;
@@ -217,7 +260,7 @@ function Preview({
   onUse: () => void;
 }) {
   const blocks = ownBlocks(c.day);
-  const warning = fitWarning(c.fit, orig, c.cand);
+  const warning = adding ? null : fitWarning(c.fit, orig, c.cand);
   const note = copyNote(weeks, planDate, c.source);
   return (
     <>
@@ -228,7 +271,9 @@ function Preview({
           </div>
           <h3 className="font-display text-xl font-bold">{dayTitle({ ...c.day, blocks })}</h3>
         </div>
-        <span className={`mt-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${c.fit.match ? "bg-good/15 text-good" : "bg-warn/15 text-warn"}`}>{fitBadge(c.fit, c.cand)}</span>
+        {!adding && (
+          <span className={`mt-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${c.fit.match ? "bg-good/15 text-good" : "bg-warn/15 text-warn"}`}>{fitBadge(c.fit, c.cand)}</span>
+        )}
       </div>
       {warning && (
         <div role="alert" className="rounded-lg border border-warn bg-warn/10 px-3 py-2 text-sm">
@@ -241,7 +286,7 @@ function Preview({
         {!c.fit.match && <p className="text-xs text-muted">Counts as {Math.round(c.fit.credit * 100)}% of this day in your Score once done.</p>}
         <div className="flex gap-2">
           <button className="btn flex-1" onClick={onUse}>
-            Use this workout
+            {adding ? "Add this workout" : "Use this workout"}
           </button>
           <button ref={closeRef} className="btn-ghost" onClick={onBack}>
             Back

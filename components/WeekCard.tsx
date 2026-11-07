@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { PHASE_NAMES, weekLongRunKm, type Week } from "@/lib/plan/generate.ts";
 import type { LogRow, SetRow } from "@/lib/types";
-import DayCard, { type OnMoves } from "./DayCard";
+import DayCard, { RestRow, type OnMoves } from "./DayCard";
+import { restDates, useCopy } from "./CopySheet";
 import { useDates } from "./DateLabels";
 import { planDayOf, useSets } from "./Sets";
 
@@ -30,7 +31,9 @@ export default function WeekCard({
 }) {
   const { sets } = useSets();
   const logged = loggedDates(logs, sets);
-  const active = week.days.filter((d) => !d.skipped);
+  // Added workouts are extra: they don't change what the week asks for
+  const active = week.days.filter((d) => !d.skipped && !d.added);
+  const canAdd = !!useCopy();
   const past = active.filter((d) => d.date <= today);
   const done = active.filter((d) => logged.has(d.date)).length;
   const km = weekLongRunKm(week);
@@ -70,9 +73,15 @@ export default function WeekCard({
               ))}
             </div>
           )}
-          {week.days.map((d) => (
-            <DayCard key={d.date} week={week} day={d} today={today} logged={logged} onSkip={onSkip} onMoves={onMoves} todayAbove={todayAbove} />
-          ))}
+          {[...week.days.map((d) => ({ date: d.date, d })), ...(canAdd ? restDates(week, today, logged).map((date) => ({ date, d: null })) : [])]
+            .sort((a, b) => (a.date < b.date ? -1 : 1))
+            .map(({ date, d }) =>
+              d ? (
+                <DayCard key={date} week={week} day={d} today={today} logged={logged} onSkip={onSkip} onMoves={onMoves} todayAbove={todayAbove} />
+              ) : (
+                <RestRow key={date} date={date} today={today} logged={logged} />
+              ),
+            )}
           {canReset && (
             <button className="min-h-11 self-start px-1 text-sm text-muted underline underline-offset-2" onClick={() => onMoves(week.start, [], `${week.label} is back as planned.`)}>
               Put this week back as planned

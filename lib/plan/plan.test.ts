@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { generatePlan, dayTitle, weekForDate, dayForDate, moveDay, catchUp, isHard, canCopy, copyNote, type PlanSettings, type Week } from "./generate.ts";
+import { generatePlan, dayTitle, weekForDate, dayForDate, moveDay, catchUp, isHard, canAdd, canCopy, copyNote, type PlanSettings, type Week } from "./generate.ts";
 import { compareDays, dayIntensity, COPY_TOLERANCE } from "./intensity.ts";
 import { painWarnings } from "./warnings.ts";
 import { parseDuration, duration, pace } from "./format.ts";
@@ -1249,6 +1249,80 @@ test("day copies: canCopy refuses past, logged and same days and run-walk clashe
   }
 });
 
+test("added workouts: a rest day repeats a plan workout, follows a move, every profile", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const plain = generatePlan(p);
+    const builds = plain.filter((w) => w.phase === "build" && !w.cutback);
+    const [a, b] = [builds[0], builds.at(-1)!];
+    const sat = at(a, 5);
+    assert.equal(dayForDate(plain, sat), undefined, `${name}: Saturday is a rest day`);
+    const add = { planDate: sat, source: at(b, 0) };
+    const g = generatePlan(p, { copies: [add] });
+    const w = weekForDate(g, a.start)!;
+    const day = dayForDate(g, sat)!;
+    assert.ok(day?.added, name);
+    assert.deepEqual(own(day), own(b.days[0]), name);
+    assert.ok(day.blocks.every((x) => x.planDate === sat), `${name}: keyed to Saturday`);
+    assert.equal(day.copy?.from, at(b, 0));
+    assert.equal(day.skippable, false);
+    // The planned days are untouched, and the week is one day longer, in date order
+    assert.deepEqual(w.days.filter((d) => !d.added).map(own), a.days.map(own), name);
+    assert.deepEqual(w.days.map((d) => d.date), [...w.days.map((d) => d.date)].sort());
+    // It moves like any other day, and its plan date keys it
+    const moved = dayForDate(generatePlan(p, { copies: [add], moves: moveDay(w, sat, at(a, 6))! }), at(a, 6))!;
+    assert.ok(moved.added && moved.movedFrom === sat, name);
+    // A copy onto a planned day is still a swap, not an add
+    assert.ok(!dayForDate(generatePlan(p, { copies: [{ planDate: at(a, 1), source: at(b, 0) }] }), at(a, 1))!.added);
+    // Tests, the time trial and the race are never added
+    const testDay = plain.flatMap((x) => x.days).find((d) => d.blocks.some((x) => x.kind === "test"))!;
+    assert.equal(dayForDate(generatePlan(p, { copies: [{ planDate: sat, source: testDay.date }] }), sat), undefined, name);
+  }
+});
+
+test("added workouts: canAdd refuses past, logged, taken and vacated days, tests and run-walk clashes", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const plain = generatePlan(p);
+    const builds = plain.filter((w) => w.phase === "build" && !w.cutback);
+    const [a, b] = [builds[0], builds.at(-1)!];
+    const before = addDays(a.start, -1);
+    const sat = at(a, 5);
+    assert.equal(canAdd(plain, sat, at(b, 0), before, new Set()), null, name);
+    // canCopy hands a rest day to canAdd, so the server checks both with one call
+    assert.equal(canCopy(plain, sat, at(b, 0), before, new Set()), null, name);
+    assert.equal(canAdd(plain, sat, at(b, 0), at(a, 6), new Set()), "That day has passed.");
+    assert.equal(canAdd(plain, sat, at(b, 0), before, new Set([sat])), "Something is already logged that day.");
+    assert.equal(canAdd(plain, at(a, 1), at(b, 0), before, new Set()), "That day already has a workout.");
+    assert.equal(canAdd(plain, "2001-01-06", at(b, 0), before, new Set()), "That day isn't in the plan.");
+    const testDay = plain.flatMap((x) => x.days).find((d) => d.blocks.some((x) => x.kind === "test"))!;
+    assert.equal(canAdd(plain, sat, testDay.date, before, new Set()), "Tests, the time trial and the race stay as planned.");
+    // Friday's workout moved to Saturday: Saturday is taken, and Friday still keys the moved workout
+    const moved = generatePlan(p, { moves: moveDay(a, at(a, 4), sat)! });
+    assert.equal(canAdd(moved, sat, at(b, 0), before, new Set()), "That day already has a workout.");
+    assert.equal(canAdd(moved, at(a, 4), at(b, 0), before, new Set()), "This day's own workout was moved. Move it back to train here.");
+    // An added day has no workout of its own to add again
+    const added = generatePlan(p, { copies: [{ planDate: sat, source: at(b, 0) }] });
+    assert.equal(canAdd(added, at(a, 6), sat, before, new Set()), "That day has no workout of its own.");
+
+    const ret = plain.find((w) => w.phase === "return");
+    if (!ret) continue;
+    // A run-walk on the rest day after one is refused, and ignored by the plan
+    const runDay = ret.days.find((d) => d.blocks.some((x) => x.kind === "run") && !ret.days.some((o) => o.date === addDays(d.date, 1)) && addDays(d.date, 1) < addDays(ret.start, 7));
+    if (!runDay) continue;
+    const next = addDays(runDay.date, 1);
+    assert.equal(canAdd(plain, next, runDay.date, addDays(ret.start, -1), new Set()), "Run-walk days can't fall back to back.", name);
+    assert.equal(dayForDate(generatePlan(p, { copies: [{ planDate: next, source: runDay.date }] }), next), undefined, name);
+  }
+});
+
+test("added workouts: a hard one next to a hard day gets a note", () => {
+  const plain = generatePlan(PROFILES.september);
+  const a = plain.find((w) => w.phase === "build" && !w.cutback && w.days[4].blocks.some((b) => !!b.km))!;
+  // Saturday after Friday's long run, doing the long run again
+  assert.match(copyNote(plain, at(a, 5), at(a, 4)) ?? "", /Two hard days in a row/);
+  // Sunday, two days later: nothing to say
+  assert.equal(copyNote(plain, at(a, 6), at(a, 4)), null);
+});
+
 test("day copies: a hard copy into a week with a session gets a note", () => {
   const plain = generatePlan(PROFILES.september);
   const [a, b] = plain.filter((w) => w.phase === "build" && !w.cutback && w.days[2].blocks.some(isHard));
@@ -1308,5 +1382,28 @@ test("accountability: a matched copy done scores like the plan, a mismatched one
     const missed = acct(generatePlan(p, { copies: [{ planDate: target, source: at(builds[0], 0) }] }), addDays(target, 2), { sets: [], logs: [] }, { horizon: target });
     assert.ok(missed.feed.some((f) => f.kind === "missed" && f.date === target), name);
     assert.ok(!missed.feed.some((f) => f.kind === "copied"), name);
+  }
+});
+
+test("accountability: an added workout counts as extra work, never as a planned day", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const builds = generatePlan(p).filter((w) => w.phase === "build" && !w.cutback);
+    const a = builds.at(-1)!;
+    const sat = at(a, 5);
+    const sun = at(a, 6);
+    const plain = generatePlan(p);
+    const added = generatePlan(p, { copies: [{ planDate: sat, source: at(builds[0], 0) }] });
+    // The whole week done, plus Saturday's added lifts
+    const without = acct(plain, sun, logPlan(plain, a.start, sun), { horizon: a.start });
+    const withAdd = acct(added, sun, logPlan(added, a.start, sun), { horizon: a.start });
+    assert.equal(withAdd.parts.a, without.parts.a, `${name}: adherence unchanged`);
+    assert.equal(withAdd.sessions.planned, without.sessions.planned, name);
+    assert.ok(withAdd.parts.e > without.parts.e, `${name}: extra work counts`);
+    const extra = withAdd.feed.find((f) => f.kind === "exercise_extra" && f.date === sat);
+    assert.match(extra?.detail ?? "", /^Added W\d+ Mon's workout$/, name);
+    // Not done: no miss
+    const skippedIt = acct(added, sun, logPlan(plain, a.start, sun), { horizon: a.start });
+    assert.equal(skippedIt.parts.a, without.parts.a, name);
+    assert.ok(!skippedIt.feed.some((f) => f.date === sat && f.kind === "missed"), name);
   }
 });

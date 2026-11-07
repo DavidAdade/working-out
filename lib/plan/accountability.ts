@@ -10,6 +10,7 @@
 // Rest days, cutback weeks, moved days and pain or gate changes all count as doing the plan.
 // A day swapped for another day's workout (Day.copy) is scored on the workout done; when its intensity doesn't
 // match (intensity.ts), the day's credit is multiplied by fit.credit (0.5 to 1) while its units stay full.
+// A workout added on a rest day (Day.added) is never planned: what's logged there counts as extra work (E).
 
 import { addDays, daysBetween, dowName, mondayOf, type ISODate } from "./dates.ts";
 import { adaptPlan } from "./adapt.ts";
@@ -402,7 +403,8 @@ export function accountability(input: AccountabilityInput): Accountability {
     const dayLogs = logsByDay.get(date) ?? [];
     t.active = daySets.size > 0 || dayLogs.length > 0;
     if (hit && hit.day.skipped) t.state = "skipped";
-    else if (hit && hit.day.blocks.length) {
+    // A workout added on a rest day is extra work, scored like anything else done on a rest day
+    else if (hit && hit.day.blocks.length && !hit.day.added) {
       t.state = "planned";
       const shown = shownThen(date, week!, hit.day);
       t.eased = shown !== hit.day;
@@ -738,7 +740,7 @@ function feedFor(t: Tally, noExtra: string | null, name: (k: string) => string, 
       tone: why ? "neutral" : "good",
       key,
       title: `${name(key)}: ${e.n} extra set${e.n === 1 ? "" : "s"}`,
-      detail: why ?? (kind === "exercise_extra" ? "Not in the plan that day" : undefined),
+      detail: why ?? (kind === "exercise_extra" ? (t.day?.added ? `Added ${t.copyFrom}'s workout` : "Not in the plan that day") : undefined),
       delta: why ? "not counted" : `+${e.n} set${e.n === 1 ? "" : "s"}`,
     });
   }
