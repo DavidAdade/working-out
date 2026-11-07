@@ -23,6 +23,8 @@ export interface WorkoutSession {
   ended_at: string | null;
   /** Ended by the 4-hour rule rather than the End button */
   auto_ended: boolean;
+  /** "Unlock to edit": its sets stay editable for LOCK_MS from this moment */
+  unlocked_at?: string | null;
 }
 
 /** The date a day's session is stored under: where the plan put the workout, so it follows a move */
@@ -37,8 +39,10 @@ export interface SessionState {
   /** When it ended (ms), counting the 4-hour rule; null while active */
   endedAt: number | null;
   autoEnded: boolean;
-  /** Ended 12 hours ago or more: its sets are read-only */
+  /** Ended (or last unlocked) 12 hours ago or more: its sets are read-only */
   locked: boolean;
+  /** Unlocked after it had locked, and still open: until when (ms) */
+  unlockedUntil: number | null;
   /** Still open in the database past the 4-hour mark: save it as auto-ended */
   needsAutoEnd: boolean;
 }
@@ -49,12 +53,14 @@ export function sessionState(s: WorkoutSession, now: number): SessionState {
   const saved = s.ended_at ? Date.parse(s.ended_at) : null;
   const needsAutoEnd = saved == null && now >= cutoff;
   const endedAt = saved ?? (needsAutoEnd ? cutoff : null);
+  const unlocked = s.unlocked_at ? Date.parse(s.unlocked_at) : 0;
   return {
     active: endedAt == null,
     startedAt,
     endedAt,
     autoEnded: s.auto_ended || needsAutoEnd,
-    locked: endedAt != null && now >= endedAt + LOCK_MS,
+    locked: endedAt != null && now >= Math.max(endedAt, unlocked) + LOCK_MS,
+    unlockedUntil: endedAt != null && unlocked >= endedAt + LOCK_MS && now < unlocked + LOCK_MS ? unlocked + LOCK_MS : null,
     needsAutoEnd,
   };
 }

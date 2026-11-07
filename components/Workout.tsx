@@ -20,6 +20,8 @@ interface WorkoutCtx {
   end: (planDate: string, c?: Completion) => void;
   /** Confetti for a finished day; "beyond" is the bigger one. Once per day and level. */
   celebrate: (planDate: string, c: Completion) => void;
+  /** "Unlock to edit": a locked workout's sets open for another 12 hours */
+  unlock: (planDate: string) => void;
 }
 
 const Ctx = createContext<WorkoutCtx | null>(null);
@@ -43,12 +45,17 @@ export function WorkoutProvider({ initial, children }: { initial: WorkoutSession
         const s = m.get(op.planDate);
         if (s && !s.ended_at) m.set(op.planDate, { ...s, ended_at: op.at, auto_ended: op.auto });
       }
+      if (op.t === "workout-unlock") {
+        const s = m.get(op.planDate);
+        if (s?.ended_at && (s.unlocked_at ?? "") < op.at) m.set(op.planDate, { ...s, unlocked_at: op.at });
+      }
     }
     for (const [k, s] of local) {
       const server = m.get(k);
       // The first start and the first end win, like on the server
       if (!server) m.set(k, s);
       else if (!server.ended_at && s.ended_at) m.set(k, { ...server, ended_at: s.ended_at, auto_ended: s.auto_ended });
+      else if (server.ended_at && (s.unlocked_at ?? "") > (server.unlocked_at ?? "")) m.set(k, { ...server, unlocked_at: s.unlocked_at });
     }
     return m;
   }, [initial, queue, local]);
@@ -60,14 +67,16 @@ export function WorkoutProvider({ initial, children }: { initial: WorkoutSession
     setLocal((cur) => {
       if (!cur.size) return cur;
       const server = new Map(initial.map((s) => [s.plan_date, s]));
-      const next = new Map([...cur].filter(([k, s]) => !server.has(k) || (s.ended_at != null && server.get(k)!.ended_at == null)));
+      const next = new Map(
+        [...cur].filter(([k, s]) => !server.has(k) || (s.ended_at != null && server.get(k)!.ended_at == null) || (s.unlocked_at ?? "") > (server.get(k)!.unlocked_at ?? "")),
+      );
       return next.size === cur.size ? cur : next;
     });
   }, [initial]);
   useEffect(
     () =>
       onRejected((op) => {
-        if (op.t === "workout-start" || op.t === "workout-end") setLocal((cur) => new Map([...cur].filter(([k]) => k !== op.planDate)));
+        if (op.t === "workout-start" || op.t === "workout-end" || op.t === "workout-unlock") setLocal((cur) => new Map([...cur].filter(([k]) => k !== op.planDate)));
       }),
     [onRejected],
   );
@@ -101,6 +110,17 @@ export function WorkoutProvider({ initial, children }: { initial: WorkoutSession
       write({ id: crypto.randomUUID(), t: "workout-end", planDate, at, auto }, () => setLocal((cur) => new Map([...cur].filter(([k]) => k !== planDate))));
     },
     [write],
+  );
+  const unlock = useCallback(
+    (planDate: string) => {
+      const s = ref.current.get(planDate);
+      if (!s?.ended_at) return;
+      const at = new Date().toISOString();
+      setLocal((cur) => new Map(cur).set(planDate, { ...s, unlocked_at: at }));
+      write({ id: crypto.randomUUID(), t: "workout-unlock", planDate, at }, () => setLocal((cur) => new Map([...cur].filter(([k]) => k !== planDate))));
+      notify({ text: "Unlocked: you can edit these sets for the next 12 hours.", tone: "good" });
+    },
+    [write, notify],
   );
   // A workout left open past 4 hours ended then: save it that way whenever it's seen, now or while the app stays open
   useEffect(() => {
@@ -156,8 +176,8 @@ export function WorkoutProvider({ initial, children }: { initial: WorkoutSession
   );
 
   const value = useMemo<WorkoutCtx>(
-    () => ({ get: (d) => sessions.get(d), start, ensureStarted: start, end, celebrate }),
-    [sessions, start, end, celebrate],
+    () => ({ get: (d) => sessions.get(d), start, ensureStarted: start, end, celebrate, unlock }),
+    [sessions, start, end, celebrate, unlock],
   );
   return (
     <Ctx.Provider value={value}>
@@ -213,7 +233,7 @@ function ProgressRing({ done, planned }: { done: number; planned: number }) {
 
 /** Start / End and the elapsed time for one day's workout; read-only notice once its sets are locked. */
 export function WorkoutBar({ planDate, canStart, completion }: { planDate: string; canStart: boolean; completion: Completion }) {
-  const { get, start, end } = useWorkout();
+  const { get, start, end, unlock } = useWorkout();
   const s = get(planDate);
   const [now, setNow] = useState(() => Date.now());
   const st = s ? sessionState(s, now) : null;
@@ -259,7 +279,20 @@ export function WorkoutBar({ planDate, canStart, completion }: { planDate: strin
       <span>
         <b className="text-good">✓ Workout done</b> <span className="text-muted">· {mins} min{st.autoEnded ? " · ended automatically after 4 hours" : ""}</span>
       </span>
-      {st.locked && <span className="text-xs text-muted">Locked: it ended over 12 hours ago, so these sets can&apos;t be changed.</span>}
+      {st.locked && (
+        <span className="flex flex-wrap items-center justify-between gap-x-2 text-xs text-muted">
+          <span>Locked: it ended over 12 hours ago, so these sets can&apos;t be changed.</span>
+          <button type="button" className="min-h-11 px-1 text-sm font-semibold text-ink underline underline-offset-2" onClick={() => unlock(planDate)}>
+            Unlock to edit
+          </button>
+        </span>
+      )}
+      {st.unlockedUntil && (
+        <span className="text-xs text-muted">
+          Unlocked: editable until {new Date(st.unlockedUntil).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+          {new Date(st.unlockedUntil).toDateString() !== new Date(now).toDateString() ? " tomorrow" : ""}.
+        </span>
+      )}
     </div>
   );
 }

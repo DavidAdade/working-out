@@ -423,7 +423,7 @@ export async function deleteSet(date: string, exerciseKey: string, setNo: number
 /* ---------- workout sessions: Start / End ---------- */
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 const LOCKED = "This workout ended over 12 hours ago, so its sets are locked.";
-const SESSION_COLS = "plan_date, started_at, ended_at, auto_ended";
+const SESSION_COLS = "plan_date, started_at, ended_at, auto_ended, unlocked_at";
 
 /** The session for a shown plan day: stored under the plan's own date, so a moved day maps back through day_moves */
 async function sessionFor(supabase: Supabase, userId: string, shown: string): Promise<WorkoutSession | null> {
@@ -483,6 +483,21 @@ export async function endWorkout(planDate: string, at: string, auto = false): Pr
     .is("ended_at", null);
   if (error) return { ok: false, error: "Couldn't end the workout. Try again." };
   if (pushEnabled()) await cancelPush(user.id, `workout-end:${planDate}`).catch(() => {});
+  revalidatePath("/");
+  return { ok: true };
+}
+
+/** "Unlock to edit": a locked workout's sets open again for 12 hours from `at`. Only an ended workout can be unlocked. */
+export async function unlockWorkout(planDate: string, at: string): Promise<ActionResult> {
+  const { supabase, user } = await requireUser();
+  if (!ISO.test(planDate)) return { ok: false, error: "Couldn't unlock the workout." };
+  const { error } = await supabase
+    .from("workout_sessions")
+    .update({ unlocked_at: phoneTime(at) })
+    .eq("user_id", user.id)
+    .eq("plan_date", planDate)
+    .not("ended_at", "is", null);
+  if (error) return { ok: false, error: "Couldn't unlock the workout. Try again." };
   revalidatePath("/");
   return { ok: true };
 }

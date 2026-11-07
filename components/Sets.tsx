@@ -541,6 +541,7 @@ function SetTable({
   superset?: SupersetFlow;
 }) {
   const { sets, unit, isLightDate, save, remove } = useSets();
+  const { unlock } = useWorkout();
   const dates = useDates();
   const all = useMemo(() => sessions(sets, exercise.key), [sets, exercise.key]);
   const prev = all.find((s) => s.date < date);
@@ -652,7 +653,14 @@ function SetTable({
         );
       })}
       {locked ? (
-        <p className="text-xs text-muted">Locked: this workout ended over 12 hours ago.</p>
+        <p className="flex flex-wrap items-center justify-between gap-x-2 text-xs text-muted">
+          <span>Locked: this workout ended over 12 hours ago.</span>
+          {session && (
+            <button type="button" className="min-h-11 px-1 text-sm font-semibold text-ink underline underline-offset-2" onClick={() => unlock(session)}>
+              Unlock to edit
+            </button>
+          )}
+        </p>
       ) : (
         <div className="flex flex-wrap items-center gap-1.5">
           <button type="button" className="btn-ghost px-3 text-xs" onClick={() => setExtra((x) => x + 1)}>
@@ -845,7 +853,9 @@ function SetRowView({
   // Editing a ticked row saves when you leave the field
   const onBlurEdit = () => logged && (w !== loggedWeight || r !== loggedCount) && commit();
   const selectAll = (e: React.FocusEvent<HTMLInputElement>) => e.currentTarget.select();
-  const field = "min-h-11 w-full rounded-lg border bg-bg px-1 text-center font-mono text-base text-ink placeholder:text-muted/60 read-only:opacity-70";
+  // Locked rows can't be tapped or focused (no keyboard, no focus ring): dimmed, dashed, and skipped by Tab
+  const field =
+    "min-h-11 w-full rounded-lg border bg-bg px-1 text-center font-mono text-base text-ink placeholder:text-muted/60 read-only:pointer-events-none read-only:border-dashed read-only:bg-transparent read-only:opacity-50";
 
   return (
     <div className={`grid ${cols} items-center gap-1.5`}>
@@ -859,6 +869,7 @@ function SetRowView({
           value={w}
           placeholder={locked ? "" : phW}
           readOnly={locked}
+          tabIndex={locked ? -1 : undefined}
           onChange={(e) => setW(e.target.value)}
           onFocus={selectAll}
           onBlur={onBlurEdit}
@@ -873,6 +884,7 @@ function SetRowView({
         value={r}
         placeholder={locked ? "" : phR}
         readOnly={locked}
+        tabIndex={locked ? -1 : undefined}
         onChange={(e) => setR(e.target.value.replace(/\D/g, ""))}
         onFocus={selectAll}
         onBlur={onBlurEdit}
@@ -885,7 +897,7 @@ function SetRowView({
         aria-pressed={!!logged}
         disabled={locked}
         onClick={() => (logged ? onRemove() : commit())}
-        className={`flex h-11 w-11 items-center justify-center rounded-lg border text-lg font-bold disabled:opacity-60 ${logged ? "border-good bg-good text-bg" : "border-line bg-surface text-muted"}`}
+        className={`flex h-11 w-11 items-center justify-center rounded-lg border text-lg font-bold disabled:pointer-events-none disabled:border-dashed disabled:opacity-40 ${logged ? "border-good bg-good text-bg" : "border-line bg-surface text-muted"}`}
       >
         ✓
       </button>

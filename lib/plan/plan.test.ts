@@ -590,6 +590,15 @@ test("workout sessions: auto-end after 4 hours, locked 12 hours after the end", 
   assert.equal(isLocked(ended, ms(20)), true);
   assert.equal(isLocked(undefined, ms(20)), false, "no session, no lock");
 
+  // "Unlock to edit": open for 12 h from the unlock, then locked again
+  const unlocked = { ...ended, unlocked_at: new Date(ms(20)).toISOString() };
+  assert.equal(sessionState(unlocked, ms(21)).locked, false);
+  assert.equal(sessionState(unlocked, ms(21)).unlockedUntil, ms(32));
+  assert.equal(sessionState(unlocked, ms(32) - 1).locked, false);
+  assert.equal(sessionState(unlocked, ms(32)).locked, true, "locks again 12 h after the unlock");
+  assert.equal(sessionState(unlocked, ms(32)).unlockedUntil, null);
+  assert.equal(sessionState(ended, ms(2)).unlockedUntil, null, "never unlocked");
+
   // End times are kept between the start and the 4-hour mark
   assert.deepEqual(clampEnd(T0, new Date(ms(1)).toISOString(), false), { ended_at: new Date(ms(1)).toISOString(), auto_ended: false });
   assert.deepEqual(clampEnd(T0, new Date(ms(-1)).toISOString(), false), { ended_at: T0, auto_ended: false });

@@ -25,7 +25,7 @@ export default async function Home() {
   // Read alongside the rest; awaited below because it may fail on its own (see there)
   const workoutsRead = supabase
     .from("workout_sessions")
-    .select("plan_date, started_at, ended_at, auto_ended")
+    .select("plan_date, started_at, ended_at, auto_ended, unlocked_at")
     .order("plan_date", { ascending: false })
     .limit(400)
     .returns<WorkoutSession[]>()
