@@ -45,7 +45,7 @@ export function context(o: { name: string | null; weeks: Week[]; logs: LogRow[];
   const from = addDays(o.today, -21);
   const recent = o.logs.filter((l) => l.date >= from && l.date <= o.today && !l.auto);
   const runs = recent.map((l) =>
-    [l.date, dowName(l.date), l.kind === "check" ? "morning check-in" : l.title ?? l.kind, l.km != null ? `${l.km} km` : "", l.duration_sec ? duration(l.duration_sec) : "", l.rpe ? `effort ${l.rpe}/10` : "",
+    [l.date, dowName(l.date), l.kind === "check" ? "morning check-in" : l.kind === "class" ? `${l.title ?? "fitness"} class (extra)` : l.title ?? l.kind, l.km != null ? `${l.km} km` : "", l.duration_sec ? duration(l.duration_sec) : "", l.rpe ? `effort ${l.rpe}/10` : "",
       Object.keys(l.pain ?? {}).length ? `pain ${Object.entries(l.pain).map(([k, v]) => `${k} ${v}`).join(", ")}` : "", l.notes ? `notes: "${l.notes.slice(0, 200)}"` : ""].filter(Boolean).join(" · "),
   );
   const keys = [...new Set(o.sets.filter((s) => s.date >= from).map((s) => s.exercise_key))];
@@ -55,7 +55,7 @@ export function context(o: { name: string | null; weeks: Week[]; logs: LogRow[];
   });
   const planned = o.weeks.flatMap((w) => w.days.map((d) => ({ w, d })));
   const past = planned.filter(({ d }) => d.date >= addDays(o.today, -7) && d.date < o.today);
-  const loggedDates = new Set([...o.logs.filter((l) => l.kind !== "check").map((l) => l.date), ...o.sets.map((s) => s.plan_date ?? s.date)]);
+  const loggedDates = new Set([...o.logs.filter((l) => l.kind !== "check" && l.kind !== "class").map((l) => l.date), ...o.sets.map((s) => s.plan_date ?? s.date)]);
   const coming = planned.filter(({ d }) => d.date >= o.today && d.date < addDays(o.today, 7));
   const line = ({ w, d }: { w: Week; d: Week["days"][number] }) =>
     `${d.date} ${dowName(d.date)} [${PHASE_NAMES[w.phase]}${w.cutback ? ", cutback" : ""}] ${d.skipped ? "SKIPPED" : d.blocks.map((b) => b.title).join(" + ")}${d.added ? " (extra workout the athlete added on a rest day)" : d.skippable && !d.skipped ? "" : " (can't skip)"}`;

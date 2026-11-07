@@ -13,7 +13,7 @@ import { builtinRows } from "@/lib/plan/catalog.ts";
 import { isEquipment } from "@/lib/plan/equipment.ts";
 import { aiEnabled, generateReview, type Review } from "@/lib/coach/review";
 import { canCopy, generatePlan, MIN_RACE_GAP_WEEKS, type DayCopy, type Move } from "@/lib/plan/generate.ts";
-import { GATES, REST_CHOICES, profileToSettings, type LogKind, type LogRow, type ProfileRow, type SetRow, type Unit } from "@/lib/types";
+import { GATES, REST_CHOICES, countsForDay, profileToSettings, type LogKind, type LogRow, type ProfileRow, type SetRow, type Unit } from "@/lib/types";
 import { exerciseByKey, type Load } from "@/lib/plan/exercises.ts";
 import type { Swap } from "@/lib/plan/swaps.ts";
 import { customKey, youtubeId } from "@/lib/plan/catalog.ts";
@@ -234,7 +234,7 @@ export async function setDayCopy(planDate: string, source: string | null): Promi
     if (session.data) return { ok: false, error: "That workout has started, so it stays as it is." };
     // The sheet's rules, on the plan as shown: moves place the day, other copies are what a source day holds
     const weeks = generatePlan(settings, { moves: moves.data ?? [], copies: (copies.data ?? []).filter((c) => c.planDate !== planDate) });
-    const logged = new Set([...(sets.data ?? []).map((s) => s.plan_date ?? s.date), ...(logs.data ?? []).filter((l) => l.kind !== "check" && !l.auto).map((l) => l.date)]);
+    const logged = new Set([...(sets.data ?? []).map((s) => s.plan_date ?? s.date), ...(logs.data ?? []).filter(countsForDay).map((l) => l.date)]);
     const why = canCopy(weeks, planDate, source, todayIn(safeTimeZone(profile.timezone)), logged);
     if (why) return { ok: false, error: why };
   }
@@ -245,7 +245,7 @@ export async function setDayCopy(planDate: string, source: string | null): Promi
 }
 
 /* ---------- logs ---------- */
-const KINDS: LogKind[] = ["run", "test", "strength", "walk", "check"];
+const KINDS: LogKind[] = ["run", "test", "strength", "walk", "check", "class"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** A session as typed in the Log form. `id` comes from the phone, so a retry after a dropped connection can't save it twice. */
@@ -270,13 +270,15 @@ function cleanLog(input: LogInput) {
   const kmRaw = input.km.trim();
   const km = kmRaw ? Number(kmRaw.replace(",", ".")) : null;
   if (kmRaw && (km == null || !Number.isFinite(km) || km < 0 || km > 1000)) return { error: "Distance should be a number, like 5 or 7.5." } as const;
+  if (input.kind === "class" && !input.title.trim()) return { error: "Pick a class." } as const;
+  if (input.kind === "class" && !duration_sec) return { error: "How long was the class?" } as const;
   const rpeRaw = input.rpe.trim();
   const rpe = rpeRaw ? Math.round(Number(rpeRaw)) : null;
   if (rpeRaw && (rpe == null || !Number.isFinite(rpe) || rpe < 1 || rpe > 10)) return { error: "Effort is 1 to 10." } as const;
   const pain: Record<string, number> = {};
   for (const [k, v] of Object.entries(input.pain ?? {}).slice(0, 5)) if (/^[\p{L} -]{1,30}$/u.test(k)) pain[k] = Math.max(0, Math.min(10, Math.round(Number(v) || 0)));
   return {
-    row: { date: input.date, kind: input.kind, title: input.title.trim().slice(0, 120) || null, km, duration_sec, rpe, pain, notes: input.notes.trim().slice(0, 1000) || null },
+    row: { date: input.date, kind: input.kind, title: input.title.trim().slice(0, 120) || null, km: input.kind === "class" ? null : km, duration_sec, rpe, pain, notes: input.notes.trim().slice(0, 1000) || null },
   } as const;
 }
 
@@ -301,9 +303,9 @@ export async function updateLog(id: string, patch: { kind?: LogKind; rpe?: strin
     date: cur.date,
     kind: patch.kind ?? cur.kind,
     title: cur.title ?? "",
-    // distance and time aren't edited here
+    // distance and time aren't edited here (time is passed through so a class still has one)
     km: "",
-    time: "",
+    time: cur.duration_sec ? duration(cur.duration_sec) : "",
     rpe: patch.rpe ?? (cur.rpe == null ? "" : String(cur.rpe)),
     pain: patch.pain ?? cur.pain,
     notes: patch.notes ?? cur.notes ?? "",

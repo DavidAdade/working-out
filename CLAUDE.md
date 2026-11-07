@@ -13,6 +13,7 @@ Next.js 15 (App Router, Server Actions) + Supabase (Postgres, Auth, RLS) + Tailw
   - `lib/plan/catalog.ts`: joins the four into rows shaped like the Supabase `exercises` table
   - `scripts/sync-exercises.ts`: upserts those rows into Supabase. Runs before every `npm run build` (so every Vercel deploy) when `SUPABASE_SERVICE_ROLE_KEY` is set
   - Custom exercises people add in the Library tab are rows with `owner = auth.uid()`; the sync never touches them
+- **Classes** (yoga, spin…): `logs.kind = 'class'`, the activity in `title` (migration 0014), logged from Today's "Log a class" sheet (`components/ClassSheet.tsx`, through the Dock) or the Log tab. Always extra work: `countsForDay` in `lib/types.ts` keeps them out of "day done" checks, and `classU` in `accountability.ts` scores them by time and effort as extra work.
 - **Set logs** (`set_logs`) store `exercise_key`, never template text, plus `plan_date` when a session is done early. Progression logic (stalls, bests, suggested weights) is in `lib/plan/progress.ts`.
 - **Every rule is per profile.** Nothing may depend on one person's dates: anchor to the profile's start, time trial and race, and add a case to `PROFILES` in `plan.test.ts` when adding a rule.
   - `paces.ts`: training paces from the latest 5K/10K test (`fitness5k`), goal pace that finishes under the goal

@@ -16,6 +16,7 @@ import { useDates } from "./DateLabels";
 import WeekCard, { loggedDates } from "./WeekCard";
 import { MoveSheet, moveNote, moveTargets, type OnMoves } from "./DayCard";
 import { ScoreLink, type ScoreInputs } from "./AccountabilityPanel";
+import { ClassLines, ClassSheet } from "./ClassSheet";
 import { CopiedLine, CopySheet, copyable, restDates, restDay, useCopy } from "./CopySheet";
 
 interface Props {
@@ -39,7 +40,7 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
   const day = dayForDate(weeks, today);
   const next = weeks.flatMap((w) => w.days).find((d) => d.date > today && !d.skipped && d.blocks.length);
   const week = weekForDate(weeks, today);
-  const loggedToday = logs.some((l) => l.date === today && l.kind !== "check");
+  const loggedToday = logs.some((l) => l.date === today && l.kind !== "check" && l.kind !== "class");
   const dates = useDates();
   const { sets } = useSets();
   const gatesPassed = GATES.filter((g) => profile.gates?.[g.key]).length;
@@ -55,6 +56,7 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
   // A rest day: repeat any workout from the plan today, as extra work
   const canAddToday = !!copyApi && !day && !!week && restDates(week, today, logged).includes(today);
   const [adding, setAdding] = useState(false);
+  const [classing, setClassing] = useState(false);
   const canMove = !!week && !!day && !day.fixed && !logged.has(today) && moveTargets(week, today, today, logged).some((t) => t.moves);
   // The most recent workout this week that wasn't done or skipped
   const missed = week?.days.filter((d) => d.date < today && !d.skipped && !d.fixed && !d.added && d.blocks.length && !logged.has(d.date)).at(-1);
@@ -67,7 +69,7 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
         settings,
         weeks,
         logs,
-        activeDates: new Set([...logs.filter((l) => l.kind !== "check").map((l) => l.date), ...sets.map(planDayOf)]),
+        activeDates: new Set([...logs.filter((l) => l.kind !== "check" && l.kind !== "class").map((l) => l.date), ...sets.map(planDayOf)]),
         painAreas: profile.pain_areas,
         warnings,
         gatesPassed,
@@ -90,6 +92,8 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
       <OnTrackCard track={track}>{score && <ScoreLink inputs={score.inputs} onOpen={score.open} />}</OnTrackCard>
 
       {profile.pain_areas.length > 0 && !logs.some((l) => l.date === today && l.kind === "check") && <CheckInCard areas={profile.pain_areas} today={today} />}
+
+      {classing && <ClassSheet date={today} today={today} onClose={() => setClassing(false)} />}
 
       {week && missed && catchMoves && <CatchUpCard week={week} missed={missed.date} day={day && !day.skipped ? day : undefined} moves={catchMoves} today={today} onMoves={onMoves} onSkip={onSkip} onLog={onLog} />}
 
@@ -120,10 +124,14 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
               }}
             />
           )}
+          <ClassLines logs={logs} date={today} />
           <div className="flex flex-wrap items-center gap-2">
             {loggedToday && <span className="font-bold text-good">✓ Logged</span>}
             <button className="btn" onClick={() => onLog(today)}>
               {loggedToday ? "Log another" : "Log this session"}
+            </button>
+            <button className="btn-ghost" onClick={() => setClassing(true)}>
+              Log a class
             </button>
           </div>
         </article>
@@ -150,7 +158,11 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
                 Start {dates.hide ? "the next session" : `${dowName(next!.date)}'s session`} now
               </button>
             )}
+            <button className="btn-ghost" onClick={() => setClassing(true)}>
+              Log a class
+            </button>
           </div>
+          <ClassLines logs={logs} date={today} />
           {adding && <CopySheet day={restDay(today)} today={today} logged={logged} onClose={() => setAdding(false)} />}
           {early && next && (
             <div className="border-t border-line pt-2.5">

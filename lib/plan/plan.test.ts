@@ -19,7 +19,8 @@ import { planToIcs } from "./ics.ts";
 import { addDays, daysBetween } from "./dates.ts";
 import { clampEnd, completion, dayExercises, elapsed, heldSeconds, holdPhases, isLocked, nextInRound, sessionDate, sessionDateFor, sessionState, SWITCH_SEC, type WorkoutSession } from "./workout.ts";
 import { applySupersets } from "./supersets.ts";
-import { accountability, runCredit, type AcctLog, type AcctSet, type AccountabilityInput } from "./accountability.ts";
+import { countsForDay } from "../types.ts";
+import { accountability, classU, runCredit, type AcctLog, type AcctSet, type AccountabilityInput } from "./accountability.ts";
 
 const david: PlanSettings = {
   startDate: "2026-11-16",
@@ -1405,5 +1406,45 @@ test("accountability: an added workout counts as extra work, never as a planned 
     const skippedIt = acct(added, sun, logPlan(plain, a.start, sun), { horizon: a.start });
     assert.equal(skippedIt.parts.a, without.parts.a, name);
     assert.ok(!skippedIt.feed.some((f) => f.date === sat && f.kind === "missed"), name);
+  }
+});
+
+const yoga = (date: string, min = 45, rpe: number | null = null): AcctLog => ({ date, kind: "class", title: "Yoga", km: null, duration_sec: min * 60, pain: {}, rpe });
+
+test("classes: extra work by time and effort, never a planned day, every profile", () => {
+  assert.equal(classU({ duration_sec: 45 * 60, rpe: null }), 20);
+  assert.equal(classU({ duration_sec: 90 * 60, rpe: 8 }), 24, "capped at 45 min, hard ×1.2");
+  assert.ok(Math.abs(classU({ duration_sec: 30 * 60, rpe: 3 }) - 8) < 1e-9, "two thirds, easy ×0.6");
+  assert.ok(countsForDay({ kind: "run" }) && !countsForDay({ kind: "class" }) && !countsForDay({ kind: "check" }) && !countsForDay({ kind: "walk", auto: true }));
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const weeks = generatePlan(p);
+    const builds = weeks.filter((w) => w.phase === "build" && !w.cutback);
+    const a = builds.at(-1)!;
+    const sat = at(a, 5);
+    const sun = at(a, 6);
+    const done = logPlan(weeks, a.start, sun);
+    const base = acct(weeks, sun, done, { horizon: a.start });
+    // A class on a rest day of a kept week: extra, adherence unchanged
+    const plus = acct(weeks, sun, merge(done, { sets: [], logs: [yoga(sat)] }), { horizon: a.start });
+    assert.equal(plus.parts.a, base.parts.a, name);
+    assert.ok(plus.parts.e > base.parts.e, `${name}: a class adds extra`);
+    const line = plus.feed.find((f) => f.kind === "extra_workout" && f.date === sat);
+    assert.equal(line?.title, "Yoga 45 min");
+    assert.equal(line?.delta, "counts extra");
+    // A class on a planned day doesn't do that day's workout
+    const tue = at(a, 1);
+    const onlyClass = { sets: done.sets.filter((s) => s.date !== tue), logs: [...done.logs.filter((l) => l.date !== tue), yoga(tue)] };
+    const r = acct(weeks, sun, onlyClass, { horizon: a.start });
+    assert.ok(r.feed.some((f) => f.kind === "missed" && f.date === tue), `${name}: Tuesday is still missed`);
+    // ...and doesn't stand in for the missed run on another day (runs can, classes can't)
+    assert.ok(!r.feed.some((f) => f.kind === "done_other_day"), name);
+    // In a cutback week it's logged but not counted
+    const cut = weeks.find((w) => w.cutback && w.phase === "build");
+    if (cut) {
+      const cs = at(cut, 5);
+      const cdone = logPlan(weeks, cut.start, at(cut, 6));
+      const c = acct(weeks, at(cut, 6), merge(cdone, { sets: [], logs: [yoga(cs)] }), { horizon: cut.start });
+      assert.equal(c.feed.find((f) => f.kind === "extra_workout" && f.date === cs)?.delta, "not counted", name);
+    }
   }
 });

@@ -45,8 +45,14 @@ export interface SetRow {
   plan_date: string | null;
 }
 
-/** "check" is a morning check-in: pain scores only */
-export type LogKind = "run" | "test" | "strength" | "walk" | "check";
+/** "check" is a morning check-in: pain scores only. "class" is a fitness class (title = the activity): always extra work */
+export type LogKind = "run" | "test" | "strength" | "walk" | "check" | "class";
+
+/** Quick picks in the "Log a class" sheet; anything else is typed in as "Other" */
+export const CLASS_ACTIVITIES = ["Yoga", "Pilates", "Spin", "HIIT", "Swim", "Barre", "Boxing"] as const;
+
+/** Does this log count toward its day's planned workout? Check-ins, auto logs and classes never do */
+export const countsForDay = (l: { kind: string; auto?: boolean }) => l.kind !== "check" && l.kind !== "class" && !l.auto;
 
 export interface LogRow {
   id: string;

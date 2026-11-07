@@ -32,7 +32,7 @@ export default function ProgressPanel({ logs, settings, painAreas, today }: { lo
   const hi = Math.ceil(Math.max(...pts.map((p) => p.sec)) / 60) + 2;
 
   const weekly = new Map<string, number>();
-  for (const l of asc) if (l.km && l.kind !== "strength") weekly.set(mondayOf(l.date), (weekly.get(mondayOf(l.date)) ?? 0) + l.km);
+  for (const l of asc) if (l.km && l.kind !== "strength" && l.kind !== "class") weekly.set(mondayOf(l.date), (weekly.get(mondayOf(l.date)) ?? 0) + l.km);
   const wks = [...weekly.keys()].sort().slice(-12);
 
   const painLogs = asc.filter((l) => !l.auto && Object.keys(l.pain ?? {}).length > 0).slice(-24);

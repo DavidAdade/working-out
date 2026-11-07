@@ -36,6 +36,8 @@ export interface AcctLog {
   duration_sec: number | null;
   pain: Record<string, number>;
   auto?: boolean;
+  /** Effort 1–10: sizes a class's extra credit */
+  rpe?: number | null;
 }
 
 export interface AcctSkip {
@@ -203,6 +205,17 @@ const STREAK_WEEKS = 12;
 const LIFT = new Set<Block["kind"]>(["legs", "upper", "abs", "mobility"]);
 const isRun = (b: Block) => b.kind === "run" || b.kind === "test";
 const isWalk = (b: Block) => b.kind === "walk" || b.kind === "gate";
+/**
+ * Extra units for a class: an easy run's worth (RUN_U) for 45 minutes at moderate effort, scaled by time (up to
+ * 45 min) and effort (easy 0.6, moderate 1, hard 1.2; unknown counts as moderate). Still under the day's extra cap.
+ */
+export const CLASS_FULL_MIN = 45;
+export function classU(l: { duration_sec: number | null; rpe?: number | null }): number {
+  const min = l.duration_sec ? l.duration_sec / 60 : CLASS_FULL_MIN;
+  const effort = l.rpe == null ? 1 : l.rpe <= 4 ? 0.6 : l.rpe >= 7 ? 1.2 : 1;
+  return RUN_U * Math.min(1, min / CLASS_FULL_MIN) * effort;
+}
+
 const NO_EXTRA: Phase[] = ["recovery", "return", "tt", "taper", "race"];
 const counts = (s: SetLike) => (s.reps ?? 0) >= 1 || (s.duration_sec ?? 0) >= 1;
 const planDay = (s: AcctSet) => s.plan_date ?? s.date;
@@ -350,7 +363,10 @@ export function accountability(input: AccountabilityInput): Accountability {
     setsByDay.set(planDay(s), m);
   }
   const logsByDay = new Map<ISODate, AcctLog[]>();
-  for (const l of logs) if (l.kind !== "check") push(logsByDay, l.date, l);
+  // Classes (yoga, spin...) are always extra work: they never make a planned day active or stand in for a run
+  const classesByDay = new Map<ISODate, AcctLog[]>();
+  for (const l of logs) if (l.kind === "class") push(classesByDay, l.date, l);
+  for (const l of logs) if (l.kind !== "check" && l.kind !== "class") push(logsByDay, l.date, l);
   const runLogs = (date: ISODate) => (logsByDay.get(date) ?? []).filter((l) => !l.auto && (l.kind === "run" || l.kind === "test"));
   const skipMade = new Map((input.skips ?? []).map((s) => [s.date, s.createdAt ? s.createdAt.slice(0, 10) : null]));
 
@@ -446,6 +462,7 @@ export function accountability(input: AccountabilityInput): Accountability {
     }
     // Walks logged on a day without one are extra
     if (!t.blocks.some(isWalk)) t.extraLogs.push(...dayLogs.filter((l) => !l.auto && l.kind === "walk"));
+    t.extraLogs.push(...(classesByDay.get(date) ?? []));
   }
 
   /* pass 2: a run logged on another day of the same week stands for a missed run (logs have no plan date) */
@@ -517,6 +534,7 @@ export function accountability(input: AccountabilityInput): Accountability {
     return null;
   };
   const unplannedU = (l: AcctLog) => {
+    if (l.kind === "class") return classU(l);
     const min = l.duration_sec ? l.duration_sec / 60 : l.km ? l.km * 7 : 30;
     return RUN_U * Math.min(1, min / 30);
   };
@@ -751,7 +769,7 @@ function feedFor(t: Tally, noExtra: string | null, name: (k: string) => string, 
       kind: "extra_workout",
       date: t.date,
       tone: noExtra ? "neutral" : "good",
-      title: `Extra ${l.kind === "walk" ? "walk" : "run"}${l.km ? ` ${fmtNum(l.km)} km` : min ? ` ${min} min` : ""}`,
+      title: l.kind === "class" ? `${l.title || "Class"}${min ? ` ${min} min` : ""}` : `Extra ${l.kind === "walk" ? "walk" : "run"}${l.km ? ` ${fmtNum(l.km)} km` : min ? ` ${min} min` : ""}`,
       detail: noExtra ?? undefined,
       delta: noExtra ? "not counted" : "counts extra",
     });

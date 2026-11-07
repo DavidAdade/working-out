@@ -2,14 +2,14 @@
 
 import { useState } from "react";
 import { PHASE_NAMES, weekLongRunKm, type Week } from "@/lib/plan/generate.ts";
-import type { LogRow, SetRow } from "@/lib/types";
+import { countsForDay, type LogRow, type SetRow } from "@/lib/types";
 import DayCard, { RestRow, type OnMoves } from "./DayCard";
 import { restDates, useCopy } from "./CopySheet";
 import { useDates } from "./DateLabels";
 import { planDayOf, useSets } from "./Sets";
 
 /** Dates with a session or sets logged against them (sets done early count for the plan day). */
-export const loggedDates = (logs: LogRow[], sets: SetRow[]) => new Set([...logs.filter((l) => l.kind !== "check" && !l.auto).map((l) => l.date), ...sets.map(planDayOf)]);
+export const loggedDates = (logs: LogRow[], sets: SetRow[]) => new Set([...logs.filter(countsForDay).map((l) => l.date), ...sets.map(planDayOf)]);
 
 export default function WeekCard({
   week,

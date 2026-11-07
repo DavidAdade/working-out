@@ -79,6 +79,7 @@ export default function LogPanel({ weeks, logs, today, painAreas, initialDate }:
               <option value="test">Test / time trial</option>
               <option value="strength">Strength</option>
               <option value="walk">Walk</option>
+              <option value="class">Class (yoga, spin…)</option>
             </select>
           </Field>
           <Field label="Workout" id="title" wide>
@@ -162,7 +163,7 @@ function Entry({ log, painAreas }: { log: LogRow; painAreas: string[] }) {
   const [pending, startTransition] = useTransition();
   const { notify } = useDock();
   const p = log.duration_sec && log.km ? `${pace(log.duration_sec / log.km)}/km` : null;
-  const kind = log.kind === "strength" ? "legs" : log.kind === "check" ? "gate" : log.kind;
+  const kind = log.kind === "strength" ? "legs" : log.kind === "check" ? "gate" : log.kind === "class" ? "mobility" : log.kind;
   const dates = useDates();
   // Imported runs arrive without the things only you know
   const needsDetail = log.source === "health" && log.rpe == null && !Object.keys(log.pain ?? {}).length;
@@ -171,7 +172,7 @@ function Entry({ log, painAreas }: { log: LogRow; painAreas: string[] }) {
     <div className="grid grid-cols-[1fr_auto] gap-x-2.5 gap-y-1 border-t border-line py-2.5 first:border-t-0">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-1.5 font-semibold">
-          {log.title || (log.kind === "check" ? "Morning check-in" : log.kind)} <Chip kind={kind} label={log.kind === "check" ? "Check-in" : log.source === "health" ? "Health" : undefined} />
+          {log.title || (log.kind === "check" ? "Morning check-in" : log.kind)} <Chip kind={kind} label={log.kind === "check" ? "Check-in" : log.kind === "class" ? "Class" : log.source === "health" ? "Health" : undefined} />
           {log.queued && <span className="rounded bg-warn/15 px-1.5 py-px text-xs font-semibold text-warn">Waiting to sync</span>}
         </div>
         <div className="text-sm text-muted">
