@@ -3,17 +3,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Block, BlockKind } from "@/lib/plan/templates.ts";
 import { dayTitle, type Day } from "@/lib/plan/generate.ts";
-import { daysBetween, dowName } from "@/lib/plan/dates.ts";
+import { addDays, daysBetween, dowName } from "@/lib/plan/dates.ts";
 import { parseLine } from "@/lib/plan/exercises.ts";
-import { completion, dayExercises, isLocked, LIFT_KINDS, nextInRound, sessionDate, type DayExercise } from "@/lib/plan/workout.ts";
+import { addedKeys, addedTarget, completion, dayExercises, finishesDay, isLocked, LIFT_KINDS, nextInRound, sessionDate, type DayExercise } from "@/lib/plan/workout.ts";
 import { groupOf, loggable } from "@/lib/plan/supersets.ts";
 import { asExercise } from "@/lib/plan/catalog.ts";
 import { itemKey, itemLine } from "@/lib/plan/swaps.ts";
 import type { SetRow } from "@/lib/types";
+import type { Exercise, Target } from "@/lib/plan/exercises.ts";
 import { ExerciseRow, fmtSet, planDayOf, restFor, useSets, type SupersetFlow } from "./Sets";
 import { SwapSheet, useSwap } from "./SwapSheet";
 import { useSuperset } from "./Superset";
 import { useWorkout, WorkoutBar } from "./Workout";
+import { takeGoto, useGotoListener, type Goto } from "./RestTimer";
 
 const CHIP: Record<BlockKind, { label: string; cls: string }> = {
   run: { label: "Run", cls: "bg-accent text-on-accent" },
@@ -149,6 +151,35 @@ export function DayBlocks({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // The rest timer's "Next set": open that exercise and bring its next set into view (from another tab or page too)
+  const tab: Goto["where"] = logOpen ? "today" : "plan";
+  const gotoFor = (id: string): Goto | undefined => (logDate ? { date: day.date, row: id, where: tab } : undefined);
+  const openAt = (row: string) => {
+    if (!order.some((x) => x.id === row) && !added.some((k) => `add-${k}` === row)) return;
+    setOpenId(row);
+    // Once the row has opened: its first unlogged set, centred, with a brief highlight
+    setTimeout(() => {
+      const anchor = document.getElementById(`ex-${day.date}-${row}`);
+      const set = anchor?.querySelector<HTMLElement>("[data-next-set]");
+      const el = set ?? anchor;
+      if (!el) return;
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+      if (set) {
+        set.classList.add("rounded-lg", "ring-2", "ring-accent");
+        setTimeout(() => set.classList.remove("ring-2", "ring-accent"), 1600);
+      }
+    }, 120);
+  };
+  useEffect(() => {
+    const g = takeGoto(day.date, tab);
+    if (g) openAt(g.row);
+    // Once, on landing here from the timer
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useGotoListener((g) => g.date === day.date && takeGoto(day.date, tab) && openAt(g.row));
+  // A new set that ticks off the day's last planned set starts no rest timer
+  const lastSet = useCallback((key: string) => finishesDay(day, sets, key), [day, sets]);
+
   // Sets on this plan day under an exercise the day doesn't show (swapped out and back, a deleted custom
   // exercise, logged from the Library): never lost, listed at the end. A swapped row shows its own original's.
   const stray = useMemo(() => {
@@ -159,12 +190,66 @@ export function DayBlocks({
     return [...byKey].map(([key, rows]) => ({ key, rows: rows.sort((a, b) => a.set_no - b.set_no) }));
   }, [order, day.blocks, day.date, sets]);
 
+  // Exercises added on top of the workout: picked here (kept on this phone until their first set), then anything
+  // else logged on this day that it doesn't show. Logged like the rest, counted as extra work.
+  const pickedKey = `wf-added:${day.date}`;
+  const [picked, setPicked] = useState<string[]>([]);
+  useEffect(() => {
+    try {
+      const v = JSON.parse(localStorage.getItem(pickedKey) ?? "[]");
+      if (Array.isArray(v)) setPicked(v.filter((k): k is string => typeof k === "string"));
+      // Picks for days more than two weeks back are done with: their sets carry them now
+      const old = addDays(today, -14);
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const k = localStorage.key(i);
+        if (k?.startsWith("wf-added:") && k.slice(9) < old) localStorage.removeItem(k);
+      }
+    } catch {}
+  }, [pickedKey, today]);
+  const savePicked = (next: string[]) => {
+    setPicked(next);
+    try {
+      if (next.length) localStorage.setItem(pickedKey, JSON.stringify(next));
+      else localStorage.removeItem(pickedKey);
+    } catch {}
+  };
+  const added = useMemo(() => (logDate ? addedKeys(day, sets, picked) : []), [logDate, day, sets, picked]);
+  const addedExercise = (key: string): { exercise: Exercise; target: Target } => {
+    const e = info(key);
+    if (e) return { exercise: asExercise(e), target: addedTarget(e) };
+    // A deleted custom exercise that still has sets here: its name and kind from what was logged
+    const rows = sets.filter((s) => planDayOf(s) === day.date && s.exercise_key === key);
+    const load = rows.some((s) => s.duration_sec != null) ? "time" : rows.some((s) => s.weight != null) ? "weight" : "bodyweight";
+    return { exercise: { key, name: nameOf(key), load, lines: [] }, target: addedTarget({ load, lines: [] }) };
+  };
+  const [addingEx, setAddingEx] = useState(false);
+  const canAddEx = !!logDate && !locked && day.blocks.length > 0;
+
   const where = day.date === today ? "today" : `on ${dowName(day.date)}`;
   const closeSwap = (focusId?: string) => {
     setSwapping(null);
     if (focusId) requestAnimationFrame(() => document.getElementById(`swap-ex-${day.date}-${focusId}`)?.focus({ preventScroll: true }));
   };
   const sheet = (() => {
+    if (addingEx)
+      return (
+        <SwapSheet
+          original={null}
+          current={null}
+          target={null}
+          light={false}
+          inDay={new Set([...order.map((x) => x.key), ...added])}
+          logged={[]}
+          onClose={() => setAddingEx(false)}
+          onPick={(to) => {
+            setAddingEx(false);
+            savePicked([...picked.filter((k) => k !== to.key), to.key]);
+            const id = `add-${to.key}`;
+            setOpenId(id);
+            scrollToRow(`ex-${day.date}-${id}`);
+          }}
+        />
+      );
     if (!swapping || !swapApi) return null;
     const b = day.blocks[swapping.bi];
     const p = b && parseLine(b.items[swapping.ii]);
@@ -284,6 +369,8 @@ export function DayBlocks({
                       }
                       badge={pos ? `${pos.letter}${pos.pos}` : undefined}
                       superset={flowFor(id)}
+                      goto={gotoFor(id)}
+                      finishesDay={lastSet}
                       onLink={canLink ? () => relink(b, ii, true) : undefined}
                       // The last exercise leaves by the link above it; the others by their own
                       onUnlink={group && supersetApi && !locked ? () => relink(b, ii === group[group.length - 1] ? ii - 1 : ii, false) : undefined}
@@ -297,7 +384,50 @@ export function DayBlocks({
           <SimpleBlock key={b.title + bi} block={b} />
         ),
       )}
-      {stray.length > 0 && (
+      {logDate && (added.length > 0 || canAddEx) && (
+        <div className="flex flex-col">
+          {added.length > 0 && (
+            <>
+              <div className="flex flex-wrap items-center gap-1.5 font-semibold">
+                Added <span className="text-xs font-normal text-muted">extra work</span>
+              </div>
+              <ul className="flex flex-col divide-y divide-line">
+                {added.map((key) => {
+                  const id = `add-${key}`;
+                  const a = addedExercise(key);
+                  const hasSets = sets.some((s) => planDayOf(s) === day.date && s.exercise_key === key);
+                  return (
+                    <ExerciseRow
+                      key={id}
+                      anchorId={`ex-${day.date}-${id}`}
+                      line={a.exercise.name}
+                      added={a}
+                      logDate={logDate}
+                      planDate={day.date}
+                      light={false}
+                      dayTitle={title}
+                      open={openId === id}
+                      onToggle={() => setOpenId((cur) => (cur === id ? null : id))}
+                      locked={locked}
+                      session={live ? sDate : null}
+                      onComplete={() => advanceFrom(id)}
+                      goto={gotoFor(id)}
+                      finishesDay={lastSet}
+                      onRemoveAdded={!hasSets && !locked ? () => savePicked(picked.filter((k) => k !== key)) : undefined}
+                    />
+                  );
+                })}
+              </ul>
+            </>
+          )}
+          {canAddEx && (
+            <button type="button" className="btn-ghost mt-1 self-start" onClick={() => setAddingEx(true)}>
+              + Add exercise
+            </button>
+          )}
+        </div>
+      )}
+      {!logDate && stray.length > 0 && (
         <div className="flex flex-col">
           <div className="label">Also logged</div>
           <ul className="flex flex-col divide-y divide-line">

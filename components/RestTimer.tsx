@@ -7,18 +7,28 @@
 // (iOS stops a home-screen app's timers there). The push is cancelled if the app is open to chime itself.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { chime, prime, release, tick } from "@/lib/audio";
+
+/** Where the next set is: the plan day (as shown), the exercise row on it, and which tab logged it */
+export interface Goto {
+  date: string;
+  row: string;
+  where: "today" | "plan";
+}
 
 interface Rest {
   /** Epoch ms */
   endsAt: number;
   total: number;
   label: string;
+  /** Tapping the timer opens this exercise at its next set */
+  goto?: Goto;
 }
 
 interface RestApi {
   /** `sec` is the exercise's own rest; the person's chosen length in Settings wins over it */
-  start: (sec: number, label: string) => void;
+  start: (sec: number, label: string, goto?: Goto) => void;
   stop: () => void;
   enabled: boolean;
 }
@@ -38,13 +48,64 @@ export const useRest = () => {
   return c;
 };
 
+/* ---------- "Go": back to the set you're on, from any page ---------- */
+
+const GOTO_KEY = "wf-goto";
+const GOTO_EVENT = "wf-goto";
+/** A jump nobody picked up (the day wasn't on screen) is dropped after this long */
+const GOTO_TTL_MS = 30_000;
+
+const isGoto = (g: unknown): g is Goto =>
+  !!g && typeof (g as Goto).date === "string" && typeof (g as Goto).row === "string" && ((g as Goto).where === "today" || (g as Goto).where === "plan");
+
+/** Ask whichever page shows that day to open the exercise. Kept in sessionStorage so it survives a page change. */
+function requestGoto(g: Goto) {
+  try {
+    sessionStorage.setItem(GOTO_KEY, JSON.stringify({ ...g, at: Date.now() }));
+  } catch {}
+  window.dispatchEvent(new CustomEvent<Goto>(GOTO_EVENT, { detail: g }));
+}
+
+/** The jump waiting to be picked up, if any (without taking it) */
+export function peekGoto(): Goto | null {
+  try {
+    const v: unknown = JSON.parse(sessionStorage.getItem(GOTO_KEY) ?? "null");
+    const at = (v as { at?: unknown } | null)?.at;
+    return isGoto(v) && typeof at === "number" && Date.now() - at < GOTO_TTL_MS ? { date: v.date, row: v.row, where: v.where } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Take the waiting jump if it's for `date` on this tab (so only the day it's for opens it, once) */
+export function takeGoto(date: string, where: Goto["where"]): Goto | null {
+  const g = peekGoto();
+  if (!g || g.date !== date || g.where !== where) return null;
+  try {
+    sessionStorage.removeItem(GOTO_KEY);
+  } catch {}
+  return g;
+}
+
+/** Runs `on` for every jump asked for while mounted */
+export function useGotoListener(on: (g: Goto) => void) {
+  const ref = useRef(on);
+  ref.current = on;
+  useEffect(() => {
+    const h = (e: Event) => isGoto((e as CustomEvent).detail) && ref.current((e as CustomEvent<Goto>).detail);
+    window.addEventListener(GOTO_EVENT, h);
+    return () => window.removeEventListener(GOTO_EVENT, h);
+  }, []);
+}
+
 /** Where this phone remembers that rest pushes are on (subscriptions are per device) */
 export const restPushKey = (userId: string) => `sub30-rest-push:${userId}`;
 
 const read = (key: string): Rest | null => {
   try {
     const v = JSON.parse(localStorage.getItem(key) ?? "null");
-    return v && typeof v.endsAt === "number" && typeof v.total === "number" && typeof v.label === "string" ? v : null;
+    if (!(v && typeof v.endsAt === "number" && typeof v.total === "number" && typeof v.label === "string")) return null;
+    return isGoto(v.goto) ? v : { endsAt: v.endsAt, total: v.total, label: v.label };
   } catch {
     return null;
   }
@@ -130,10 +191,10 @@ export function RestTimerProvider({
   }, [key, save]);
 
   const start = useCallback(
-    (sec: number, label: string) => {
+    (sec: number, label: string, goto?: Goto) => {
       if (!enabled) return;
       const total = seconds ?? sec;
-      const t = { endsAt: Date.now() + total * 1000, total, label };
+      const t: Rest = { endsAt: Date.now() + total * 1000, total, label, ...(goto ? { goto } : {}) };
       save(t);
       // In the tap, so the end chime is allowed to play later
       prime(true);
@@ -223,6 +284,8 @@ const ago = (sec: number) => (sec < 60 ? `${sec}s` : `${Math.round(sec / 60)} mi
 export function RestTimerView() {
   const s = useContext(StateCtx);
   const timer = s?.timer ?? null;
+  const router = useRouter();
+  const path = usePathname();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!timer) return;
@@ -232,6 +295,22 @@ export function RestTimerView() {
   }, [timer]);
   if (!s || !timer) return null;
   const left = Math.ceil((timer.endsAt - now) / 1000);
+  const goto = timer.goto;
+  // Back to the exercise at its next set, from any tab or page. Once rest is over this also clears the timer.
+  const go = () => {
+    if (!goto) return;
+    if (left <= 0) s.stop();
+    requestGoto(goto);
+    if (path !== "/") router.push("/");
+  };
+  const clock = (
+    <>
+      <div className="font-display text-2xl font-bold leading-none tabular-nums">{left > 0 ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` : "Go"}</div>
+      <div className={`truncate text-xs ${left <= 0 ? "" : "text-muted"}`}>
+        {left > 0 ? `Rest · ${timer.label}` : left > -10 ? "Rest over. Next set." : `Rest ended ${ago(-left)} ago. Next set.`}
+      </div>
+    </>
+  );
 
   return (
     <div
@@ -239,12 +318,13 @@ export function RestTimerView() {
       aria-live="off"
       className={`pointer-events-auto flex items-center gap-2 rounded-lg border px-3 py-1.5 shadow-lg ${left <= 0 ? "border-good bg-good text-bg" : "border-ink bg-surface"}`}
     >
-      <div className="min-w-0 flex-1">
-        <div className="font-display text-2xl font-bold leading-none tabular-nums">{left > 0 ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}` : "Go"}</div>
-        <div className={`truncate text-xs ${left <= 0 ? "" : "text-muted"}`}>
-          {left > 0 ? `Rest · ${timer.label}` : left > -10 ? "Rest over. Next set." : `Rest ended ${ago(-left)} ago. Next set.`}
-        </div>
-      </div>
+      {goto ? (
+        <button type="button" onClick={go} className="min-h-11 min-w-0 flex-1 text-left" aria-label={left > 0 ? `Rest, ${timer.label}. Open the next set` : "Rest over. Open the next set"}>
+          {clock}
+        </button>
+      ) : (
+        <div className="min-w-0 flex-1">{clock}</div>
+      )}
       {left > 0 && (
         <>
           <button type="button" className="btn-ghost px-2.5" onClick={() => s.adjust(-15)} aria-label="15 seconds less">
@@ -255,9 +335,15 @@ export function RestTimerView() {
           </button>
         </>
       )}
-      <button type="button" className={`btn-ghost px-2.5 ${left <= 0 ? "border-bg text-bg" : ""}`} onClick={s.stop}>
-        {left > 0 ? "Skip" : "OK"}
-      </button>
+      {left <= 0 && goto ? (
+        <button type="button" className="btn-ghost border-bg px-3 font-semibold text-bg" onClick={go}>
+          Next set ›
+        </button>
+      ) : (
+        <button type="button" className={`btn-ghost px-2.5 ${left <= 0 ? "border-bg text-bg" : ""}`} onClick={s.stop}>
+          {left > 0 ? "Skip" : "OK"}
+        </button>
+      )}
     </div>
   );
 }

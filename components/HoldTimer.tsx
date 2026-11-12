@@ -5,8 +5,8 @@
 // "Each side" holds run both sides with a short switch between, and log one side's time.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { chime, prime, release as release_audio } from "@/lib/audio";
-import { heldSeconds, holdPhases, SWITCH_SEC, type HoldPhase } from "@/lib/plan/workout.ts";
+import { chime, prime, release as release_audio, tick } from "@/lib/audio";
+import { heldSeconds, holdPhases, READY_SEC, SWITCH_SEC, withReady, type HoldPhase } from "@/lib/plan/workout.ts";
 
 const storeKey = (key: string) => `wf-hold:${key}`;
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
@@ -64,7 +64,8 @@ export default function HoldTimer({
     remember(len);
     // Opened on the tap so the side-switch and finish chimes can play (over music, never instead of it)
     prime(true);
-    const phases = holdPhases(len, each);
+    // A 5-second "Get ready" first, so getting into position doesn't cut into the hold
+    const phases = withReady(holdPhases(len, each));
     setNow(Date.now());
     setRun({ phases, index: 0, phaseEnd: Date.now() + phases[0].sec * 1000 });
     // Keep the screen on while holding, like the rest timer
@@ -90,6 +91,20 @@ export default function HoldTimer({
     const t = setInterval(() => setNow(Date.now()), 200);
     return () => clearInterval(t);
   }, [run]);
+
+  // A tick for each second of the "Get ready" countdown; the chime at zero marks the start
+  const lastTick = useRef<number | null>(null);
+  useEffect(() => {
+    if (!run || run.phases[run.index].label !== "Get ready") {
+      lastTick.current = null;
+      return;
+    }
+    const left = Math.ceil((run.phaseEnd - now) / 1000);
+    if (left > 0 && left !== lastTick.current) {
+      if (lastTick.current !== null) tick();
+      lastTick.current = left;
+    }
+  }, [now, run]);
 
   // Next phase, or done, when a phase runs out
   useEffect(() => {
@@ -135,7 +150,9 @@ export default function HoldTimer({
       <button type="button" className="btn-ghost px-3" onClick={start}>
         ▶ Start set {setNo}
       </button>
-      {each && <span className="text-xs text-muted">Both sides, {SWITCH_SEC}s to switch</span>}
+      <span className="text-xs text-muted">
+        {READY_SEC}s to get ready{each ? `, both sides, ${SWITCH_SEC}s to switch` : ""}
+      </span>
     </div>
   );
 }

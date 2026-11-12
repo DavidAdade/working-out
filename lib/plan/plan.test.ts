@@ -17,7 +17,7 @@ import { applySwaps, itemKey, itemLine, rankForSwap, searchScore, swapTarget, sw
 import { onTrack, wins } from "./ontrack.ts";
 import { planToIcs } from "./ics.ts";
 import { addDays, daysBetween } from "./dates.ts";
-import { clampEnd, completion, dayExercises, elapsed, heldSeconds, holdPhases, isLocked, nextInRound, sessionDate, sessionDateFor, sessionState, SWITCH_SEC, type WorkoutSession } from "./workout.ts";
+import { addedKeys, addedTarget, clampEnd, completion, dayExercises, elapsed, finishesDay, heldSeconds, holdPhases, isLocked, nextInRound, READY_SEC, sessionDate, sessionDateFor, sessionState, SWITCH_SEC, withReady, type WorkoutSession } from "./workout.ts";
 import { applySupersets } from "./supersets.ts";
 import { countsForDay } from "../types.ts";
 import { accountability, classU, runCredit, type AcctLog, type AcctSet, type AccountabilityInput } from "./accountability.ts";
@@ -806,6 +806,47 @@ test("hold timer: one hold, or both sides with a switch; logs one side's time", 
   assert.equal(heldSeconds(both, 2, 0), 30, "second side not started");
   assert.equal(heldSeconds(both, 2, 18), 18, "the shorter side");
   assert.equal(heldSeconds(both, 2, 30), 30);
+});
+
+test("hold timer: a 5-second get-ready before the hold logs nothing", () => {
+  const one = withReady(holdPhases(30, false));
+  assert.deepEqual(one.map((p) => [p.sec, p.hold]), [[READY_SEC, false], [30, true]]);
+  assert.equal(heldSeconds(one, 0, 3), 0, "stopped while getting ready");
+  assert.equal(heldSeconds(one, 1, 30), 30);
+  const both = withReady(holdPhases(30, true));
+  assert.equal(heldSeconds(both, 1, 20), 20, "first side");
+  assert.equal(heldSeconds(both, 3, 18), 18, "the shorter side");
+  assert.deepEqual(withReady(holdPhases(30, false), 0), holdPhases(30, false));
+});
+
+test("rest timer: no rest after the set that finishes the day, every profile", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const wk = generatePlan(p).find((w) => w.phase === "build" && !w.cutback)!;
+    const day = wk.days.find((d) => dayExercises(d).length >= 2)!;
+    const list = dayExercises(day);
+    const all = list.flatMap((x) => logSets(day.date, x.key, x.sets));
+    const last = list[list.length - 1];
+    const allButOne = all.filter((s) => !(s.exercise_key === last.key && s.set_no === last.sets));
+    assert.equal(finishesDay(day, allButOne, last.key), true, `${name}: the last planned set`);
+    assert.equal(finishesDay(day, allButOne, list[0].key === last.key ? "burpee" : list[0].key), false, `${name}: an extra set of another exercise`);
+    assert.equal(finishesDay(day, all.slice(2), last.key), false, `${name}: more than one set left`);
+    assert.equal(finishesDay(day, all, last.key), false, `${name}: already done, extra sets still rest`);
+    assert.equal(finishesDay(day, allButOne, "burpee"), false, `${name}: an added exercise`);
+  }
+});
+
+test("added exercises: picked ones first, then anything else logged on the day, every profile", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const wk = generatePlan(p).find((w) => w.phase === "build" && !w.cutback)!;
+    const day = wk.days.find((d) => dayExercises(d).length >= 2)!;
+    const shown = dayExercises(day)[0].key;
+    assert.deepEqual(addedKeys(day, [], []), [], name);
+    assert.deepEqual(addedKeys(day, [], ["burpee", shown]), ["burpee"], `${name}: one the day already shows isn't added`);
+    const sets = [...logSets(day.date, "dead-hang", 2), ...logSets(addDays(day.date, -1), "jump-rope", 1), ...logSets(addDays(day.date, -1), "farmer-carry", 1, day.date)];
+    assert.deepEqual(addedKeys(day, sets, ["burpee", "dead-hang"]), ["burpee", "dead-hang", "farmer-carry"], `${name}: by plan day, no repeats`);
+  }
+  assert.deepEqual(addedTarget({ load: "weight", lines: [] }), { sets: 3, reps: 10, repsMax: null, sec: null, each: false });
+  assert.deepEqual(addedTarget({ load: "time", lines: [] }), { sets: 3, reps: null, repsMax: null, sec: 30, each: false });
 });
 
 test("weighted holds: optional weight never turns seconds into a weight lift", () => {

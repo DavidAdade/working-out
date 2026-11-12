@@ -5,6 +5,7 @@ import { MUSCLES, MUSCLE_GROUPS } from "@/lib/plan/muscles.ts";
 import type { Target } from "@/lib/plan/exercises.ts";
 import type { ExerciseInfo } from "@/lib/plan/catalog.ts";
 import { rankForSwap, swapTarget, type Pickable } from "@/lib/plan/swaps.ts";
+import { addedTarget } from "@/lib/plan/workout.ts";
 import { fmtSet, useSets, videoFromInfo } from "./Sets";
 import { useOpenVideo } from "./VideoModal";
 import EquipmentChips from "./EquipmentChips";
@@ -45,12 +46,12 @@ export function SwapSheet({
   onPick,
   onClose,
 }: {
-  /** The template's exercise for this row */
-  original: ExerciseInfo;
-  /** What the row shows now: the original, or the exercise swapped in */
-  current: ExerciseInfo | { key: string; name: string };
-  /** The template target (sets come from it whatever the exercise) */
-  target: Target;
+  /** The template's exercise for this row; null when adding an exercise to the day instead of swapping one */
+  original: ExerciseInfo | null;
+  /** What the row shows now: the original, or the exercise swapped in (null when adding) */
+  current: ExerciseInfo | { key: string; name: string } | null;
+  /** The template target (sets come from it whatever the exercise); null when adding (each exercise's own) */
+  target: Target | null;
   light: boolean;
   /** Keys already shown elsewhere on this day: two rows with one key would share sets */
   inDay: Set<string>;
@@ -63,12 +64,13 @@ export function SwapSheet({
   const openVideo = useOpenVideo();
   const cancelRef = useRef<HTMLButtonElement>(null);
   const [q, setQ] = useState("");
-  const [chip, setChip] = useState<Chip>("suggested");
+  const adding = !original || !current;
+  const [chip, setChip] = useState<Chip>(adding ? "all" : "suggested");
   const [gear, setGear] = useState<EquipmentId | null>(null);
   const [limit, setLimit] = useState(40);
   // Typing searches everything, unless a muscle group was picked
   const shownChip: Chip = q.trim() && chip === "suggested" ? "all" : chip;
-  const swapped = current.key !== original.key;
+  const swapped = !!original && !!current && current.key !== original.key;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -84,14 +86,16 @@ export function SwapSheet({
   }, [onClose]);
 
   const list = useMemo(() => {
-    const pool = exercises.filter((e) => e.key !== original.key && e.key !== current.key && (!gear || (e.equipment ?? []).includes(gear)));
+    const pool = exercises.filter((e) => e.key !== original?.key && e.key !== current?.key && (!gear || (e.equipment ?? []).includes(gear)));
     const inGroup = shownChip === "suggested" || shownChip === "all" ? pool : pool.filter((e) => e.primary_muscles.some((m) => MUSCLE.get(m)?.group === shownChip));
-    const ranked = rankForSwap<ExerciseInfo>(inGroup, original as Pickable, q, muscleName, shownChip === "all" && !q.trim() ? 0 : 8);
+    // Adding: nothing to be like, so by name, or by how well it matches the search
+    const like: Pickable = original ?? { key: "", name: "", load: "weight", primary_muscles: [], secondary_muscles: [] };
+    const ranked = rankForSwap<ExerciseInfo>(inGroup, like, q, muscleName, adding || (shownChip === "all" && !q.trim()) ? 0 : 8);
     return ranked;
-  }, [exercises, original, current.key, shownChip, q, gear]);
+  }, [exercises, original, current?.key, shownChip, q, gear, adding]);
 
   const sized = (e: ExerciseInfo) => {
-    const t = swapTarget(target, e.load);
+    const t = target ? swapTarget(target, e.load) : addedTarget(e);
     return light ? { ...t, sets: Math.min(t.sets, 2) } : t;
   };
 
@@ -100,21 +104,21 @@ export function SwapSheet({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={`Swap ${current.name}`}
+        aria-label={current ? `Swap ${current.name}` : "Add an exercise"}
         onClick={(e) => e.stopPropagation()}
         className="flex max-h-[85dvh] w-full max-w-[520px] flex-col overflow-y-auto rounded-t-2xl border border-line bg-surface pb-[max(16px,env(safe-area-inset-bottom,0px))] sm:rounded-2xl"
       >
         <div className="sticky top-0 z-[1] flex flex-col gap-2 border-b border-line bg-surface px-4 pb-2 pt-4">
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
-              <div className="label">Swap exercise</div>
-              <h3 className="break-words font-display text-xl font-bold">{current.name}</h3>
+              <div className="label">{current ? "Swap exercise" : "Add to this workout"}</div>
+              <h3 className="break-words font-display text-xl font-bold">{current ? current.name : "Add an exercise"}</h3>
             </div>
             <button ref={cancelRef} type="button" className="btn-ghost flex-none" onClick={onClose}>
               Cancel
             </button>
           </div>
-          {logged.length > 0 && (
+          {logged.length > 0 && current && (
             <p className="rounded-lg border border-line bg-sunk px-3 py-2 text-sm">
               {logged.length} set{logged.length === 1 ? "" : "s"} of {current.name} stay logged ({logged.map((s) => fmtSet(s, unit)).join(", ")}). New sets save under the exercise you pick.
             </p>
@@ -133,7 +137,7 @@ export function SwapSheet({
             className="input"
           />
           <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 [scrollbar-width:none]" role="group" aria-label="Show">
-            {(["suggested", "all", ...MUSCLE_GROUPS] as Chip[]).map((c) => (
+            {((adding ? ["all", ...MUSCLE_GROUPS] : ["suggested", "all", ...MUSCLE_GROUPS]) as Chip[]).map((c) => (
               <button
                 key={c}
                 type="button"
@@ -158,7 +162,7 @@ export function SwapSheet({
         </div>
 
         <ul className="flex flex-col divide-y divide-line px-2">
-          {swapped && (
+          {swapped && original && (
             <SwapOption e={original} detail={`Original · ${fmtTarget(sized(original))}`} tag="Put back" onPick={() => onPick(original)} onVideo={openVideo} />
           )}
           {list.slice(0, limit).map((e) => {
@@ -169,7 +173,7 @@ export function SwapSheet({
                 key={e.key}
                 e={e}
                 detail={`${muscles ? `${muscles} · ` : ""}${fmtTarget(sized(e))}`}
-                tag={taken ? "In this workout" : "Swap"}
+                tag={taken ? "In this workout" : adding ? "Add" : "Swap"}
                 disabled={taken}
                 onPick={() => onPick(e)}
                 onVideo={openVideo}

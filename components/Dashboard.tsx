@@ -11,7 +11,7 @@ import { planFor } from "@/lib/plan/adapt.ts";
 import { setWeekMoves, toggleSkip, type LogInput } from "@/app/actions";
 import { GATES, type ActivityEventRow, type LogRow, type ProfileRow, type SetRow } from "@/lib/types";
 import { DockProvider, useDock } from "./Dock";
-import { RestTimerProvider } from "./RestTimer";
+import { peekGoto, RestTimerProvider, useGotoListener } from "./RestTimer";
 import CoachCard, { type SavedReview } from "./CoachCard";
 import type { ExerciseInfo } from "@/lib/plan/catalog.ts";
 import TodayPanel from "./TodayPanel";
@@ -120,6 +120,12 @@ const swapId = (planDate: string, from: string) => `${planDate}|${from}`;
 
 function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swaps: serverSwaps, supersets: serverSupersets, copies: serverCopies, workouts, sets, exercises, today, ai, review, offline, score }: DashboardProps & { offline: boolean }) {
   const [tab, setTab] = useState<Tab>("today");
+  // The rest timer's "Next set": to the tab the set was logged from (that day's view opens the exercise)
+  useGotoListener((g) => setTab(g.where));
+  useEffect(() => {
+    const g = peekGoto();
+    if (g) setTab(g.where);
+  }, []);
   const [logDate, setLogDate] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const router = useRouter();

@@ -6,7 +6,7 @@
 
 import type { Day } from "./generate.ts";
 import type { BlockKind } from "./templates.ts";
-import { parseLine } from "./exercises.ts";
+import { parseLine, type Load, type Target } from "./exercises.ts";
 import { itemKey } from "./swaps.ts";
 import type { ISODate } from "./dates.ts";
 
@@ -204,10 +204,47 @@ export function completion(day: Pick<Day, "date" | "blocks">, sets: SetLite[]): 
   return { planned, done, extraSets, extraExercises, status };
 }
 
+/**
+ * Whether one more set of `key` on this plan day ticks off its last planned set, so no rest follows it.
+ * False when the day was already done (extra sets still rest) or the set isn't one the day asks for.
+ */
+export function finishesDay(day: Pick<Day, "date" | "blocks">, sets: SetLite[], key: string): boolean {
+  if (completion(day, sets).status !== "incomplete") return false;
+  return completion(day, [...sets, { date: day.date, plan_date: null, exercise_key: key }]).status !== "incomplete";
+}
+
+/* ---------- exercises added to a day mid-workout ---------- */
+
+/**
+ * The exercises added to a plan day on top of its workout, in order: the ones picked on this phone (`picked`,
+ * kept until their first set is logged), then any other exercise with sets on that day that the day doesn't
+ * show. Once a set is logged, the sets themselves keep it on the day, on every device.
+ */
+export function addedKeys(day: Pick<Day, "date" | "blocks">, sets: SetLite[], picked: readonly string[]): string[] {
+  const shown = new Set(dayExercises(day).map((x) => x.key));
+  for (const b of day.blocks) for (const s of Object.values(b.swaps ?? {})) shown.add(s.from);
+  const logged = sets.filter((s) => (s.plan_date ?? s.date) === day.date).map((s) => s.exercise_key);
+  const out: string[] = [];
+  for (const k of [...picked, ...logged]) if (!shown.has(k) && !out.includes(k)) out.push(k);
+  return out;
+}
+
+/** The target an added exercise starts with: its first template line's, else 3×10 (3×30s for holds) */
+export function addedTarget(e: { load: Load; lines: readonly string[] }): Target {
+  const t = e.lines.map(parseLine).find((p) => p)?.target;
+  if (t) return { ...t };
+  return e.load === "time" ? { sets: 3, reps: null, repsMax: null, sec: 30, each: false } : { sets: 3, reps: 10, repsMax: null, sec: null, each: false };
+}
+
 /* ---------- the hold timer ---------- */
 
 /** Seconds to switch sides between the two halves of an "each side" hold */
 export const SWITCH_SEC = 5;
+/** A countdown before the hold starts, so getting into position doesn't eat into it */
+export const READY_SEC = 5;
+
+/** The hold's phases after a "Get ready" countdown (logs nothing: see heldSeconds) */
+export const withReady = (phases: HoldPhase[], ready = READY_SEC): HoldPhase[] => (ready > 0 ? [{ label: "Get ready", sec: ready, hold: false }, ...phases] : phases);
 
 export interface HoldPhase {
   label: string;

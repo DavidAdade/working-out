@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { catchUp, dayForDate, dayKind, dayTitle, weekForDate, PHASE_NAMES, type Day, type Move, type PlanSettings, type Week } from "@/lib/plan/generate.ts";
 import { addDays, daysBetween, dowName, fmtDay, fmtShort, mondayOf } from "@/lib/plan/dates.ts";
 import type { Warning } from "@/lib/plan/warnings.ts";
@@ -8,6 +8,7 @@ import type { Fitness } from "@/lib/plan/paces.ts";
 import { onTrack, wins, STATUS_LABEL, type OnTrack } from "@/lib/plan/ontrack.ts";
 import { setGate, setStartDate, type LogInput } from "@/app/actions";
 import { useDock } from "./Dock";
+import { peekGoto, useGotoListener, type Goto } from "./RestTimer";
 import { planDayOf, useSets } from "./Sets";
 import { PainSlider } from "./LogPanel";
 import { GATES, type LogRow, type ProfileRow } from "@/lib/types";
@@ -48,6 +49,13 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
   const [early, setEarly] = useState(false);
   // Doable early: within the next week, the same rule the plan uses
   const canStartNext = !!next && daysBetween(today, next.date) < 7;
+  // The rest timer's "Next set" for a session started early: show it again so it can open the exercise
+  const showEarly = (g: Goto | null) => g?.where === "today" && canStartNext && g.date === next!.date && setEarly(true);
+  useGotoListener(showEarly);
+  useEffect(() => {
+    showEarly(peekGoto());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const logged = useMemo(() => loggedDates(logs, sets), [logs, sets]);
   const [moving, setMoving] = useState(false);
   const [copying, setCopying] = useState(false);

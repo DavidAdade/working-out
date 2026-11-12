@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { SetInput } from "@/app/actions";
 import { useDock, type SendResult } from "./Dock";
-import { useRest } from "./RestTimer";
+import { useRest, type Goto } from "./RestTimer";
 import { weekForDate, type Week } from "@/lib/plan/generate.ts";
 import { parseLine, videoForLine, type Exercise, type Target } from "@/lib/plan/exercises.ts";
 import { asExercise, type ExerciseInfo } from "@/lib/plan/catalog.ts";
@@ -29,6 +29,10 @@ export interface SaveOpts {
   session?: string | null;
   /** The rest a new set starts: a superset's (its longest, after the round) or none mid-round; else the exercise's own */
   rest?: { sec: number; label: string } | false;
+  /** Where the rest timer's "Next set" goes: this exercise, on the day it was logged from */
+  goto?: Goto;
+  /** The day's last planned set: stop any rest still counting from the set before */
+  finishes?: boolean;
 }
 
 interface SetsCtx {
@@ -216,7 +220,8 @@ export function SetsProvider({
         const sameDay = cur.some((s) => s.exercise_key === row.exercise_key && s.date === row.date && Number(s.weight_kg) >= optimistic.weight_kg!);
         if (before.length && !sameDay && optimistic.weight_kg > Math.max(...before) + 0.25) notify({ text: `New best: ${ex?.name ?? keyLabel(row.exercise_key)} ${row.weight} ${row.unit}`, tone: "good" });
       }
-      if (ex && !prev && opts.rest !== false) rest.start(opts.rest?.sec ?? restFor(asExercise(ex)), opts.rest?.label ?? `${ex.name} set ${row.set_no}`);
+      if (opts.finishes && !prev) rest.stop();
+      else if (ex && !prev && opts.rest !== false) rest.start(opts.rest?.sec ?? restFor(asExercise(ex)), opts.rest?.label ?? `${ex.name} set ${row.set_no}`, opts.goto);
       // Logging without tapping Start starts the workout (queued first, so it replays before the set)
       if (opts.session) ensureStarted(opts.session);
       void send({ id: crypto.randomUUID(), t: "set", input }).then((r) => afterSend(r, () => revert(k, prev, row.date, row.exercise_key, row.set_no)));
@@ -312,6 +317,14 @@ export interface RowProps {
   onLink?: () => void;
   /** Takes this row out of its superset */
   onUnlink?: () => void;
+  /** Where the rest timer's "Next set" brings you back to (this row) */
+  goto?: Goto;
+  /** An exercise added to this day mid-workout (not a template line): logged like any other, extra work */
+  added?: { exercise: Exercise; target: Target };
+  /** Takes an added exercise with no sets back off the day */
+  onRemoveAdded?: () => void;
+  /** Whether a new set of this exercise ticks off the day's last planned set: then no rest timer starts */
+  finishesDay?: (key: string) => boolean;
 }
 
 /** How a row in a superset moves on: no rest mid-round, one rest after the round, then the next exercise */
@@ -346,16 +359,21 @@ export function ExerciseRow({
   superset,
   onLink,
   onUnlink,
+  goto,
+  finishesDay,
+  added,
+  onRemoveAdded,
 }: RowProps) {
   const parsed = parseLine(line);
   const { sets, unit, today, openHistory, info, nameOf } = useSets();
   const dates = useDates();
   const openVideo = useOpenVideo();
   const swappedIn = swap ? info(swap.to) : undefined;
-  const video = swap ? (swappedIn ? videoFromInfo(swappedIn) : null) : videoForLine(line);
+  const addedInfo = added ? info(added.exercise.key) : undefined;
+  const video = added ? (addedInfo ? videoFromInfo(addedInfo) : null) : swap ? (swappedIn ? videoFromInfo(swappedIn) : null) : videoForLine(line);
   // Far-off days open read-only; "Log it today" switches this row to logging under today
   const [logToday, setLogToday] = useState(false);
-  if (!parsed) {
+  if (!parsed && !added) {
     return (
       <li id={anchorId} className="flex min-h-11 items-center gap-1 py-1 text-[0.92rem]">
         {video ? <VideoButton onClick={() => openVideo(video)} label={video.name} /> : <span className="w-11 flex-none" />}
@@ -365,13 +383,18 @@ export function ExerciseRow({
   }
   const logDate = planLogDate ?? (logToday ? today : null);
   // A swapped row logs, suggests weights and shows history under the exercise swapped in
-  const exercise: Exercise = swap ? (swappedIn ? asExercise(swappedIn) : { key: swap.to, name: swap.name, load: swap.load, lines: [] }) : parsed.exercise;
-  const target: Target = swap ? swap.target : parsed.target;
-  const name = swap ? swap.name : parsed.name;
+  const exercise: Exercise = added ? added.exercise : swap ? (swappedIn ? asExercise(swappedIn) : { key: swap.to, name: swap.name, load: swap.load, lines: [] }) : parsed!.exercise;
+  const target: Target = added ? added.target : swap ? swap.target : parsed!.target;
+  const name = added ? added.exercise.name : swap ? swap.name : parsed!.name;
   // Sets logged for the original before the swap: never moved, shown read-only under the row
   const before = swap ? sets.filter((s) => planDayOf(s) === planDate && s.exercise_key === swap.from).sort((a, b) => a.set_no - b.set_no) : [];
-  const swapButtons = (onSwap || (swap && onPutBack) || onLink || onUnlink) && (
+  const swapButtons = (onSwap || (swap && onPutBack) || onLink || onUnlink || onRemoveAdded) && (
     <>
+      {onRemoveAdded && (
+        <button type="button" className="btn-ghost px-3 text-xs" onClick={onRemoveAdded}>
+          Remove
+        </button>
+      )}
       {onSwap && (
         <button type="button" className="btn-ghost px-3 text-xs" onClick={onSwap}>
           Swap
@@ -466,6 +489,8 @@ export function ExerciseRow({
           locked={locked}
           session={session}
           superset={superset}
+          goto={goto}
+          finishesDay={finishesDay}
         />
       )}
       {open && !logDate && (
@@ -521,7 +546,11 @@ function SetTable({
   locked = false,
   session,
   superset,
+  goto,
+  finishesDay,
 }: {
+  goto?: Goto;
+  finishesDay?: (key: string) => boolean;
   inset?: boolean;
   /** More buttons for the row's action bar, e.g. Swap */
   actions?: React.ReactNode;
@@ -618,6 +647,7 @@ function SetTable({
             exercise={exercise}
             showWeight={showWeight}
             setNo={n}
+            isNext={n === nextSet}
             logged={done.find((d) => d.set_no === n)}
             last={chain ?? (prev ? prev.sets.find((s) => s.set_no === n) ?? prev.sets[prev.sets.length - 1] : undefined)}
             suggested={chain ? null : suggested}
@@ -627,7 +657,10 @@ function SetTable({
             onFilled={() => setFill(null)}
             onSave={(w, r) => {
               // A new set in a superset: on to the next exercise in the round, or rest once the round is over
-              const step = superset && !done.some((d) => d.set_no === n) ? superset.after(n) : null;
+              const fresh = !done.some((d) => d.set_no === n);
+              const step = superset && fresh ? superset.after(n) : null;
+              // The day's last planned set: the workout's done, so no rest to count down
+              const last = fresh && !!finishesDay?.(exercise.key);
               save(
                 {
                   date,
@@ -640,7 +673,13 @@ function SetTable({
                   light_week: lightSession,
                 },
                 dayTitle,
-                { planDate, session, rest: step && superset ? step.rest && { sec: superset.restSec, label: `Superset ${superset.letter}, round ${n}` } : undefined },
+                {
+                  planDate,
+                  session,
+                  goto,
+                  finishes: last,
+                  rest: last ? false : step && superset ? step.rest && { sec: superset.restSec, label: `Superset ${superset.letter}, round ${n}` } : undefined,
+                },
               );
               if (step)
                 setTimeout(() => {
@@ -768,6 +807,7 @@ function SetRowView({
   exercise,
   showWeight,
   setNo,
+  isNext = false,
   logged,
   last,
   suggested,
@@ -783,6 +823,8 @@ function SetRowView({
   /** Weight column: always for weighted lifts, optional for bodyweight and timed work */
   showWeight: boolean;
   setNo: number;
+  /** The first set not logged yet: where the rest timer's "Next set" lands */
+  isNext?: boolean;
   logged: SetRow | undefined;
   /** Where the grey numbers come from: the set just logged before this one, else last session's */
   last: SetRow | undefined;
@@ -858,7 +900,7 @@ function SetRowView({
     "min-h-11 w-full rounded-lg border bg-bg px-1 text-center font-mono text-base text-ink placeholder:text-muted/60 read-only:pointer-events-none read-only:border-dashed read-only:bg-transparent read-only:opacity-50";
 
   return (
-    <div className={`grid ${cols} items-center gap-1.5`}>
+    <div className={`grid ${cols} items-center gap-1.5`} data-next-set={isNext || undefined}>
       <span className="font-mono text-sm text-muted">{setNo}</span>
       {showWeight && (
         <input
