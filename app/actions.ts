@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { parseOwnRuns } from "@/lib/plan/ownruns.ts";
 import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createHash } from "node:crypto";
@@ -76,6 +77,7 @@ export async function saveSettings(_: unknown, form: FormData): Promise<ActionRe
   const dur = (k: string) => parseDuration(str(k));
   const fail = (error: string): ActionResult => ({ ok: false, error, values: Object.fromEntries([...form].filter((e): e is [string, string] => typeof e[1] === "string")) });
   const injury = form.get("returning_from_injury") === "on";
+  const ownRuns = parseOwnRuns(String(form.get("own_runs") ?? ""));
   const update = {
     display_name: str("display_name"),
     timezone: str("timezone") ?? "America/Toronto",
@@ -98,7 +100,10 @@ export async function saveSettings(_: unknown, form: FormData): Promise<ActionRe
       .map((s) => s.trim().toLowerCase())
       .filter(Boolean)
       .slice(0, 3),
+    own_runs: ownRuns.runs,
   };
+  if (ownRuns.bad.length) return fail(`Couldn't read this run: "${ownRuns.bad[0].slice(0, 60)}". Write each as: 2026-11-16, 5, Easy Run`);
+  if (ownRuns.runs.length > 400) return fail("That's more than 400 runs. Keep the list to the coming months.");
   if (!update.start_date || !update.time_trial_date) return fail("Add a start date and a time trial date.");
   if (!update.current_5k_sec || !update.goal_5k_sec) return fail("5K times should look like 35:00.");
   if (update.goal_5k_sec >= update.current_5k_sec) return fail("The goal 5K should be faster than your current time.");

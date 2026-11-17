@@ -9,6 +9,10 @@ export interface Block {
   note?: string;
   /** Long-run distance, for weekly summaries */
   km?: number;
+  /** Distance of a run from the person's own running plan that isn't the week's long run (see ownruns.ts) */
+  dist?: number;
+  /** Own-plan runs say whether they're hard; the plan's own runs are read from their title (see isHard) */
+  hard?: boolean;
   /** Moves to another lift day when its day is skipped */
   carry?: boolean;
   /** True when this block was moved here from a skipped day */
@@ -113,6 +117,12 @@ export const LEGS = {
     items: ["15 min mobility", "Calf raises, 2×15", "Glute bridge, 2×12"],
     note: "Easy. Nothing should feel hard today.",
   }),
+  // After an easy run under 5.5 km, in weeks built around the person's own runs (ownruns.ts)
+  short: legs({
+    title: "Legs: short (after your run)",
+    items: ["Goblet split squat, 3×8 each", "Single-leg DB Romanian deadlift, 3×8 each", "Single-leg calf raise, 3×10 each"],
+    note: "About 20 minutes, straight after the run or later today. Tomorrow has no run.",
+  }),
 } as const;
 
 /* ---------- upper body ---------- */
@@ -135,6 +145,15 @@ export const UPPER = {
   backArms: upper({
     title: "Upper: back + arms (condo)",
     items: ["One-arm DB row, 3×10 each", "Rear-delt fly, 3×15", "Hammer curls, 3×12", "DB skull crushers or close-grip push-ups, 3×12"],
+  }),
+  // Push and pull in one session, for weeks with two upper days (ownruns.ts)
+  fullA: upper({
+    title: "Upper: push + pull (gym)",
+    items: ["Lat pulldown or assisted pull-ups, 3×8–10", "DB floor or bench press, 3×8–10", "Seated cable row, 3×10", "DB overhead press, 3×10", "Face pulls, 3×15", "Cable or DB curl, 3×12"],
+  }),
+  fullB: upper({
+    title: "Upper: push + pull (condo)",
+    items: ["One-arm DB row, 3×10 each", "Push-ups, 3 sets, stop 2 reps short of failure", "Lateral raises, 3×15", "Rear-delt fly, 3×15", "Hammer curls, 3×12", "Overhead DB triceps extension, 3×12"],
   }),
 } as const;
 

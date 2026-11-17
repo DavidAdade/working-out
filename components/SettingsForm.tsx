@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { formatOwnRuns } from "@/lib/plan/ownruns.ts";
 import { useActionState, useState } from "react";
 import { saveSettings, signOut, type ActionResult } from "@/app/actions";
 import { duration } from "@/lib/plan/format.ts";
@@ -121,6 +122,27 @@ export default function SettingsForm({
         <Field label="Race date" name="race_date" type="date" defaultValue={val("race_date", profile.race_date ?? "")} />
         <Field label="Half goal, fastest" name="half_goal_min" defaultValue={val("half_goal_min", t(profile.half_goal_min_sec))} placeholder="2:30:00" />
         <Field label="Half goal, slowest" name="half_goal_max" defaultValue={val("half_goal_max", t(profile.half_goal_max_sec))} placeholder="2:45:00" />
+
+        <div className="flex min-w-0 flex-col gap-1 sm:col-span-2">
+          <label className="label mt-2" htmlFor="own_runs">
+            Runs from another running plan (optional)
+          </label>
+          <textarea
+            id="own_runs"
+            name="own_runs"
+            rows={6}
+            defaultValue={val("own_runs", formatOwnRuns(profile.own_runs ?? []))}
+            placeholder={"2026-11-16, 5, Easy Run\n2026-11-18, 6, Long Run\n2026-11-21, 5, 400m Repeats, hard"}
+            className="input h-auto whitespace-pre font-mono"
+            autoCapitalize="off"
+            autoCorrect="off"
+            spellCheck={false}
+          />
+          <span className="text-xs text-muted">
+            One run per line: date, km, name. Add &quot;hard&quot; for intervals or tempo, &quot;race&quot; for a race. In the weeks these cover, they are your running days and the lifting is placed around them: abs
+            after a run of 5.5 km or more, legs never the day before a run.
+          </span>
+        </div>
 
         <Field label="Areas to track pain (up to 3, comma-separated)" name="pain_areas" defaultValue={val("pain_areas", profile.pain_areas.join(", "))} placeholder="knee, foot, heel" wide />
 

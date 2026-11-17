@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { generatePlan, dayTitle, weekForDate, dayForDate, moveDay, catchUp, isHard, canAdd, canCopy, copyNote, type PlanSettings, type Week } from "./generate.ts";
+import { generatePlan, dayTitle, weekLongRunKm, weekForDate, dayForDate, moveDay, catchUp, isHard, canAdd, canCopy, copyNote, type PlanSettings, type Week } from "./generate.ts";
 import { compareDays, dayIntensity, COPY_TOLERANCE } from "./intensity.ts";
 import { painWarnings } from "./warnings.ts";
 import { parseDuration, duration, pace } from "./format.ts";
@@ -19,6 +19,8 @@ import { planToIcs } from "./ics.ts";
 import { addDays, daysBetween } from "./dates.ts";
 import { addedKeys, addedTarget, clampEnd, completion, dayExercises, elapsed, finishesDay, heldSeconds, holdPhases, isLocked, nextInRound, READY_SEC, sessionDate, sessionDateFor, sessionState, SWITCH_SEC, withReady, type WorkoutSession } from "./workout.ts";
 import { applySupersets } from "./supersets.ts";
+import { cleanOwnRuns, formatOwnRuns, LONG_KM, ownHard, ownWeeks, parseOwnRuns, type OwnRun } from "./ownruns.ts";
+import { bestsByWeek, fiveKEquivalent, mondaysBetween, paceNeeded, strengthIndex, strengthSeries } from "./stats.ts";
 import { countsForDay } from "../types.ts";
 import { accountability, classU, runCredit, type AcctLog, type AcctSet, type AccountabilityInput } from "./accountability.ts";
 
@@ -218,10 +220,42 @@ test("every built-in falls in upper, lower or core", () => {
 });
 
 /* ---------- coaching rules, checked on several profiles so nothing depends on one person's dates ---------- */
+const OWN_RUNS = parseOwnRuns(`
+2026-11-16, 5, 5km Easy Run, easy
+2026-11-18, 6, 6km Progressive Long Run, easy
+2026-11-21, 5, Rolling 300s, hard
+2026-11-23, 6, 6km Easy Run
+2026-11-25, 7, 7km Long Run
+2026-11-28, 6, 400m Repeats
+2026-12-02, 8, 8km Block Long Run
+2026-12-05, 6.5, 6.5km Easy Run
+2026-12-06, 7, 7km Easy Run
+2026-12-07, 4.5, 4.5km Easy Run
+2026-12-09, 5, 5km Long Run
+2026-12-12, 4.5, Progressive Run
+2026-12-14, 7.5, 7.5km Easy Run
+2026-12-16, 9, 9km Progressive Repeats
+2026-12-19, 6.5, Broken Miles
+2026-12-21, 8, 8km Easy Run
+2026-12-23, 10, 10km Long Run
+2026-12-26, 8, Tempo 2-1-1, hard
+2026-12-30, 7, 7km Progressive Long Run
+2027-01-02, 6, 6km Easy Run
+2027-01-03, 6.5, 6.5km Easy Run
+2027-01-04, 6.4, Taper 400s
+2027-01-06, 5, 5km Race, race
+2027-01-08, 4, 4km Easy Run
+2027-01-11, 4.5, 4.5km Easy Run
+2027-01-13, 5.5, 5.5km Long Run
+2027-01-17, 4, 400m Repeats
+`).runs;
+
 const PROFILES: Record<string, PlanSettings> = {
   david,
   september: { startDate: "2027-05-03", returningFromInjury: false, timeTrialDate: "2027-09-17", current5kSec: 1980, goal5kSec: 1740 },
   shortInjury: { startDate: "2027-01-04", recoveryStart: "2026-12-21", returningFromInjury: true, timeTrialDate: "2027-03-26", current5kSec: 2100, goal5kSec: 1900 },
+  // Follows another running plan for 9 weeks in the middle of the program (see OWN_RUNS)
+  ownRuns: { startDate: "2026-10-05", returningFromInjury: false, timeTrialDate: "2027-03-26", current5kSec: 1980, goal5kSec: 1740, ownRuns: OWN_RUNS },
   longRace: { startDate: "2027-06-07", returningFromInjury: true, recoveryStart: "2027-05-17", timeTrialDate: "2027-11-05", raceDate: "2027-12-12", current5kSec: 2400, goal5kSec: 2100, halfGoalMinSec: 9600, halfGoalMaxSec: 10200 },
 };
 const HARD = /^(?!easy|long run|run-walk|shakeout)/i;
@@ -237,7 +271,8 @@ test("time trial pacing finishes under the goal", () => {
 
 test("never more than one hard session or test a week", () => {
   for (const [name, p] of Object.entries(PROFILES)) {
-    for (const w of generatePlan(p)) {
+    // Weeks that follow the person's own running plan keep whatever sessions it sets
+    for (const w of generatePlan(p).filter((x) => x.phase !== "own")) {
       const hard = w.days.flatMap((d) => d.blocks).filter((b) => b.kind === "test" || (b.kind === "run" && HARD.test(b.title)));
       assert.ok(hard.length <= 1, `${name} ${w.label}: ${hard.map((b) => b.title).join(", ")}`);
     }
@@ -920,6 +955,7 @@ const shift = (p: PlanSettings, days: number): PlanSettings => ({
   recoveryStart: p.recoveryStart ? addDays(p.recoveryStart, days) : p.recoveryStart,
   timeTrialDate: addDays(p.timeTrialDate, days),
   raceDate: p.raceDate ? addDays(p.raceDate, days) : p.raceDate,
+  ownRuns: p.ownRuns?.map((r) => ({ ...r, date: addDays(r.date, days) })),
 });
 
 test("accountability: everything logged scores 100 in every profile and week type", () => {
@@ -1188,6 +1224,8 @@ test("intensity: cutback lift days are lighter, build sessions match, long runs 
     const weeks = generatePlan(p);
     for (const cut of weeks.filter((w) => w.cutback)) {
       const before = weeks[weeks.indexOf(cut) - 1];
+      // After weeks around the person's own runs, Monday isn't the same kind of day
+      if (before.phase === "own") continue;
       // Monday's legs + pull + core, deloaded to 2 sets: more than the tolerance below the week before
       const fit = fitOf(before.days[0], cut.days[0]);
       assert.equal(fit.reason, "easier", `${name} ${cut.label}: ${fit.ratio}`);
@@ -1497,4 +1535,130 @@ test("classes: extra work by time and effort, never a planned day, every profile
       assert.equal(c.feed.find((f) => f.kind === "extra_workout" && f.date === cs)?.delta, "not counted", name);
     }
   }
+});
+
+test("stats: strength index moves with weight or reps, not with how much is logged", () => {
+  const s = (date: string, key: string, kg: number, reps: number, light = false): SetLike => ({ date, exercise_key: key, set_no: 1, weight: kg, unit: "kg", weight_kg: kg, reps, duration_sec: null, light_week: light });
+  const flat = strengthIndex([s("2026-11-02", "rdl", 40, 8), s("2026-11-09", "rdl", 40, 8), s("2026-11-10", "rdl", 40, 8), s("2026-11-12", "rdl", 40, 8)], ["rdl"]);
+  assert.equal(Math.round(flat.get("2026-11-09")!), 100, "three sessions in a week at the same weight is not progress");
+  const reps = strengthIndex([s("2026-11-02", "rdl", 40, 8), s("2026-11-09", "rdl", 40, 12)], ["rdl"]);
+  assert.ok(reps.get("2026-11-09")! > 105, "more reps at the same weight counts");
+  // A new exercise starts level; a light week is left out rather than read as a drop
+  const mixed = strengthIndex([s("2026-11-02", "rdl", 40, 8), s("2026-11-09", "rdl", 30, 8, true), s("2026-11-09", "db-ohp", 10, 10), s("2026-11-16", "rdl", 44, 8), s("2026-11-16", "db-ohp", 10, 10)], ["rdl", "db-ohp"]);
+  assert.equal(Math.round(mixed.get("2026-11-09")!), 100);
+  assert.equal(Math.round(mixed.get("2026-11-16")!), 105, "one of two lifts up 10% is about 5% overall");
+  assert.deepEqual(strengthSeries(sessions([s("2026-11-02", "rdl", 40, 8), s("2026-11-09", "rdl", 30, 8, true)], "rdl")).map((p) => p.date), ["2026-11-02"]);
+});
+
+test("stats: bests per week and the pace needed for the goal", () => {
+  const s = (date: string, kg: number, reps: number): SetLike => ({ date, exercise_key: "rdl", set_no: 1, weight: kg, unit: "kg", weight_kg: kg, reps, duration_sec: null, light_week: false });
+  const run = (date: string, km: number, kind = "run", duration_sec: number | null = null) => ({ date, kind, km, duration_sec });
+  const b = bestsByWeek([s("2026-11-02", 40, 8), s("2026-11-09", 42.5, 8), s("2026-11-16", 42.5, 8)], [run("2026-11-03", 5), run("2026-11-10", 6), run("2026-11-11", 5, "test", 1800), run("2026-11-18", 5, "test", 1750)]);
+  assert.equal(b.get("2026-11-02"), undefined, "first sessions have nothing to beat");
+  assert.equal(b.get("2026-11-09"), 2, "heavier lift + longest run");
+  assert.equal(b.get("2026-11-16"), 1, "faster 5K only: the same weight again is no best");
+  assert.equal(fiveKEquivalent(run("2026-11-11", 10, "test", 3700))! < 1850, true);
+  const course = { start: "2026-11-02", target: "2026-12-28", startSec: 2100, goalSec: 1800 };
+  assert.equal(paceNeeded(course, "2026-11-30"), 1950);
+  assert.equal(paceNeeded(course, "2027-02-01"), 1800, "flat after the target day");
+  assert.equal(mondaysBetween("2026-11-04", "2026-11-17").length, 3);
+});
+
+/** Every rule a week around the person's own runs must keep, whatever the run days are */
+function checkOwnWeeks(name: string, runs: OwnRun[], weeks: Week[]) {
+  const runOn = new Map(runs.map((r) => [r.date, r]));
+  const days = weeks.filter((w) => w.phase === "own").flatMap((w) => w.days);
+  for (const r of runs) {
+    const d = days.find((x) => x.date === r.date);
+    assert.ok(d, `${name}: ${r.date} run missing`);
+    assert.equal(d.blocks[0].title, r.title, `${name}: ${r.date} run comes first, unchanged`);
+    assert.equal(d.blocks[0].km ?? d.blocks[0].dist ?? r.km, r.km);
+    const rest = d.blocks.slice(1);
+    if (r.race) assert.ok(d.fixed && !rest.length && d.blocks[0].kind === "test", `${name}: race day carries nothing else`);
+    else if (r.km >= LONG_KM) assert.ok(rest.every((b) => b.kind === "abs"), `${name}: ${r.date} ${r.km} km gets abs only, has ${rest.map((b) => b.title)}`);
+    else assert.ok(rest.every((b) => b.kind === "abs" || (b.kind === "legs" && !ownHard(r))), `${name}: ${r.date} short run`);
+  }
+  for (const d of days) {
+    const legs = d.blocks.some((b) => b.kind === "legs");
+    if (legs) assert.ok(!runOn.has(addDays(d.date, 1)), `${name}: legs on ${d.date}, the day before a run`);
+    for (const r of runs.filter((x) => x.race)) {
+      const n = daysBetween(d.date, r.date);
+      if (legs) assert.ok(n > 3 || n < -1, `${name}: legs ${n} days before the race`);
+      if (n === 1) assert.ok(d.blocks.every((b) => b.kind === "run"), `${name}: nothing but a run the day before the race`);
+      if (n >= 1 && n <= 3) assert.ok(d.blocks.filter((b) => b.kind !== "run").every((b) => b.light), `${name}: light before the race`);
+    }
+    assert.ok(d.blocks.every((b) => b.planDate === d.date && !b.carry));
+  }
+  const legDays = days.filter((d) => d.blocks.some((b) => b.kind === "legs")).map((d) => d.date);
+  for (let i = 1; i < legDays.length; i++) assert.ok(daysBetween(legDays[i - 1], legDays[i]) >= 2, `${name}: legs on ${legDays[i - 1]} and ${legDays[i]}`);
+  for (const w of weeks.filter((x) => x.phase === "own")) {
+    const ran = runs.filter((r) => r.date >= w.start && r.date < addDays(w.start, 7)).length;
+    assert.ok(w.days.length <= Math.max(6, ran), `${name} ${w.label}: lifting never takes the last rest day`);
+    assert.ok(w.days.filter((d) => d.blocks.some((b) => b.kind === "upper")).length <= 2, `${name} ${w.label}: upper twice at most`);
+  }
+}
+
+test("own runs: the lifting goes around them, and the weeks outside are untouched", () => {
+  const p = PROFILES.ownRuns;
+  const { ownRuns: _o, ...bare } = p;
+  const weeks = generatePlan(p);
+  const plain = generatePlan(bare);
+  checkOwnWeeks("ownRuns", OWN_RUNS, weeks);
+  const mine = weeks.filter((w) => w.phase === "own");
+  assert.deepEqual([mine[0].start, mine.at(-1)!.start, mine.length], ["2026-11-16", "2027-01-11", 9]);
+  for (const w of weeks.filter((x) => x.phase !== "own")) assert.deepEqual(w, plain.find((x) => x.start === w.start), `${w.label} changed`);
+  // 5 or 6 training days, legs at least once and upper twice every week of this calendar
+  for (const w of mine) {
+    assert.ok(w.days.length >= 5, `${w.label}: ${w.days.length} days`);
+    assert.ok(w.days.some((d) => d.blocks.some((b) => b.kind === "legs")), `${w.label}: no legs`);
+    assert.equal(w.days.filter((d) => d.blocks.some((b) => b.kind === "upper")).length, 2, `${w.label}: upper`);
+  }
+  const titles = (date: string) => dayForDate(weeks, date)?.blocks.map((b) => b.title + (b.light ? " (light)" : "")) ?? [];
+  assert.deepEqual(titles("2026-11-16"), ["5km Easy Run", "Legs: short (after your run)"]);
+  assert.deepEqual(titles("2026-11-17"), ["Upper: push + pull (condo)"]);
+  assert.deepEqual(titles("2026-11-19"), ["Legs: strength (gym)", "Upper: push + pull (gym)"]);
+  assert.deepEqual(titles("2026-11-20"), [], "rest before the hard run");
+  assert.deepEqual(titles("2026-11-29"), ["Legs: knee-focused (condo)", "Upper: push + pull (condo)"], "Sunday legs only when Monday has no run");
+  assert.deepEqual(titles("2026-12-31"), ["Legs: strength (gym) (light)", "Upper: push + pull (gym)"], "legs ease off a week out");
+  assert.deepEqual(titles("2027-01-05"), [], "rest the day before the race");
+  assert.deepEqual(titles("2027-01-13"), ["5.5km Long Run", "Abs (condo)"], "exactly 5.5 km counts as long");
+  // Hard and long are what the list says, not what the title looks like
+  assert.equal(isHard(dayForDate(weeks, "2026-11-16")!.blocks[0]), false);
+  assert.equal(isHard(dayForDate(weeks, "2026-11-21")!.blocks[0]), true);
+  assert.equal(weekLongRunKm(weekForDate(weeks, "2026-12-21")!), 10);
+  // Skips, moves and logging by distance work as on any other week
+  const skipped = generatePlan(p, { skips: ["2026-11-17"], moves: [{ from: "2026-11-19", to: "2026-11-20" }] });
+  assert.ok(dayForDate(skipped, "2026-11-17")!.skipped);
+  assert.equal(dayForDate(skipped, "2026-11-20")!.movedFrom, "2026-11-19");
+  assert.equal(runCredit(dayForDate(weeks, "2026-11-16")!.blocks[0], 20, [{ km: 2.5, duration_sec: 900 } as AcctLog]).short, "2.5 of 5 km");
+});
+
+test("own runs: any calendar keeps the rules, every profile", () => {
+  const calendars: Record<string, string> = {
+    tueThuSun: "2027-02-02, 5, Easy\n2027-02-04, 8, Tempo, hard\n2027-02-07, 12, Long Run\n2027-02-09, 4, Easy\n2027-02-11, 6, Intervals, hard\n2027-02-14, 5, 5K Race, race",
+    daily: [1, 2, 3, 4, 5, 6, 7].map((d) => `2027-02-0${d}, ${d % 2 ? 4 : 9}, Run`).join("\n"),
+    oneRun: "2027-02-03, 3, Easy Run\n2027-02-17, 3, Easy Run",
+  };
+  for (const [cal, text] of Object.entries(calendars)) {
+    const runs = parseOwnRuns(text).runs;
+    for (const [name, p] of Object.entries(PROFILES)) {
+      const weeks = generatePlan({ ...p, ownRuns: runs });
+      // The plan's own time trial or race inside these weeks stays put
+      const kept = weeks.flatMap((w) => w.days).filter((d) => d.fixed && !runs.some((r) => r.date === d.date));
+      assert.equal(kept.length, generatePlan({ ...p, ownRuns: null }).flatMap((w) => w.days).filter((d) => d.fixed).length, `${cal} ${name}`);
+      checkOwnWeeks(`${cal} ${name}`, runs.filter((r) => weeks.some((w) => w.phase === "own" && r.date >= w.start && r.date < addDays(w.start, 7))), weeks);
+    }
+  }
+});
+
+test("own runs: the list is read from Settings text and cleaned", () => {
+  const { runs, bad } = parseOwnRuns("2026-11-16, 5 km, Easy Run\n\n2026-11-21, 5, Rolling 300s\nnext tuesday, 5\n2026-11-16, 9, Duplicate\n2026-11-18, 0, Nothing");
+  assert.deepEqual(bad, ["next tuesday, 5", "2026-11-18, 0, Nothing"]);
+  assert.deepEqual(runs.map((r) => [r.date, r.km, r.title]), [["2026-11-16", 5, "Easy Run"], ["2026-11-21", 5, "Rolling 300s"]]);
+  assert.equal(ownHard(runs[0]), false);
+  assert.equal(ownHard(runs[1]), true, "read from the title when not said");
+  assert.deepEqual(parseOwnRuns(formatOwnRuns(OWN_RUNS)).runs, OWN_RUNS);
+  assert.deepEqual(cleanOwnRuns([{ date: "2026-11-16", km: "5" }, { date: "nope", km: 5 }, null, 7]), [{ date: "2026-11-16", km: 5, title: "5 km run" }]);
+  assert.deepEqual(cleanOwnRuns(undefined), []);
+  assert.equal(ownWeeks([], ["2026-11-16"]).get("2026-11-16")!.filter((d) => d.blocks.some((b) => b.kind === "legs")).length, 2, "a week with no runs still lifts");
 });

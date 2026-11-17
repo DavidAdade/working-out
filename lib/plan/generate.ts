@@ -3,8 +3,9 @@ import { duration, pace, predict, HALF_KM } from "./format.ts";
 import { goalPace, trainingPaces } from "./paces.ts";
 import { ABS, LEGS, UPPER, light, type Block } from "./templates.ts";
 import { compareDays, dayIntensity, type CopyFit } from "./intensity.ts";
+import { cleanOwnRuns, ownWeeks, type OwnRun } from "./ownruns.ts";
 
-export type Phase = "recovery" | "return" | "base" | "build" | "sharpen" | "tt" | "half" | "taper" | "race";
+export type Phase = "recovery" | "return" | "base" | "build" | "sharpen" | "tt" | "half" | "taper" | "race" | "own";
 
 export const PHASE_NAMES: Record<Phase, string> = {
   recovery: "Recovery strength",
@@ -16,6 +17,7 @@ export const PHASE_NAMES: Record<Phase, string> = {
   half: "Half block",
   taper: "Taper",
   race: "Race week",
+  own: "Your running plan",
 };
 
 export interface PlanSettings {
@@ -32,6 +34,11 @@ export interface PlanSettings {
   goal5kSec: number;
   halfGoalMinSec?: number | null;
   halfGoalMaxSec?: number | null;
+  /**
+   * Runs from the person's own running plan. From the week of the first to the week of the last, they
+   * are the running days and the lifting is placed around them (see ownruns.ts); other weeks are the plan's own.
+   */
+  ownRuns?: OwnRun[] | null;
 }
 
 export interface Day {
@@ -302,6 +309,28 @@ export function generatePlan(s: PlanSettings, opts: GenerateOptions = {}): Week[
     weeks.push({ label: `W${i}`, index: i, start: ws, phase, cutback: cut, days, notes });
   }
 
+  /* ---------- weeks around the person's own runs ---------- */
+  const own = cleanOwnRuns(s.ownRuns);
+  if (own.length && weeks.length) {
+    const from = mondayOf(own[0].date);
+    const to = mondayOf(own.at(-1)!.date);
+    // The list may run past the plan's last week
+    for (let last = weeks.at(-1)!; last.start < to; last = weeks.at(-1)!) {
+      const index = (last.index ?? 0) + 1;
+      weeks.push({ label: `W${index}`, index, start: addDays(last.start, 7), phase: "own", cutback: false, days: [], notes: [] });
+    }
+    const mine = weeks.filter((w) => w.start >= from && w.start <= to);
+    // The plan's own time trial or race inside these weeks stays, and is treated as a race
+    const anchors = mine.flatMap((w) => w.days.filter((d) => d.fixed).map((d) => ({ date: d.date, blocks: d.blocks })));
+    const laid = ownWeeks(own, mine.map((w) => w.start), anchors);
+    for (const w of mine) {
+      const kept = w.days.some((d) => d.fixed);
+      w.days = laid.get(w.start)!.map((d) => ({ date: d.date, blocks: d.blocks.map((b) => ({ ...b, planDate: d.date })), skipped: false, skippable: !d.fixed, fixed: d.fixed, alerts: [] }));
+      if (!kept) w.phase = "own";
+      w.cutback = false;
+    }
+  }
+
   // Copies first, on the template, so moves, skips and folds treat a copied day like any other
   applyCopies(weeks, opts.copies ?? []);
   const moves = new Map([...(opts.moves ?? [])].map((m) => [m.from, m.to]));
@@ -325,7 +354,7 @@ function fmtH(sec: number): string {
 }
 
 /** Hard sessions: tests, intervals and tempos. Easy, long, run-walk and shakeouts are not. */
-export const isHard = (b: Block) => b.kind === "test" || (b.kind === "run" && !/^(easy|long run|run-walk|shakeout)/i.test(b.title));
+export const isHard = (b: Block) => b.kind === "test" || (b.kind === "run" && (b.hard ?? !/^(easy|long run|run-walk|shakeout)/i.test(b.title)));
 const tough = (d: Day) => d.blocks.some((b) => isHard(b) || !!b.km);
 const origin = (d: Day) => d.movedFrom ?? d.date;
 

@@ -40,6 +40,8 @@ function runLoad(b: Block): number {
   const t = b.title.toLowerCase();
   const txt = b.items.join(" ").toLowerCase();
   if (b.kind === "walk" || b.kind === "gate") return 30 * 0.3;
+  // A run from the person's own plan that isn't the long run: by distance, a hard one costing more
+  if (b.dist) return b.dist * MIN_PER_KM * (isHard(b) ? 1.4 : 1);
   // Long runs, with the half block's last 2 km at half pace
   if (b.km) return b.km * MIN_PER_KM + (/half pace/.test(txt) ? 2 * MIN_PER_KM * 0.6 : 0);
   if (b.kind === "test") {

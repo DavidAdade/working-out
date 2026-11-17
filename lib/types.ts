@@ -1,4 +1,5 @@
 import type { PlanSettings } from "@/lib/plan/generate.ts";
+import { cleanOwnRuns, type OwnRun } from "./plan/ownruns.ts";
 
 export interface ProfileRow {
   id: string;
@@ -23,6 +24,8 @@ export interface ProfileRow {
   rest_timer: boolean;
   /** Rest length in seconds; null = by exercise. Absent until migration 0009 is applied. */
   rest_seconds?: number | null;
+  /** Runs from the person's own running plan; the lifting is built around them. Absent until migration 0016 is applied. */
+  own_runs?: OwnRun[] | null;
 }
 
 export type Unit = "kg" | "lb";
@@ -104,6 +107,7 @@ export function profileToSettings(p: ProfileRow): PlanSettings | null {
     goal5kSec: p.goal_5k_sec,
     halfGoalMinSec: p.half_goal_min_sec,
     halfGoalMaxSec: p.half_goal_max_sec,
+    ownRuns: cleanOwnRuns(p.own_runs),
   };
 }
 

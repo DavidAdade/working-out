@@ -283,12 +283,13 @@ export function runCredit(b: Block, u: number, logs: AcctLog[]): { c: number; sh
   if (!logs.length) return { c: 0 };
   const km = logs.reduce((t, l) => t + (l.km ?? 0), 0);
   const sec = logs.reduce((t, l) => t + (l.duration_sec ?? 0), 0);
-  const min = !isHard(b) && b.kind === "run" && !b.km ? Number(/(\d+) min/.exec(b.title)?.[1] ?? 0) : 0;
+  const min = !isHard(b) && b.kind === "run" && !b.km && !b.dist ? Number(/(\d+) min/.exec(b.title)?.[1] ?? 0) : 0;
   let f: number | null = null;
   let short: string | undefined;
-  if (b.km && km > 0) {
-    f = km / b.km;
-    short = `${fmtNum(km)} of ${fmtNum(b.km)} km`;
+  const planKm = b.km ?? b.dist;
+  if (planKm && km > 0) {
+    f = km / planKm;
+    short = `${fmtNum(km)} of ${fmtNum(planKm)} km`;
   } else if (min && sec > 0) {
     f = sec / 60 / min;
     short = `${Math.round(sec / 60)} of ${min} min`;

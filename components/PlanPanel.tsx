@@ -19,6 +19,7 @@ const PHASE_COLOR: Record<Phase, string> = {
   half: "bg-warn",
   taper: "bg-area3",
   race: "bg-ink",
+  own: "bg-accent",
 };
 
 export default function PlanPanel({ weeks, logs, today, onSkip, onMoves }: { weeks: Week[]; logs: LogRow[]; today: string; onSkip: (d: string, s: boolean) => void; onMoves: OnMoves }) {
