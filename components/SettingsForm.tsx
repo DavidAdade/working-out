@@ -140,7 +140,7 @@ export default function SettingsForm({
           />
           <span className="text-xs text-muted">
             One run per line: date, km, name. Add &quot;hard&quot; for intervals or tempo, &quot;race&quot; for a race. In the weeks these cover, they are your running days and the lifting is placed around them: abs
-            after a run of 5.5 km or more, legs never the day before a run.
+            after a run of 5.5 km or more, legs never the day before a run, upper body twice a week on days of its own. They take over from the day you first save the list; earlier days stay as they were.
           </span>
         </div>
 

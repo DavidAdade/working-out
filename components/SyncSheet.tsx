@@ -34,7 +34,10 @@ function describe(op: Op): string {
   }
   if (op.t === "unset") return `Remove ${label(op.key)} set ${op.setNo} · ${fmtDay(op.date)}`;
   if (op.t === "swap") return `${op.to ? `Swap ${label(op.from)} for ${label(op.to)}` : `Put back ${label(op.from)}`} · ${fmtDay(op.planDate)}`;
-  if (op.t === "supersets") return op.add.length ? `Superset: ${op.add.map((s) => s.keys.map(label).join(" + ")).join("; ")}` : "Remove a superset";
+  if (op.t === "supersets") {
+    const made = op.add.filter((s) => !s.off);
+    return made.length ? `Superset: ${made.map((s) => s.keys.map(label).join(" + ")).join("; ")}` : "Remove a superset";
+  }
   if (op.t === "superset") return `Superset change · ${fmtDay(op.planDate)}`;
   if (op.t === "workout-start") return `Start workout · ${fmtDay(op.planDate)}`;
   if (op.t === "workout-end") return `End workout · ${fmtDay(op.planDate)}`;

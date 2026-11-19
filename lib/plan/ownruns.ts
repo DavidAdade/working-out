@@ -5,10 +5,13 @@
 // The rules, in order:
 //  1. Runs stay on their day and come first. A race day carries nothing else.
 //  2. A run of LONG_KM or more gets abs only.
-//  3. Legs never fall the day before a run. A full leg session goes on a free day; a short one may
-//     follow an easy run under LONG_KM. At most LEGS_PER_WEEK, LEG_GAP_DAYS apart (across weeks too).
-//  4. Upper body twice a week: with the full leg days first, then on its own on a free day,
-//     the day before a run for preference, since legs can't use that day.
+//  3. Legs never fall the day before a run. One full leg session a week, alone on a free day (after the
+//     week's long run for preference); a short one may follow an easy run under LONG_KM. At most
+//     LEGS_PER_WEEK, LEG_GAP_DAYS apart (across weeks too).
+//  4. Upper body twice a week, A then B in turn, each on a free day of its own (never a leg day) and
+//     LEG_GAP_DAYS apart: resting the day before a hard run where there's a choice, then spaced 3–4 days.
+//     Lifting takes free days up to MAX_DAYS training days, so the upper body gets the depth and one
+//     rest day always stays.
 //  5. Run days without legs get abs. Everything else is rest.
 //  6. Around a race: no legs from 3 days before to the day after, nothing the day before,
 //     2 sets (light) for all lifting in the last 3 days, and for legs from a week before to 4 days after.
@@ -132,6 +135,7 @@ export function ownWeeks(runs: OwnRun[], weekStarts: ISODate[], anchors: Anchor[
   const out = new Map<ISODate, OwnDay[]>();
   let lastLeg: ISODate | null = null;
   let lastUpper: ISODate | null = null;
+  let upperCount = 0;
 
   for (const ws of weekStarts) {
     const dates = [0, 1, 2, 3, 4, 5, 6].map((n) => addDays(ws, n));
@@ -139,30 +143,44 @@ export function ownWeeks(runs: OwnRun[], weekStarts: ISODate[], anchors: Anchor[
     const runDays = dates.filter((d) => runOn.has(d));
     const apart = (d: ISODate, others: (ISODate | null)[]) => others.every((x) => !x || Math.abs(daysBetween(x, d)) >= LEG_GAP_DAYS);
 
-    // Legs: free days first (full), then after an easy short run (short)
+    // Lifting-only days this week can take
+    const slots = Math.max(0, MAX_DAYS - dates.filter(busy).length);
+    const hardNext = (d: ISODate) => {
+      const r = runOn.get(addDays(d, 1));
+      return anchorOn.has(addDays(d, 1)) || (!!r && ownHard(r));
+    };
+    const longest0 = Math.max(0, ...runDays.map((d) => (runOn.get(d)!.race ? 0 : runOn.get(d)!.km)));
+    const longDay = longest0 >= LONG_KM ? runDays.find((d) => !runOn.get(d)!.race && runOn.get(d)!.km === longest0) ?? null : null;
     const legOk = (d: ISODate) => !busy(addDays(d, 1)) && !noLegs(d) && !eve(d);
     const legs = new Map<ISODate, "full" | "short">();
-    const tryLeg = (d: ISODate, kind: "full" | "short") => {
-      if (legs.size < LEGS_PER_WEEK && legOk(d) && apart(d, [lastLeg, ...legs.keys()])) legs.set(d, kind);
-    };
-    for (const d of free) tryLeg(d, "full");
+    // One full leg day on a free day, after the long run for preference
+    const after = (d: ISODate) => Number(!!longDay && d > longDay);
+    const fullDay = slots > 0 ? free.filter((d) => legOk(d) && apart(d, [lastLeg])).sort((a, b) => after(b) - after(a) || (a < b ? -1 : 1))[0] : undefined;
+    if (fullDay) legs.set(fullDay, "full");
+    // A short one after an easy short run
     for (const d of runDays) {
       const r = runOn.get(d)!;
-      if (r.km < LONG_KM && !ownHard(r)) tryLeg(d, "short");
+      if (legs.size < LEGS_PER_WEEK && ![...legs.values()].includes("short") && r.km < LONG_KM && !ownHard(r) && legOk(d) && apart(d, [lastLeg, ...legs.keys()])) legs.set(d, "short");
     }
-    const fullDays = [...legs].filter(([, k]) => k === "full").map(([d]) => d).sort();
+    const fullDays = fullDay ? [fullDay] : [];
 
-    // Upper: with the full leg days, then alone on a free day, the day before a run for preference
+    // Upper: on free days of their own, apart, resting the day before a hard run where there's a choice
+    const cands = free.filter((d) => !legs.has(d) && !eve(d) && apart(d, [lastUpper]));
+    const want = Math.min(UPPER_PER_WEEK, slots - fullDays.length);
+    const options: ISODate[][] = [[]];
+    for (const a of cands) {
+      options.push([a]);
+      for (const b of cands) if (b > a && daysBetween(a, b) >= LEG_GAP_DAYS) options.push([a, b]);
+    }
+    const score = (o: ISODate[]) => o.length * 1000 - o.filter(hardNext).length * 100 - (o.length === 2 ? Math.abs(daysBetween(o[0], o[1]) - 3.5) * 10 : 0) - (o[0] ? dates.indexOf(o[0]) * 0.1 : 0);
+    const picked = options.filter((o) => o.length <= want).sort((a, b) => score(b) - score(a))[0] ?? [];
     const upper = new Map<ISODate, Block>();
     const sessions = [UPPER.fullA, UPPER.fullB];
-    for (const d of fullDays.slice(0, UPPER_PER_WEEK)) upper.set(d, sessions[upper.size]);
-    const alone = free
-      .filter((d) => !legs.has(d) && !eve(d))
-      .sort((a, b) => Number(busy(addDays(b, 1))) - Number(busy(addDays(a, 1))) || (a < b ? -1 : 1));
-    for (const d of alone) {
-      const training = new Set([...runDays, ...anchorOn.keys(), ...legs.keys(), ...upper.keys()].filter((x) => dates.includes(x))).size;
-      if (upper.size >= UPPER_PER_WEEK || training >= MAX_DAYS) break;
-      if (apart(d, [lastUpper, ...upper.keys()])) upper.set(d, sessions[upper.size]);
+    for (const d of picked) upper.set(d, sessions[upperCount++ % 2]);
+    // A second, short leg day on a spare free day, only while the week keeps two rest days
+    for (const d of free) {
+      const training = new Set([...dates.filter(busy), ...legs.keys(), ...upper.keys()]).size;
+      if (training < MAX_DAYS - 1 && legs.size < LEGS_PER_WEEK && !upper.has(d) && !legs.has(d) && legOk(d) && apart(d, [lastLeg, ...legs.keys()])) legs.set(d, "short");
     }
 
     const abs = [ABS.condoA, ABS.condoB, ABS.gym];
@@ -180,9 +198,9 @@ export function ownWeeks(runs: OwnRun[], weekStarts: ISODate[], anchors: Anchor[
       if (r) blocks.push(runBlock(r, !r.race && r.km === longest && r.km >= LONG_KM));
       const leg = legs.get(d);
       if (leg === "short") lift(LEGS.short, true);
-      if (leg === "full") lift(noCarry(d === fullDays[0] ? LEGS.C_gym : LEGS.C_condo, d === fullDays[0] ? "Leave 2 reps in reserve. Tomorrow has no run." : "Moderate effort. Tomorrow has no run."), true);
+      if (leg === "full") lift(noCarry(LEGS.C_gym, "Leave 2 reps in reserve. Tomorrow has no run."), true);
       const up = upper.get(d);
-      if (up) lift(noCarry(up, busy(addDays(d, 1)) && !leg ? "Upper body only today: there's a run tomorrow, so the legs stay fresh." : undefined));
+      if (up) lift(noCarry(up, busy(addDays(d, 1)) ? "Upper body only today: there's a run tomorrow, so the legs stay fresh." : undefined));
       if (r && !r.race && !leg && !eve(d)) lift(abs[runDays.indexOf(d) % abs.length]);
       if (blocks.length) days.push({ date: d, blocks, fixed: !!r?.race });
     }

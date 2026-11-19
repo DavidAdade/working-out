@@ -26,6 +26,8 @@ export interface ProfileRow {
   rest_seconds?: number | null;
   /** Runs from the person's own running plan; the lifting is built around them. Absent until migration 0016 is applied. */
   own_runs?: OwnRun[] | null;
+  /** The day the plan switched to own_runs (migration 0018); null takes the whole list */
+  own_runs_from?: string | null;
 }
 
 export type Unit = "kg" | "lb";
@@ -108,6 +110,7 @@ export function profileToSettings(p: ProfileRow): PlanSettings | null {
     halfGoalMinSec: p.half_goal_min_sec,
     halfGoalMaxSec: p.half_goal_max_sec,
     ownRuns: cleanOwnRuns(p.own_runs),
+    ownRunsFrom: p.own_runs_from ?? null,
   };
 }
 

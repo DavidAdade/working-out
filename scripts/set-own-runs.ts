@@ -3,13 +3,15 @@
 //
 //   npm run own-runs -- person@example.com runs.txt          # save the list
 //   npm run own-runs -- person@example.com runs.txt --dry    # only show the weeks it gives
+//   npm run own-runs -- person@example.com runs.txt --from=2026-11-19   # days before that keep the plan's own
+//   npm run own-runs -- person@example.com runs.txt --from=all          # the whole list (the default is today)
 //   npm run own-runs -- person@example.com --clear           # back to the plan's own runs
 //
 // Needs SUPABASE_SERVICE_ROLE_KEY. Only touches that account's profiles.own_runs.
 
 import { readFileSync } from "node:fs";
 import { generatePlan } from "../lib/plan/generate.ts";
-import { dowName, mondayOf } from "../lib/plan/dates.ts";
+import { dowName, mondayOf, todayIn } from "../lib/plan/dates.ts";
 import { parseOwnRuns } from "../lib/plan/ownruns.ts";
 import { profileToSettings, type ProfileRow } from "../lib/types.ts";
 
@@ -39,7 +41,10 @@ if (!user) throw new Error(`No account for ${email}`);
 const [profile] = (await api(`/rest/v1/profiles?id=eq.${user.id}&select=*`)) as ProfileRow[];
 if (!profile) throw new Error("That account has no profile yet");
 
-const settings = profileToSettings({ ...profile, own_runs: runs });
+const fromArg = args.find((a) => a.startsWith("--from="))?.slice(7);
+if (fromArg && fromArg !== "all" && !/^\d{4}-\d{2}-\d{2}$/.test(fromArg)) throw new Error("--from takes a date like 2026-11-19, or all");
+const since = !runs.length || fromArg === "all" ? null : fromArg ?? todayIn(profile.timezone || "America/Toronto");
+const settings = profileToSettings({ ...profile, own_runs: runs, own_runs_from: since });
 if (settings && runs.length) {
   const from = mondayOf(runs[0].date);
   const to = mondayOf(runs.at(-1)!.date);
@@ -56,6 +61,6 @@ if (settings && runs.length) {
 
 if (dry) console.log("\nDry run: nothing saved.");
 else {
-  await api(`/rest/v1/profiles?id=eq.${user.id}`, { method: "PATCH", body: JSON.stringify({ own_runs: runs }) });
+  await api(`/rest/v1/profiles?id=eq.${user.id}`, { method: "PATCH", body: JSON.stringify({ own_runs: runs, own_runs_from: since }) });
   console.log(`\nSaved ${runs.length} runs for ${email}.`);
 }

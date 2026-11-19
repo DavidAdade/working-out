@@ -30,7 +30,7 @@ export default async function Home() {
     .limit(400)
     .returns<WorkoutSession[]>()
     .then((r) => r);
-  const supersetsRead = supabase.from("supersets").select("id, keys").order("created_at").returns<Superset[]>().then((r) => r);
+  const supersetsRead = supabase.from("supersets").select("id, keys, off").order("created_at").returns<Superset[]>().then((r) => r);
   const copiesRead = supabase.from("day_copies").select("planDate:plan_date, source:source_date").returns<DayCopy[]>().then((r) => r);
   const reads = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle<ProfileRow>(),

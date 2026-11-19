@@ -6,7 +6,7 @@ import { dayTitle, type Day } from "@/lib/plan/generate.ts";
 import { addDays, daysBetween, dowName } from "@/lib/plan/dates.ts";
 import { parseLine } from "@/lib/plan/exercises.ts";
 import { addedKeys, addedTarget, completion, dayExercises, finishesDay, isLocked, LIFT_KINDS, nextInRound, sessionDate, type DayExercise } from "@/lib/plan/workout.ts";
-import { dayGroups, daySlots, editGroup, type DayGroup } from "@/lib/plan/supersets.ts";
+import { dayGroups, daySlots, daySupersets, editGroup, type DayGroup } from "@/lib/plan/supersets.ts";
 import { asExercise } from "@/lib/plan/catalog.ts";
 import { itemKey, itemLine } from "@/lib/plan/swaps.ts";
 import type { SetRow } from "@/lib/types";
@@ -135,7 +135,9 @@ export function DayBlocks({
 
   // Supersets on this day: every loggable row (added ones too) by the key it's grouped under, and the groups in force
   const slots = useMemo(() => daySlots(day, added), [day, added]);
-  const groups = useMemo(() => (supersetApi ? dayGroups(slots, supersetApi.list) : []), [slots, supersetApi]);
+  // The person's saved ones, then the pairs the day's templates come with (shown even where they can't be changed)
+  const supersetList = useMemo(() => daySupersets(day, supersetApi?.list ?? []), [day, supersetApi]);
+  const groups = useMemo(() => dayGroups(slots, supersetList), [slots, supersetList]);
   const groupAt = (id: string | null): DayGroup | undefined => (id ? groups.find((g) => g.rows.includes(id)) : undefined);
   /** A row as logged: the exercise shown on it and its target sets */
   const rowOf = (id: string): DayExercise | undefined => {
@@ -371,7 +373,7 @@ export function DayBlocks({
     });
   const saveGroup = (row: string, chosen: string[]) => {
     if (!supersetApi) return;
-    const e = editGroup(supersetApi.list, slots, row, chosen, () => crypto.randomUUID());
+    const e = editGroup(supersetList, slots, row, chosen, () => crypto.randomUUID());
     if (!e) return;
     const names = slots.filter((sl) => sl.id === row || chosen.includes(sl.id)).map((sl) => nameOfRow(sl.id));
     supersetApi.edit(e, names.length >= 2 ? `Superset: ${names.join(" + ")}.` : `${nameOfRow(row)} is out of the superset.`);

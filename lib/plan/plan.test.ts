@@ -18,7 +18,8 @@ import { onTrack, wins } from "./ontrack.ts";
 import { planToIcs } from "./ics.ts";
 import { addDays, daysBetween } from "./dates.ts";
 import { addedKeys, addedTarget, clampEnd, completion, dayExercises, elapsed, finishesDay, heldSeconds, holdPhases, isLocked, nextInRound, READY_SEC, sessionDate, sessionDateFor, sessionState, SWITCH_SEC, withReady, type WorkoutSession } from "./workout.ts";
-import { applyEdit, dayGroups, daySlots, editGroup, type Superset } from "./supersets.ts";
+import { applyEdit, dayGroups, daySlots, daySupersets, editGroup, templateSupersets, type Superset } from "./supersets.ts";
+import { ABS, LEGS, UPPER } from "./templates.ts";
 import { cleanOwnRuns, formatOwnRuns, LONG_KM, ownHard, ownWeeks, parseOwnRuns, type OwnRun } from "./ownruns.ts";
 import { bestsByWeek, fiveKEquivalent, mondaysBetween, paceNeeded, strengthIndex, strengthSeries } from "./stats.ts";
 import { countsForDay } from "../types.ts";
@@ -143,6 +144,18 @@ test("every lift line maps to a stable exercise", () => {
     if (b.kind !== "legs" && b.kind !== "upper" && b.kind !== "abs" && b.kind !== "mobility") continue;
     for (const line of b.items) if (/\d+\s*(×|sets?\b)/.test(line) && !parseLine(line)) unmapped.add(line);
   }
+  // Templates no profile's own plan shows (the own-runs sessions) are checked too, with their supersets
+  for (const [name, b] of [...Object.entries(LEGS), ...Object.entries(UPPER), ...Object.entries(ABS)]) {
+    for (const line of b.items) if (/\d+\s*(×|sets?\b)/.test(line) && !parseLine(line)) unmapped.add(line);
+    const used = (b.supersets ?? []).flat();
+    assert.equal(new Set(used).size, used.length, `${name}: a line is in two supersets`);
+    for (const g of b.supersets ?? []) {
+      assert.ok(g.length >= 2, `${name}: a superset of one`);
+      for (const i of g) assert.ok(parseLine(b.items[i] ?? ""), `${name}: superset line ${i} isn't an exercise`);
+    }
+    const keys = b.items.flatMap((l) => parseLine(l)?.exercise.key ?? []);
+    assert.equal(new Set(keys).size, keys.length, `${name}: an exercise twice`);
+  }
   assert.deepEqual([...unmapped], []);
   const keys = EXERCISES.map((e) => e.key);
   assert.equal(new Set(keys).size, keys.length);
@@ -256,6 +269,8 @@ const PROFILES: Record<string, PlanSettings> = {
   shortInjury: { startDate: "2027-01-04", recoveryStart: "2026-12-21", returningFromInjury: true, timeTrialDate: "2027-03-26", current5kSec: 2100, goal5kSec: 1900 },
   // Follows another running plan for 9 weeks in the middle of the program (see OWN_RUNS)
   ownRuns: { startDate: "2026-10-05", returningFromInjury: false, timeTrialDate: "2027-03-26", current5kSec: 1980, goal5kSec: 1740, ownRuns: OWN_RUNS },
+  // The same, switched to on a Thursday: that week's Monday to Wednesday stay the plan's own
+  ownRunsFrom: { startDate: "2026-10-05", returningFromInjury: false, timeTrialDate: "2027-03-26", current5kSec: 1980, goal5kSec: 1740, ownRuns: OWN_RUNS, ownRunsFrom: "2026-11-19" },
   longRace: { startDate: "2027-06-07", returningFromInjury: true, recoveryStart: "2027-05-17", timeTrialDate: "2027-11-05", raceDate: "2027-12-12", current5kSec: 2400, goal5kSec: 2100, halfGoalMinSec: 9600, halfGoalMaxSec: 10200 },
 };
 const HARD = /^(?!easy|long run|run-walk|shakeout)/i;
@@ -859,6 +874,37 @@ test("supersets: round by round on counts, rest after the round, any starting or
   assert.deepEqual(nextInRound(three, "c", counts({ b: 1, c: 1 })), { next: "a", rest: false, groupDone: false, round: 1 });
 });
 
+test("supersets: the ones a workout comes with show without saving, can be split and put back, and yield to your own", () => {
+  const day = { blocks: [{ ...UPPER.fullA }] };
+  const slots = daySlots(day);
+  const key = (i: number) => parseLine(UPPER.fullA.items[i])!.exercise.key;
+  const rows = (saved: Superset[]) => dayGroups(slots, daySupersets(day, saved)).map((g) => g.rows);
+  assert.deepEqual(rows([]), [["0-0", "0-1"], ["0-2", "0-3"], ["0-4", "0-5"], ["0-6", "0-7"]]);
+  assert.equal(templateSupersets(day).length, 4);
+  // A swapped exercise stays in its pair (pairs go by the template's exercise), and a light block keeps them
+  const swapped = { blocks: [{ ...UPPER.fullA, light: true, swaps: { 0: { from: key(0), to: "push-up", name: "Push-ups", load: "bodyweight" as const, target: { sets: 4, reps: 10, repsMax: null, sec: null, each: false }, line: "Push-ups, 4×10" } } }] };
+  assert.equal(dayGroups(daySlots(swapped), daySupersets(swapped, [])).length, 4);
+
+  // "Remove from superset" on a plan pair saves a row that switches it off: nothing is deleted
+  let n = 0;
+  const id = () => `new-${++n}`;
+  let saved: Superset[] = [];
+  const leave = editGroup(daySupersets(day, saved), slots, "0-0", ["0-0"], id)!;
+  assert.deepEqual(leave, { remove: [], add: [{ id: "new-1", keys: [key(0), key(1)], off: true }] });
+  saved = applyEdit(saved, leave);
+  assert.deepEqual(rows(saved), [["0-2", "0-3"], ["0-4", "0-5"], ["0-6", "0-7"]]);
+  // Undo deletes that row and the pair is back
+  assert.equal(rows(applyEdit(saved, { remove: ["new-1"], add: [] })).length, 4);
+  // Re-pairing across two plan pairs: yours is saved, both plan pairs go off, the two left over stay single
+  const mix = editGroup(daySupersets(day, []), slots, "0-2", ["0-2", "0-5"], id)!;
+  assert.deepEqual(mix.remove, []);
+  assert.deepEqual(rows(applyEdit([], mix)), [["0-0", "0-1"], ["0-2", "0-5"], ["0-6", "0-7"]]);
+  // Your own group that takes one exercise of a plan pair wins it; what's left of the pair is no superset
+  assert.deepEqual(rows([{ id: "mine", keys: [key(1), key(7)] }]), [["0-1", "0-7"], ["0-2", "0-3"], ["0-4", "0-5"]]);
+  // A workout with no pairs of its own has none
+  assert.deepEqual(daySupersets({ blocks: [{ ...ABS.gym }] }, []), []);
+});
+
 test("hold timer: one hold, or both sides with a switch; logs one side's time", () => {
   assert.deepEqual(holdPhases(30, false).map((p) => p.sec), [30]);
   const both = holdPhases(30, true);
@@ -985,6 +1031,7 @@ const shift = (p: PlanSettings, days: number): PlanSettings => ({
   timeTrialDate: addDays(p.timeTrialDate, days),
   raceDate: p.raceDate ? addDays(p.raceDate, days) : p.raceDate,
   ownRuns: p.ownRuns?.map((r) => ({ ...r, date: addDays(r.date, days) })),
+  ownRunsFrom: p.ownRunsFrom ? addDays(p.ownRunsFrom, days) : p.ownRunsFrom,
 });
 
 test("accountability: everything logged scores 100 in every profile and week type", () => {
@@ -1594,9 +1641,11 @@ test("stats: bests per week and the pace needed for the goal", () => {
 });
 
 /** Every rule a week around the person's own runs must keep, whatever the run days are */
-function checkOwnWeeks(name: string, runs: OwnRun[], weeks: Week[]) {
+function checkOwnWeeks(name: string, allRuns: OwnRun[], weeks: Week[], since: string | null = null) {
+  // Days before the switch are the plan's own and follow its rules, not these
+  const runs = allRuns.filter((r) => !since || r.date >= since);
   const runOn = new Map(runs.map((r) => [r.date, r]));
-  const days = weeks.filter((w) => w.phase === "own").flatMap((w) => w.days);
+  const days = weeks.filter((w) => w.phase === "own").flatMap((w) => w.days).filter((d) => !since || d.date >= since);
   for (const r of runs) {
     const d = days.find((x) => x.date === r.date);
     assert.ok(d, `${name}: ${r.date} run missing`);
@@ -1620,10 +1669,18 @@ function checkOwnWeeks(name: string, runs: OwnRun[], weeks: Week[]) {
   }
   const legDays = days.filter((d) => d.blocks.some((b) => b.kind === "legs")).map((d) => d.date);
   for (let i = 1; i < legDays.length; i++) assert.ok(daysBetween(legDays[i - 1], legDays[i]) >= 2, `${name}: legs on ${legDays[i - 1]} and ${legDays[i]}`);
-  for (const w of weeks.filter((x) => x.phase === "own")) {
+  const upperDays = days.filter((d) => d.blocks.some((b) => b.kind === "upper"));
+  for (const d of upperDays) assert.ok(d.blocks.every((b) => b.kind === "upper"), `${name}: upper on ${d.date} has a day of its own`);
+  for (let i = 1; i < upperDays.length; i++) {
+    assert.ok(daysBetween(upperDays[i - 1].date, upperDays[i].date) >= 2, `${name}: upper on ${upperDays[i - 1].date} and ${upperDays[i].date}`);
+    assert.notEqual(upperDays[i].blocks[0].title, upperDays[i - 1].blocks[0].title, `${name}: A and B take turns (${upperDays[i].date})`);
+  }
+  for (const w of weeks.filter((x) => x.phase === "own" && (!since || x.start >= since))) {
     const ran = runs.filter((r) => r.date >= w.start && r.date < addDays(w.start, 7)).length;
     assert.ok(w.days.length <= Math.max(6, ran), `${name} ${w.label}: lifting never takes the last rest day`);
     assert.ok(w.days.filter((d) => d.blocks.some((b) => b.kind === "upper")).length <= 2, `${name} ${w.label}: upper twice at most`);
+    const legs = w.days.flatMap((d) => d.blocks.filter((b) => b.kind === "legs"));
+    assert.ok(legs.filter((b) => b.title === LEGS.short.title).length <= 1 && legs.filter((b) => b.title !== LEGS.short.title).length <= 1, `${name} ${w.label}: one full leg day, one short at most`);
   }
 }
 
@@ -1644,17 +1701,33 @@ test("own runs: the lifting goes around them, and the weeks outside are untouche
   }
   const titles = (date: string) => dayForDate(weeks, date)?.blocks.map((b) => b.title + (b.light ? " (light)" : "")) ?? [];
   assert.deepEqual(titles("2026-11-16"), ["5km Easy Run", "Legs: short (after your run)"]);
-  assert.deepEqual(titles("2026-11-17"), ["Upper: push + pull (condo)"]);
-  assert.deepEqual(titles("2026-11-19"), ["Legs: strength (gym)", "Upper: push + pull (gym)"]);
+  assert.deepEqual(titles("2026-11-17"), ["Upper A: chest + back (gym)"]);
+  assert.deepEqual(titles("2026-11-19"), ["Legs: strength (gym)"], "legs have the day to themselves");
   assert.deepEqual(titles("2026-11-20"), [], "rest before the hard run");
-  assert.deepEqual(titles("2026-11-29"), ["Legs: knee-focused (condo)", "Upper: push + pull (condo)"], "Sunday legs only when Monday has no run");
-  assert.deepEqual(titles("2026-12-31"), ["Legs: strength (gym) (light)", "Upper: push + pull (gym)"], "legs ease off a week out");
+  assert.deepEqual(titles("2026-11-22"), ["Upper B: shoulders + arms (condo)"]);
+  assert.deepEqual(titles("2026-12-04"), ["Upper B: shoulders + arms (condo)"], "Friday when the weekend is two easy runs");
+  assert.deepEqual(titles("2026-12-31"), ["Legs: strength (gym) (light)"], "legs ease off a week out");
+  // Depth: each upper session is 8 exercises in 4 supersets, and a week gives chest and back 10+ direct sets
+  for (const d of ["2026-11-17", "2026-11-22"]) {
+    const day = dayForDate(weeks, d)!;
+    assert.equal(dayExercises(day).length, 8, d);
+    assert.equal(dayGroups(daySlots(day), daySupersets(day, [])).length, 4, d);
+  }
   assert.deepEqual(titles("2027-01-05"), [], "rest the day before the race");
   assert.deepEqual(titles("2027-01-13"), ["5.5km Long Run", "Abs (condo)"], "exactly 5.5 km counts as long");
   // Hard and long are what the list says, not what the title looks like
   assert.equal(isHard(dayForDate(weeks, "2026-11-16")!.blocks[0]), false);
   assert.equal(isHard(dayForDate(weeks, "2026-11-21")!.blocks[0]), true);
   assert.equal(weekLongRunKm(weekForDate(weeks, "2026-12-21")!), 10);
+  // Switched to on a Thursday: Monday to Wednesday stay the plan's own, the rest follows the runs, and so does every week after
+  const late = generatePlan(PROFILES.ownRunsFrom);
+  checkOwnWeeks("ownRunsFrom", OWN_RUNS, late, "2026-11-19");
+  const cut = weekForDate(late, "2026-11-19")!;
+  assert.deepEqual(cut.days.filter((d) => d.date < "2026-11-19"), weekForDate(plain, "2026-11-19")!.days.filter((d) => d.date < "2026-11-19"));
+  assert.deepEqual(cut.days.filter((d) => d.date >= "2026-11-19"), weekForDate(weeks, "2026-11-19")!.days.filter((d) => d.date >= "2026-11-19"));
+  for (const w of late.filter((x) => x.start > "2026-11-19" || x.start < "2026-11-16")) assert.deepEqual(w, weeks.find((x) => x.start === w.start), `${w.label}`);
+  // A switch date after the whole list leaves the plan as it was
+  assert.deepEqual(generatePlan({ ...p, ownRunsFrom: "2027-02-01" }).filter((w) => w.start <= "2027-01-11"), plain.filter((w) => w.start <= "2027-01-11"));
   // Skips, moves and logging by distance work as on any other week
   const skipped = generatePlan(p, { skips: ["2026-11-17"], moves: [{ from: "2026-11-19", to: "2026-11-20" }] });
   assert.ok(dayForDate(skipped, "2026-11-17")!.skipped);

@@ -3,6 +3,8 @@
 // A group is saved for the workout, not for one date: it shows on every day that has two or more of its
 // exercises, so it comes back next week without being rebuilt. Keys are the TEMPLATE's exercise keys (or the
 // key of an exercise added mid-workout), never a swapped-in one, so swapping an exercise keeps its group.
+// A template can also declare pairs of its own (`Block.supersets`): those show without anything saved, and a
+// saved row marked `off` switches one of them off for that person (how "Remove from superset" works on them).
 // Nothing here changes the plan: the day's rows are grouped where they are shown (DayView), and the calendar
 // feed and the AI check-in never see supersets.
 
@@ -17,6 +19,32 @@ export interface Superset {
   id: string;
   /** Template exercise keys (or added exercises' keys) */
   keys: string[];
+  /** Not a group: the plan's own superset with exactly these exercises is switched off for this person */
+  off?: boolean;
+}
+
+/** Ids of the supersets a template declares: never stored, so never deleted */
+const TPL = "tpl:";
+const sameKeys = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((k) => b.includes(k));
+
+/** The supersets a day's templates declare, by template exercise key (so a swapped exercise stays in its pair) */
+export function templateSupersets(day: Pick<Day, "blocks">): Superset[] {
+  return day.blocks.flatMap((b) => {
+    if (!LIFT_KINDS.includes(b.kind)) return [];
+    return (b.supersets ?? []).flatMap((g) => {
+      const keys = g.flatMap((i) => parseLine(b.items[i] ?? "")?.exercise.key ?? []);
+      return keys.length >= 2 ? [{ id: TPL + keys.join("+"), keys }] : [];
+    });
+  });
+}
+
+/**
+ * Every superset that can show on a day: the person's own first (so theirs wins an exercise both want), then
+ * the templates' that they haven't switched off. Pass this list to dayGroups and editGroup.
+ */
+export function daySupersets(day: Pick<Day, "blocks">, saved: readonly Superset[]): Superset[] {
+  const off = saved.filter((s) => s.off);
+  return [...saved.filter((s) => !s.off), ...templateSupersets(day).filter((t) => !off.some((o) => sameKeys(o.keys, t.keys)))];
 }
 
 /** One loggable row of a day: its id as shown ("blockIndex-itemIndex", or "add-<key>") and the key it's grouped by */
@@ -56,6 +84,7 @@ export function dayGroups(slots: DaySlot[], supersets: readonly Superset[]): Day
   const taken = new Set<string>();
   const found: { id: string; rows: string[] }[] = [];
   for (const s of supersets) {
+    if (s.off) continue;
     const keys = new Set(s.keys);
     const seen = new Set<string>();
     const rows: string[] = [];
@@ -103,7 +132,9 @@ export function editGroup(supersets: readonly Superset[], slots: DaySlot[], row:
   const wantKeys = want.map((r) => keyOf(r)!);
   const edit: SupersetEdit = { remove: [], add: [] };
   const replace = (g: DayGroup, keys: string[]) => {
-    edit.remove.push(g.id);
+    // The plan's own pair can't be deleted: a saved "off" row hides it (deleting that row brings it back)
+    if (g.id.startsWith(TPL)) edit.add.push({ id: newId(), keys: supersets.find((s) => s.id === g.id)!.keys, off: true });
+    else edit.remove.push(g.id);
     const uniq = [...new Set(keys)].slice(0, SUPERSET_MAX);
     if (uniq.length >= 2) edit.add.push({ id: newId(), keys: uniq });
   };

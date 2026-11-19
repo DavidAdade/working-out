@@ -51,7 +51,7 @@ export function useSupersets(server: Superset[]): SupersetApi {
       const op = crypto.randomUUID();
       const removed = listRef.current.filter((s) => e.remove.includes(s.id));
       setLocal((cur) => [...cur, { op, edit: e }]);
-      const undo = { label: "Undo", run: () => edit({ remove: e.add.map((a) => a.id), add: removed.map((s) => ({ id: crypto.randomUUID(), keys: s.keys })) }, "Superset change undone.") };
+      const undo = { label: "Undo", run: () => edit({ remove: e.add.map((a) => a.id), add: removed.map((s) => ({ id: crypto.randomUUID(), keys: s.keys, ...(s.off ? { off: true } : {}) })) }, "Superset change undone.") };
       void send({ id: op, t: "supersets", remove: e.remove, add: e.add }).then((r) => {
         if (r === "sent") notify({ text: note, tone: "good", action: undo });
         else if (r === "queued") notify({ text: `${note} Saved on this phone. Syncs when you're back online.`, action: undo });

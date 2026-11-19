@@ -39,6 +39,11 @@ export interface PlanSettings {
    * are the running days and the lifting is placed around them (see ownruns.ts); other weeks are the plan's own.
    */
   ownRuns?: OwnRun[] | null;
+  /**
+   * The day the person switched to those runs. Days before it keep what the plan had (so a week already under
+   * way, and what was logged in it, isn't rewritten); null takes the whole list.
+   */
+  ownRunsFrom?: ISODate | null;
 }
 
 export interface Day {
@@ -319,13 +324,16 @@ export function generatePlan(s: PlanSettings, opts: GenerateOptions = {}): Week[
       const index = (last.index ?? 0) + 1;
       weeks.push({ label: `W${index}`, index, start: addDays(last.start, 7), phase: "own", cutback: false, days: [], notes: [] });
     }
-    const mine = weeks.filter((w) => w.start >= from && w.start <= to);
+    const since = s.ownRunsFrom ?? null;
+    const mine = weeks.filter((w) => w.start >= from && w.start <= to && (!since || addDays(w.start, 6) >= since));
     // The plan's own time trial or race inside these weeks stays, and is treated as a race
     const anchors = mine.flatMap((w) => w.days.filter((d) => d.fixed).map((d) => ({ date: d.date, blocks: d.blocks })));
     const laid = ownWeeks(own, mine.map((w) => w.start), anchors);
     for (const w of mine) {
       const kept = w.days.some((d) => d.fixed);
-      w.days = laid.get(w.start)!.map((d) => ({ date: d.date, blocks: d.blocks.map((b) => ({ ...b, planDate: d.date })), skipped: false, skippable: !d.fixed, fixed: d.fixed, alerts: [] }));
+      const days = laid.get(w.start)!.map((d) => ({ date: d.date, blocks: d.blocks.map((b) => ({ ...b, planDate: d.date })), skipped: false, skippable: !d.fixed, fixed: d.fixed, alerts: [] }));
+      // The week the switch falls in: the days before it stay as they were, the rest follow the runs
+      w.days = since && since > w.start ? [...w.days.filter((d) => d.date < since), ...days.filter((d) => d.date >= since)] : days;
       if (!kept) w.phase = "own";
       w.cutback = false;
     }

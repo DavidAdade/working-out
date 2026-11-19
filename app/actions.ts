@@ -103,6 +103,10 @@ export async function saveSettings(_: unknown, form: FormData): Promise<ActionRe
       .slice(0, 3),
     own_runs: ownRuns.runs,
   };
+  // A run list saved for the first time takes over from today: the days already behind keep what they showed
+  const { data: before } = await supabase.from("profiles").select("own_runs, own_runs_from").eq("id", user.id).maybeSingle<{ own_runs: unknown[] | null; own_runs_from: string | null }>();
+  const hadRuns = Array.isArray(before?.own_runs) && before.own_runs.length > 0;
+  const own_runs_from = !ownRuns.runs.length ? null : hadRuns ? before?.own_runs_from ?? null : todayIn(safeTimeZone(update.timezone));
   if (ownRuns.bad.length) return fail(`Couldn't read this run: "${ownRuns.bad[0].slice(0, 60)}". Write each as: 2026-11-16, 5, Easy Run`);
   if (ownRuns.runs.length > 400) return fail("That's more than 400 runs. Keep the list to the coming months.");
   if (!update.start_date || !update.time_trial_date) return fail("Add a start date and a time trial date.");
@@ -113,7 +117,7 @@ export async function saveSettings(_: unknown, form: FormData): Promise<ActionRe
   if (update.recovery_start && update.recovery_start >= update.start_date) return fail("The strength-only phase has to start before running does.");
   if (update.race_date && daysBetween(update.time_trial_date, update.race_date) < MIN_RACE_GAP_WEEKS * 7)
     return fail(`Put the race at least ${MIN_RACE_GAP_WEEKS} weeks after the time trial, so it gets its own taper.`);
-  const { error } = await supabase.from("profiles").update(update).eq("id", user.id);
+  const { error } = await supabase.from("profiles").update({ ...update, own_runs_from }).eq("id", user.id);
   if (error) return fail("Couldn't save settings. Try again.");
   revalidatePath("/");
   redirect("/");
@@ -215,7 +219,7 @@ export async function editSupersets(remove: string[], add: Superset[]): Promise<
     if (error) return failed;
   }
   if (add.length) {
-    const { error } = await supabase.from("supersets").upsert(add.map((s) => ({ id: s.id, user_id: user.id, keys: s.keys })), { onConflict: "id" });
+    const { error } = await supabase.from("supersets").upsert(add.map((s) => ({ id: s.id, user_id: user.id, keys: s.keys, off: s.off === true })), { onConflict: "id" });
     if (error) return failed;
   }
   revalidatePath("/");
