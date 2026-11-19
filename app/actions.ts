@@ -17,6 +17,7 @@ import { canCopy, generatePlan, MIN_RACE_GAP_WEEKS, type DayCopy, type Move } fr
 import { GATES, REST_CHOICES, countsForDay, profileToSettings, type LogKind, type LogRow, type ProfileRow, type SetRow, type Unit } from "@/lib/types";
 import { exerciseByKey, type Load } from "@/lib/plan/exercises.ts";
 import type { Swap } from "@/lib/plan/swaps.ts";
+import { SUPERSET_MAX, type Superset } from "@/lib/plan/supersets.ts";
 import { customKey, youtubeId } from "@/lib/plan/catalog.ts";
 import { MUSCLES } from "@/lib/plan/muscles.ts";
 import { AUTO_END_MS, clampEnd, isLocked, sessionDateFor, type WorkoutSession } from "@/lib/plan/workout.ts";
@@ -194,18 +195,29 @@ export async function setSwap(planDate: string, from: string, to: string | null)
   return { ok: true };
 }
 
-/* ---------- supersets on one plan day ---------- */
+/* ---------- supersets ---------- */
 /**
- * Links the template exercise `key` on plan day `planDate` (the plan's own date, before moves) to the line
- * after it in its block, or unlinks it. Always the template's key, never a swapped-in one.
+ * Changes the saved supersets (see lib/plan/supersets.ts): deletes the groups in `remove`, saves the ones in
+ * `add`. Ids come from the phone, so replaying the same change is harmless.
  */
-export async function setSupersetLink(planDate: string, key: string, on: boolean): Promise<ActionResult> {
+export async function editSupersets(remove: string[], add: Superset[]): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
-  if (!ISO.test(planDate) || !KEY.test(key) || !exerciseByKey(key)) return { ok: false, error: "Couldn't change that superset." };
-  const { error } = on
-    ? await supabase.from("superset_links").upsert({ user_id: user.id, plan_date: planDate, key, created_at: new Date().toISOString() }, { onConflict: "user_id,plan_date,key" })
-    : await supabase.from("superset_links").delete().eq("user_id", user.id).eq("plan_date", planDate).eq("key", key);
-  if (error) return { ok: false, error: "Couldn't change that superset. Try again." };
+  const bad = { ok: false as const, error: "Couldn't change that superset." };
+  if (!Array.isArray(remove) || !Array.isArray(add) || remove.length > 20 || add.length > 20) return bad;
+  if (!remove.every((id) => typeof id === "string" && UUID.test(id))) return bad;
+  for (const s of add) {
+    if (!s || typeof s.id !== "string" || !UUID.test(s.id) || !Array.isArray(s.keys)) return bad;
+    if (s.keys.length < 2 || s.keys.length > SUPERSET_MAX || new Set(s.keys).size !== s.keys.length || !s.keys.every((k) => typeof k === "string" && KEY.test(k))) return bad;
+  }
+  const failed = { ok: false as const, error: "Couldn't change that superset. Try again." };
+  if (remove.length) {
+    const { error } = await supabase.from("supersets").delete().eq("user_id", user.id).in("id", remove);
+    if (error) return failed;
+  }
+  if (add.length) {
+    const { error } = await supabase.from("supersets").upsert(add.map((s) => ({ id: s.id, user_id: user.id, keys: s.keys })), { onConflict: "id" });
+    if (error) return failed;
+  }
   revalidatePath("/");
   return { ok: true };
 }

@@ -1,5 +1,6 @@
 // Resets a test account to ~5 weeks of realistic history: profile, runs, a 5K test, lifting sets with
-// progression (one stalled lift, one dropped lift so the warnings show), a skipped day and a cutback week.
+// progression (one stalled lift, one dropped lift so the warnings show), a skipped day, a cutback week and two
+// supersets on the next lifting day.
 //
 //   npm run seed:test                      # test@mailinator.com
 //   npm run seed:test -- other@mailinator.com
@@ -89,6 +90,7 @@ async function main() {
     }),
   });
   for (const t of ["set_logs", "logs", "day_overrides", "day_moves", "exercise_swaps"]) await api(`/rest/v1/${t}?user_id=eq.${uid}`, { method: "DELETE" });
+  await api(`/rest/v1/supersets?user_id=eq.${uid}`, { method: "DELETE" });
   // Score tab deletes; the table only exists once migration 0011 is pushed
   await api(`/rest/v1/activity_events?user_id=eq.${uid}`, { method: "DELETE" }).catch(() => null);
 
@@ -192,10 +194,25 @@ async function main() {
   }
   for (let i = 0; i < sets.length; i += 500) await api("/rest/v1/set_logs", { method: "POST", body: JSON.stringify(sets.slice(i, i + 500)) });
 
+  // Supersets on the next lifting day (today's, if there is one): the first two exercises of its first block, and
+  // one that crosses blocks (the first block's last exercise with the next block's first). Saved for the workout,
+  // so they show every week those exercises share a day.
+  const liftKeys = (b: { kind: string; items: string[] }) => (["legs", "upper", "abs", "mobility"].includes(b.kind) ? b.items.flatMap((l) => parseLine(l)?.exercise.key ?? []) : []);
+  const nextLift = weeks.flatMap((w) => w.days).find((d) => d.date >= today && !d.skipped && d.blocks.some((b) => liftKeys(b).length >= 3));
+  const supersetNote: string[] = [];
+  if (nextLift) {
+    const blocks = nextLift.blocks.map(liftKeys).filter((k) => k.length);
+    const groups = [blocks[0].slice(0, 2)];
+    if (blocks[1] && blocks[0].length >= 3) groups.push([blocks[0][blocks[0].length - 1], blocks[1][0]]);
+    await api("/rest/v1/supersets", { method: "POST", body: JSON.stringify(groups.map((keys) => ({ user_id: uid, keys }))) });
+    supersetNote.push(`${groups.map((g) => g.join(" + ")).join(", and ")} (next on ${nextLift.date})`);
+  }
+
   const runs = logs.filter((l) => l.kind !== "strength").length;
   console.log(`seed-test-user: ${email} reset with ${runs} runs/tests, ${logs.length - runs} lifting days, ${sets.length} sets from ${FROM} to ${addDays(today, -1)}.`);
   console.log(`  Plan starts ${start}. Warnings to look for: ${STALLED} (no increase) and ${DROPPED} (dropped ~15%).`);
   if (swapNote.length) console.log(`  Swap: ${swapNote.join(", ")}.`);
+  if (supersetNote.length) console.log(`  Supersets: ${supersetNote.join("")}.`);
 
   // What the Score tab should show for this data
   const acctLogs = logs as unknown as AcctLog[];

@@ -99,56 +99,57 @@ export interface DayExercise {
   key: string;
   /** Target sets, 2 on light weeks */
   sets: number;
-  /** In a superset: its letter (A, B… per day, in order), place in the group (1-based) and the group's size */
-  group?: { letter: string; pos: number; size: number };
 }
 
-/** Every loggable exercise on a day, in order, as shown (swaps and supersets included) */
+/** Every loggable exercise on a day, in order, as shown (swaps included) */
 export function dayExercises(day: Pick<Day, "blocks">): DayExercise[] {
-  let letters = 0;
   return day.blocks.flatMap((b, bi) => {
     if (!LIFT_KINDS.includes(b.kind)) return [];
-    const groups = (b.supersets ?? []).map((g) => ({ g, letter: String.fromCharCode(65 + letters++) }));
     return b.items.flatMap((line, ii) => {
       const p = parseLine(line);
       if (!p) return [];
       const target = b.swaps?.[ii]?.target ?? p.target;
       const light = !!b.light || !!b.foldedFrom;
-      const inGroup = groups.find((x) => x.g.includes(ii));
-      const x: DayExercise = { id: `${bi}-${ii}`, key: itemKey(b, ii) ?? p.exercise.key, sets: light ? Math.min(target.sets, 2) : target.sets };
-      if (inGroup) x.group = { letter: inGroup.letter, pos: inGroup.g.indexOf(ii) + 1, size: inGroup.g.length };
-      return [x];
+      return [{ id: `${bi}-${ii}`, key: itemKey(b, ii) ?? p.exercise.key, sets: light ? Math.min(target.sets, 2) : target.sets }];
     });
   });
 }
 
 export interface RoundStep {
-  /** The exercise to open next: the next one in this round, else the first still behind; null when there's none */
+  /** The row whose set comes next: a member still owed this round (no rest), else the one to start the next round on. Null when the group is done or the set was an extra one. */
   next: string | null;
-  /** Rest now: the round is over (or the set was an extra one past the target) */
+  /** Rest now: the round is over */
   rest: boolean;
-  /** Every exercise in the group hit its target */
+  /** This set finished the group: every exercise in it hit its target */
   groupDone: boolean;
+  /** The round this set belongs to (1-based) */
+  round: number;
 }
 
 /**
- * Where a superset goes after set `setNo` of exercise `id` is logged: on to the next exercise in the round with
- * no rest, or, once the round is over, a rest and back to the first exercise still behind. `done` counts the
- * sets logged so far for a key on this day (set `setNo` of `id` counts whether or not it's in yet).
- * Uneven groups (3 sets and 4) finish with the longer one alone, resting after each set. An extra set past
- * an exercise's target rests and stays put.
+ * Where a superset goes after a new set of member `id`. `done` counts the sets logged for a key on this day,
+ * the new one included. Everything works on counts, never set numbers, so rounds stay right when a set is
+ * unticked and redone, logged out of order, or the round starts on the second exercise.
+ *  - A member exactly one set behind (and not finished) is owed this round: go there, no rest.
+ *  - Otherwise the round is over: rest, then on to the unfinished member with the fewest sets. A partner two
+ *    or more sets behind is being skipped (its machine is taken): stay here and rest after each set.
+ *  - Uneven groups (3 sets and 4) end with the longer one alone, resting after each set.
+ *  - An extra set past the target rests and stays put.
  */
-export function nextInRound(order: DayExercise[], id: string, setNo: number, done: (key: string) => number): RoundStep {
-  const me = order.find((x) => x.id === id);
-  if (!me?.group) return { next: null, rest: true, groupDone: false };
-  const members = order.filter((x) => x.group?.letter === me.group!.letter);
-  const count = (x: DayExercise) => (x.id === id ? Math.max(done(x.key), setNo) : done(x.key));
-  const groupDone = members.every((x) => count(x) >= x.sets);
-  if (setNo > me.sets) return { next: null, rest: true, groupDone: false };
-  const after = members.slice(members.indexOf(me) + 1).find((x) => x.sets >= setNo && count(x) < setNo);
-  if (after) return { next: after.id, rest: false, groupDone: false };
-  if (groupDone) return { next: null, rest: true, groupDone: true };
-  return { next: members.find((x) => count(x) < x.sets)?.id ?? null, rest: true, groupDone: false };
+export function nextInRound(members: DayExercise[], id: string, done: (key: string) => number): RoundStep {
+  const i = members.findIndex((x) => x.id === id);
+  if (i < 0) return { next: null, rest: true, groupDone: false, round: 1 };
+  const me = members[i];
+  const n = done(me.key);
+  const others = [...members.slice(i + 1), ...members.slice(0, i)];
+  const owed = n <= me.sets ? others.find((x) => done(x.key) === n - 1 && done(x.key) < x.sets) : undefined;
+  if (owed) return { next: owed.id, rest: false, groupDone: false, round: n };
+  const open = members.filter((x) => done(x.key) < x.sets);
+  if (!open.length) return { next: null, rest: true, groupDone: n <= me.sets, round: n };
+  if (n > me.sets) return { next: null, rest: true, groupDone: false, round: n };
+  const fewest = open.reduce((best, x) => (done(x.key) < done(best.key) ? x : best), open[0]);
+  const skipping = n < me.sets && n - done(fewest.key) >= 2;
+  return { next: skipping ? me.id : fewest.id, rest: true, groupDone: false, round: n };
 }
 
 export interface SetLite {

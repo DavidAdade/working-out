@@ -6,7 +6,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { addLog, deleteSet, endWorkout, unlockWorkout, setDayCopy, setSupersetLink, setSwap, startWorkout, upsertSet, type ActionResult, type LogInput, type SetInput } from "@/app/actions";
+import { addLog, deleteSet, endWorkout, unlockWorkout, setDayCopy, editSupersets, setSwap, startWorkout, upsertSet, type ActionResult, type LogInput, type SetInput } from "@/app/actions";
+import type { Superset } from "@/lib/plan/supersets.ts";
 import { RestTimerView } from "./RestTimer";
 import SyncSheet, { type Refused, type SyncResult } from "./SyncSheet";
 
@@ -16,7 +17,9 @@ export type Op =
   | { id: string; t: "log"; input: LogInput }
   /** Swap the template exercise `from` on plan day `planDate` for `to`; null puts it back */
   | { id: string; t: "swap"; planDate: string; from: string; to: string | null }
-  /** Link the template exercise `key` on plan day `planDate` to the next line in its block (a superset), or unlink it */
+  /** Change the saved supersets: delete the groups in `remove`, save the ones in `add` (see lib/plan/supersets.ts) */
+  | { id: string; t: "supersets"; remove: string[]; add: Superset[] }
+  /** The old per-day link, from before supersets were saved as groups: still in an outbox, sent nowhere */
   | { id: string; t: "superset"; planDate: string; key: string; on: boolean }
   /** Start / End the workout stored under `planDate` (the plan's own date); `at` is the phone's ISO time of the tap */
   | { id: string; t: "workout-start"; planDate: string; at: string }
@@ -54,7 +57,8 @@ function run(op: Op): Promise<ActionResult> {
   if (op.t === "set") return upsertSet(op.input);
   if (op.t === "unset") return deleteSet(op.date, op.key, op.setNo);
   if (op.t === "swap") return setSwap(op.planDate, op.from, op.to);
-  if (op.t === "superset") return setSupersetLink(op.planDate, op.key, op.on);
+  if (op.t === "supersets") return editSupersets(op.remove, op.add);
+  if (op.t === "superset") return Promise.resolve({ ok: true });
   if (op.t === "workout-start") return startWorkout(op.planDate, op.at);
   if (op.t === "workout-end") return endWorkout(op.planDate, op.at, op.auto);
   if (op.t === "workout-unlock") return unlockWorkout(op.planDate, op.at);

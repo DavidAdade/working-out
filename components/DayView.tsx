@@ -6,14 +6,14 @@ import { dayTitle, type Day } from "@/lib/plan/generate.ts";
 import { addDays, daysBetween, dowName } from "@/lib/plan/dates.ts";
 import { parseLine } from "@/lib/plan/exercises.ts";
 import { addedKeys, addedTarget, completion, dayExercises, finishesDay, isLocked, LIFT_KINDS, nextInRound, sessionDate, type DayExercise } from "@/lib/plan/workout.ts";
-import { groupOf, loggable } from "@/lib/plan/supersets.ts";
+import { dayGroups, daySlots, editGroup, type DayGroup } from "@/lib/plan/supersets.ts";
 import { asExercise } from "@/lib/plan/catalog.ts";
 import { itemKey, itemLine } from "@/lib/plan/swaps.ts";
 import type { SetRow } from "@/lib/types";
 import type { Exercise, Target } from "@/lib/plan/exercises.ts";
 import { ExerciseRow, fmtSet, planDayOf, restFor, useSets, type SupersetFlow } from "./Sets";
 import { SwapSheet, useSwap } from "./SwapSheet";
-import { useSuperset } from "./Superset";
+import { groupColor, SupersetSheet, useSuperset, type SheetRow } from "./Superset";
 import { useWorkout, WorkoutBar } from "./Workout";
 import { takeGoto, useGotoListener, type Goto } from "./RestTimer";
 
@@ -66,29 +66,7 @@ function scrollToRow(id: string) {
   );
 }
 
-/** A block's rows with each superset's rows inside one bar, labelled "Superset A" */
-function withGroups(b: Block, rows: React.ReactNode[], letterAt: (ii: number) => string | undefined): React.ReactNode[] {
-  if (!b.supersets?.length) return rows;
-  const out: React.ReactNode[] = [];
-  rows.forEach((row, ii) => {
-    const g = groupOf(b, ii);
-    if (!g) out.push(row);
-    else if (g[0] === ii)
-      out.push(
-        <li key={`superset-${ii}`} className="py-1">
-          <div className="flex flex-col border-l-[3px] border-accent pl-2">
-            <p className="pt-1 text-xs text-muted">
-              <span className="font-semibold text-accent-ink">Superset {letterAt(ii)}</span> · alternate, rest after the round
-            </p>
-            <ul className="flex flex-col divide-y divide-line">{g.map((i) => rows[i])}</ul>
-          </div>
-        </li>,
-      );
-  });
-  return out;
-}
-
-/** All blocks for one day. Lifts are compact rows; one opens at a time and the next opens when you finish. */
+/** All blocks for one day. Lifts are compact rows; one opens at a time (a superset opens whole) and the next opens when you finish. */
 export function DayBlocks({
   day,
   onSkip,
@@ -137,11 +115,42 @@ export function DayBlocks({
     [sets, logDate, day.date],
   );
   const [openId, setOpenId] = useState<string | null>(null);
-  // Landing on a superset: the unfinished exercise in it with the fewest sets, so rounds stay in step
+  const openRef = useRef(openId);
+  openRef.current = openId;
   const doneOf = (key: string) => sets.filter((s) => planDayOf(s) === day.date && s.exercise_key === key).length;
+
+  // Exercises added on top of the workout: picked here (kept on this phone until their first set), then anything
+  // else logged on this day that it doesn't show. Logged like the rest, counted as extra work.
+  const pickedKey = `wf-added:${day.date}`;
+  const [picked, setPicked] = useState<string[]>([]);
+  const added = useMemo(() => (logDate ? addedKeys(day, sets, picked) : []), [logDate, day, sets, picked]);
+  const addedExercise = (key: string): { exercise: Exercise; target: Target } => {
+    const e = info(key);
+    if (e) return { exercise: asExercise(e), target: addedTarget(e) };
+    // A deleted custom exercise that still has sets here: its name and kind from what was logged
+    const rows = sets.filter((s) => planDayOf(s) === day.date && s.exercise_key === key);
+    const load = rows.some((s) => s.duration_sec != null) ? "time" : rows.some((s) => s.weight != null) ? "weight" : "bodyweight";
+    return { exercise: { key, name: nameOf(key), load, lines: [] }, target: addedTarget({ load, lines: [] }) };
+  };
+
+  // Supersets on this day: every loggable row (added ones too) by the key it's grouped under, and the groups in force
+  const slots = useMemo(() => daySlots(day, added), [day, added]);
+  const groups = useMemo(() => (supersetApi ? dayGroups(slots, supersetApi.list) : []), [slots, supersetApi]);
+  const groupAt = (id: string | null): DayGroup | undefined => (id ? groups.find((g) => g.rows.includes(id)) : undefined);
+  /** A row as logged: the exercise shown on it and its target sets */
+  const rowOf = (id: string): DayExercise | undefined => {
+    const x = order.find((o) => o.id === id);
+    if (x || !id.startsWith("add-") || !added.includes(id.slice(4))) return x;
+    return { id, key: id.slice(4), sets: addedExercise(id.slice(4)).target.sets };
+  };
+  const membersOf = (g: DayGroup) => g.rows.flatMap((r) => rowOf(r) ?? []);
+  const isOpen = (id: string) => openId === id || (!!openId && !!groupAt(id)?.rows.includes(openId));
+  const toggle = (id: string) => setOpenId(isOpen(id) ? null : id);
+  // Landing on a superset: the unfinished exercise in it with the fewest sets, so rounds stay in step
   const enter = (x: DayExercise | undefined) => {
-    if (!x?.group || !logDate) return x;
-    const behind = order.filter((m) => m.group?.letter === x.group!.letter && unfinished(m));
+    const g = x && groupAt(x.id);
+    if (!x || !g || !logDate) return x;
+    const behind = membersOf(g).filter(unfinished);
     return behind.reduce((best, m) => (doneOf(m.key) < doneOf(best.key) ? m : best), behind[0] ?? x);
   };
   // On the Today tab, start on the first exercise you haven't finished
@@ -151,11 +160,21 @@ export function DayBlocks({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** The day's next unfinished exercise after row `id` (wrapping round), skipping `not`; a superset is entered at its furthest-behind member */
+  const nextAfter = (id: string, not: string[] = []) => {
+    const i = order.findIndex((x) => x.id === id);
+    const open = (x: DayExercise) => unfinished(x) && !not.includes(x.id);
+    return enter(order.slice(i + 1).find(open) ?? order.slice(0, Math.max(i, 0)).find(open));
+  };
+
   // The rest timer's "Next set": open that exercise and bring its next set into view (from another tab or page too)
   const tab: Goto["where"] = logOpen ? "today" : "plan";
   const gotoFor = (id: string): Goto | undefined => (logDate ? { date: day.date, row: id, where: tab } : undefined);
-  const openAt = (row: string) => {
-    if (!order.some((x) => x.id === row) && !added.some((k) => `add-${k}` === row)) return;
+  const openAt = (to: string) => {
+    if (!order.some((x) => x.id === to) && !added.some((k) => `add-${k}` === to)) return;
+    // The exercise it points at is finished (its last set started the rest): on to the next one that isn't
+    const at = order.find((x) => x.id === to);
+    const row = at && !unfinished(at) ? nextAfter(to)?.id ?? to : to;
     setOpenId(row);
     // Once the row has opened: its first unlogged set, centred, with a brief highlight
     setTimeout(() => {
@@ -190,10 +209,6 @@ export function DayBlocks({
     return [...byKey].map(([key, rows]) => ({ key, rows: rows.sort((a, b) => a.set_no - b.set_no) }));
   }, [order, day.blocks, day.date, sets]);
 
-  // Exercises added on top of the workout: picked here (kept on this phone until their first set), then anything
-  // else logged on this day that it doesn't show. Logged like the rest, counted as extra work.
-  const pickedKey = `wf-added:${day.date}`;
-  const [picked, setPicked] = useState<string[]>([]);
   useEffect(() => {
     try {
       const v = JSON.parse(localStorage.getItem(pickedKey) ?? "[]");
@@ -213,16 +228,8 @@ export function DayBlocks({
       else localStorage.removeItem(pickedKey);
     } catch {}
   };
-  const added = useMemo(() => (logDate ? addedKeys(day, sets, picked) : []), [logDate, day, sets, picked]);
-  const addedExercise = (key: string): { exercise: Exercise; target: Target } => {
-    const e = info(key);
-    if (e) return { exercise: asExercise(e), target: addedTarget(e) };
-    // A deleted custom exercise that still has sets here: its name and kind from what was logged
-    const rows = sets.filter((s) => planDayOf(s) === day.date && s.exercise_key === key);
-    const load = rows.some((s) => s.duration_sec != null) ? "time" : rows.some((s) => s.weight != null) ? "weight" : "bodyweight";
-    return { exercise: { key, name: nameOf(key), load, lines: [] }, target: addedTarget({ load, lines: [] }) };
-  };
   const [addingEx, setAddingEx] = useState(false);
+  const [grouping, setGrouping] = useState<string | null>(null);
   const canAddEx = !!logDate && !locked && day.blocks.length > 0;
 
   const where = day.date === today ? "today" : `on ${dowName(day.date)}`;
@@ -277,36 +284,94 @@ export function DayBlocks({
   })();
 
   const advanceFrom = (id: string) => {
-    const i = order.findIndex((x) => x.id === id);
-    const next = enter(order.slice(i + 1).find(unfinished) ?? order.slice(0, i).find(unfinished));
+    const next = nextAfter(id);
     setOpenId(next?.id ?? null);
     if (next) scrollToRow(`ex-${day.date}-${next.id}`);
   };
 
-  // Supersets: linking, unlinking, and logging round by round (no rest mid-round, the group's longest rest after it)
+  // Supersets: logging round by round (no rest mid-round, the group's longest rest after it), and changing them
   const nameAt = (b: Block, i: number) => b.swaps?.[i]?.name ?? parseLine(b.items[i])?.name ?? b.items[i];
-  const keyAt = (b: Block, i: number) => parseLine(b.items[i])!.exercise.key;
-  const relink = (b: Block, i: number, on: boolean) =>
-    supersetApi?.link(b.planDate ?? day.date, keyAt(b, i), on, on ? `Superset: ${nameAt(b, i)} + ${nameAt(b, i + 1)}.` : `${nameAt(b, i)} and ${nameAt(b, i + 1)} are separate again.`);
+  const nameOfRow = (id: string) => {
+    if (id.startsWith("add-")) return nameOf(id.slice(4));
+    const [bi, ii] = id.split("-").map(Number);
+    return nameAt(day.blocks[bi], ii);
+  };
+  /** Bring a row's next set into view with a brief highlight, without closing anything */
+  const showNextSet = (row: string) =>
+    setTimeout(() => {
+      const anchor = document.getElementById(`ex-${day.date}-${row}`);
+      const set = anchor?.querySelector<HTMLElement>("[data-next-set]");
+      const el = set ?? anchor;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      if (r.top < 120 || r.bottom > window.innerHeight - 160) el.scrollIntoView({ block: "center", behavior: "smooth" });
+      if (set) {
+        set.classList.add("rounded-lg", "ring-2", "ring-accent");
+        setTimeout(() => set.classList.remove("ring-2", "ring-accent"), 1600);
+      }
+    }, 350);
   const flowFor = (id: string): SupersetFlow | undefined => {
-    const me = order.find((x) => x.id === id);
-    if (!me?.group || !logDate) return undefined;
-    const members = order.filter((x) => x.group?.letter === me.group!.letter);
+    const g = groupAt(id);
+    if (!g || !logDate) return undefined;
+    const members = membersOf(g);
+    const me = members.find((m) => m.id === id);
+    if (!me || members.length < 2) return undefined;
     const restOf = (key: string) => {
       const e = info(key);
       return e ? restFor(asExercise(e)) : 90;
     };
     return {
-      letter: me.group.letter,
-      restSec: Math.max(...members.map((x) => restOf(x.key))),
-      after: (setNo) => nextInRound(order, id, setNo, doneOf),
-      onNext: (next) => {
-        // The same row (the longer half of an uneven pair) stays open where it is
-        if (next === openId) return;
-        setOpenId(next);
-        scrollToRow(`ex-${day.date}-${next}`);
+      after: () => {
+        // Counts with the set being logged right now
+        const step = nextInRound(members, id, (key) => doneOf(key) + (key === me.key ? 1 : 0));
+        // Group finished: the day's next exercise, as if this one had been the last of the group
+        const onward = step.groupDone ? nextAfter(g.rows[g.rows.length - 1], g.rows)?.id : undefined;
+        const target = step.next ?? onward ?? id;
+        const rounds = Math.max(...members.map((m) => m.sets));
+        return {
+          rest: step.rest && { sec: Math.max(...members.map((m) => restOf(m.key))), label: `Superset ${g.letter}, round ${Math.min(step.round, rounds)} of ${rounds}` },
+          goto: gotoFor(target),
+          go: () => {
+            if (step.groupDone) {
+              // After the tick has shown, and only if you haven't opened something else meanwhile
+              setTimeout(() => {
+                if (!openRef.current || !g.rows.includes(openRef.current)) return;
+                setOpenId(onward ?? null);
+                if (onward) scrollToRow(`ex-${day.date}-${onward}`);
+              }, 600);
+            } else if (target !== id) showNextSet(target);
+          },
+        };
       },
-      onGroupDone: () => advanceFrom(members[members.length - 1].id),
+    };
+  };
+  const sheetRows = (): SheetRow[] =>
+    slots.flatMap((sl) => {
+      const x = rowOf(sl.id);
+      if (!x) return [];
+      const t = sl.id.startsWith("add-") ? addedExercise(sl.id.slice(4)).target : null;
+      const [bi, ii] = sl.id.split("-").map(Number);
+      const tt = t ?? day.blocks[bi].swaps?.[ii]?.target ?? parseLine(day.blocks[bi].items[ii])!.target;
+      return [{ id: sl.id, name: nameOfRow(sl.id), target: `${x.sets}×${tt.sec ? `${tt.sec}s` : tt.reps ?? "max"}`, letter: groupAt(sl.id)?.letter }];
+    });
+  const saveGroup = (row: string, chosen: string[]) => {
+    if (!supersetApi) return;
+    const e = editGroup(supersetApi.list, slots, row, chosen, () => crypto.randomUUID());
+    if (!e) return;
+    const names = slots.filter((sl) => sl.id === row || chosen.includes(sl.id)).map((sl) => nameOfRow(sl.id));
+    supersetApi.edit(e, names.length >= 2 ? `Superset: ${names.join(" + ")}.` : `${nameOfRow(row)} is out of the superset.`);
+  };
+  /** What a row shows and offers as part of (or outside) a superset */
+  const groupProps = (id: string) => {
+    const g = groupAt(id);
+    const can = !!supersetApi && !locked && slots.length >= 2;
+    return {
+      badge: g ? `${g.letter}${g.rows.indexOf(id) + 1}` : undefined,
+      bar: g ? groupColor(g.letter) : undefined,
+      hint: g && g.rows[0] === id ? `Superset ${g.letter} · one set of each, then rest` : undefined,
+      superset: flowFor(id),
+      onSuperset: can ? () => setGrouping(id) : undefined,
+      onLeave: g && can ? () => saveGroup(id, [id]) : undefined,
     };
   };
 
@@ -338,14 +403,11 @@ export function DayBlocks({
               {b.title} <Chip kind={b.kind} />
             </div>
             <ul className="flex flex-col divide-y divide-line">
-              {withGroups(b, b.items.map((line, ii) => {
+              {b.items.map((line, ii) => {
                 const id = `${bi}-${ii}`;
                 const sw = b.swaps?.[ii];
                 const from = sw ? info(sw.from) : undefined;
                 const canSwap = !!swapApi && !!parseLine(line) && !locked;
-                const group = groupOf(b, ii);
-                const pos = order.find((x) => x.id === id)?.group;
-                const canLink = !!supersetApi && !locked && loggable(b, ii) && loggable(b, ii + 1) && !group?.includes(ii + 1);
                 return (
                   <ExerciseRow
                       key={id}
@@ -355,8 +417,8 @@ export function DayBlocks({
                       planDate={day.date}
                       light={!!b.light || !!b.foldedFrom}
                       dayTitle={title}
-                      open={openId === id}
-                      onToggle={() => setOpenId((cur) => (cur === id ? null : id))}
+                      open={isOpen(id)}
+                      onToggle={() => toggle(id)}
                       locked={locked}
                       session={live ? sDate : null}
                       onComplete={() => advanceFrom(id)}
@@ -367,16 +429,12 @@ export function DayBlocks({
                           ? () => swapApi.swap(b.planDate ?? day.date, sw.from, null, `${from?.name ?? nameOf(sw.from)} is back.`)
                           : undefined
                       }
-                      badge={pos ? `${pos.letter}${pos.pos}` : undefined}
-                      superset={flowFor(id)}
+                      {...(parseLine(line) ? groupProps(id) : {})}
                       goto={gotoFor(id)}
                       finishesDay={lastSet}
-                      onLink={canLink ? () => relink(b, ii, true) : undefined}
-                      // The last exercise leaves by the link above it; the others by their own
-                      onUnlink={group && supersetApi && !locked ? () => relink(b, ii === group[group.length - 1] ? ii - 1 : ii, false) : undefined}
                     />
                 );
-              }), (ii) => order.find((x) => x.id === `${bi}-${ii}`)?.group?.letter)}
+              })}
             </ul>
             {b.note && <p className="text-xs text-muted">{b.note}</p>}
           </div>
@@ -406,11 +464,12 @@ export function DayBlocks({
                       planDate={day.date}
                       light={false}
                       dayTitle={title}
-                      open={openId === id}
-                      onToggle={() => setOpenId((cur) => (cur === id ? null : id))}
+                      open={isOpen(id)}
+                      onToggle={() => toggle(id)}
                       locked={locked}
                       session={live ? sDate : null}
                       onComplete={() => advanceFrom(id)}
+                      {...groupProps(id)}
                       goto={gotoFor(id)}
                       finishesDay={lastSet}
                       onRemoveAdded={!hasSets && !locked ? () => savePicked(picked.filter((k) => k !== key)) : undefined}
@@ -446,6 +505,19 @@ export function DayBlocks({
         </div>
       )}
       {sheet}
+      {grouping && rowOf(grouping) && (
+        <SupersetSheet
+          rows={sheetRows()}
+          row={grouping}
+          current={groupAt(grouping)?.rows ?? []}
+          onClose={() => setGrouping(null)}
+          onSave={(chosen) => {
+            const row = grouping;
+            setGrouping(null);
+            saveGroup(row, chosen);
+          }}
+        />
+      )}
       {(onMove || onCopy || (onSkip && day.skippable)) && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
           {onMove && (

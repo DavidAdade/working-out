@@ -6,7 +6,7 @@ import { builtinRows, type ExerciseInfo } from "@/lib/plan/catalog.ts";
 import { addDays, mondayOf, safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
 import type { DayCopy, Move } from "@/lib/plan/generate.ts";
 import type { Swap } from "@/lib/plan/swaps.ts";
-import type { SupersetLink } from "@/lib/plan/supersets.ts";
+import type { Superset } from "@/lib/plan/supersets.ts";
 import type { WorkoutSession } from "@/lib/plan/workout.ts";
 import type { SavedReview } from "@/components/CoachCard";
 import { aiEnabled } from "@/lib/coach/review";
@@ -30,7 +30,7 @@ export default async function Home() {
     .limit(400)
     .returns<WorkoutSession[]>()
     .then((r) => r);
-  const supersetsRead = supabase.from("superset_links").select("planDate:plan_date, key").returns<SupersetLink[]>().then((r) => r);
+  const supersetsRead = supabase.from("supersets").select("id, keys").order("created_at").returns<Superset[]>().then((r) => r);
   const copiesRead = supabase.from("day_copies").select("planDate:plan_date, source:source_date").returns<DayCopy[]>().then((r) => r);
   const reads = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle<ProfileRow>(),
@@ -52,7 +52,7 @@ export default async function Home() {
   // Before migration 0010 is applied the table is missing: no sessions yet, rather than an error screen
   const workouts = await workoutsRead;
   if (workouts.error && !["42P01", "PGRST205"].includes(workouts.error.code)) throw new Error("Couldn't load your data");
-  // Same for migration 0013: no supersets yet
+  // Same for migration 0017: no supersets yet
   const supersets = await supersetsRead;
   if (supersets.error && !["42P01", "PGRST205"].includes(supersets.error.code)) throw new Error("Couldn't load your data");
   // The same before migration 0012: no copied days

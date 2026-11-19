@@ -1,54 +1,124 @@
-// Supersets: exercises in one block done back to back, round by round (A1 set 1, A2 set 1, rest, A1 set 2…).
-// Stored per person in `superset_links` (plan_date, key): a row links a template line to the next line in its
-// block, keyed by the date the plan put the workout on, so a superset follows the workout through moves and
-// folds. `key` is always the template's exercise key, so swapping either exercise keeps the group.
-// Applied after swaps, on the finished plan: `items` never change, each block gets a `supersets` overlay instead,
-// so applying twice is harmless.
+// Supersets: exercises done back to back, round by round (A1 set 1, A2 set 1, rest, A1 set 2…).
+// Stored per person in `supersets` (migration 0017): one row per group, holding the exercise keys in it.
+// A group is saved for the workout, not for one date: it shows on every day that has two or more of its
+// exercises, so it comes back next week without being rebuilt. Keys are the TEMPLATE's exercise keys (or the
+// key of an exercise added mid-workout), never a swapped-in one, so swapping an exercise keeps its group.
+// Nothing here changes the plan: the day's rows are grouped where they are shown (DayView), and the calendar
+// feed and the AI check-in never see supersets.
 
-import type { ISODate } from "./dates.ts";
-import type { Week } from "./generate.ts";
-import type { Block } from "./templates.ts";
+import type { Day } from "./generate.ts";
 import { parseLine } from "./exercises.ts";
 import { LIFT_KINDS } from "./workout.ts";
 
-/** Supersets are switched off for now: no link buttons, and saved links don't group or change the logging flow */
-export const SUPERSETS_ON = false;
+/** The most exercises one superset holds */
+export const SUPERSET_MAX = 8;
 
-export interface SupersetLink {
-  /** The plan's own date for the workout (Block.planDate), not the day it's shown on after a move */
-  planDate: ISODate;
-  /** The template exercise key of the line linked to the one after it */
+export interface Superset {
+  id: string;
+  /** Template exercise keys (or added exercises' keys) */
+  keys: string[];
+}
+
+/** One loggable row of a day: its id as shown ("blockIndex-itemIndex", or "add-<key>") and the key it's grouped by */
+export interface DaySlot {
+  id: string;
   key: string;
 }
 
-export const linkId = (planDate: string, key: string) => `${planDate}|${key}`;
-
-/** Whether line `i` of a block is logged set by set (and so can be in a superset) */
-export const loggable = (b: Block, i: number): boolean => LIFT_KINDS.includes(b.kind) && i >= 0 && i < b.items.length && !!parseLine(b.items[i]);
-
-/**
- * The plan with each block's `supersets` (item index groups) worked out from the links.
- * A link whose line isn't on that plan day any more, or whose next line isn't an exercise, is ignored.
- * Runs of links join: A→B and B→C make one group of three. Groups never cross blocks.
- */
-export function applySupersets(weeks: Week[], links: Iterable<SupersetLink>): Week[] {
-  const ids = new Set<string>();
-  for (const l of links) ids.add(linkId(l.planDate, l.key));
-  const overlay = (b: Block): Block => {
-    const { supersets: _old, ...rest } = b;
-    if (!ids.size || !b.planDate || !LIFT_KINDS.includes(b.kind)) return rest;
-    const linked = (i: number) => loggable(b, i) && loggable(b, i + 1) && ids.has(linkId(b.planDate!, parseLine(b.items[i])!.exercise.key));
-    const groups: number[][] = [];
-    for (let i = 0; i < b.items.length; i++) {
-      if (!linked(i)) continue;
-      const g = [i];
-      while (linked(i)) g.push(++i);
-      groups.push(g);
-    }
-    return groups.length ? { ...rest, supersets: groups } : rest;
-  };
-  return weeks.map((w) => ({ ...w, days: w.days.map((d) => ({ ...d, blocks: d.blocks.map(overlay) })) }));
+/** A day's loggable rows in order: the template lines, then the exercises added on top */
+export function daySlots(day: Pick<Day, "blocks">, added: readonly string[] = []): DaySlot[] {
+  const out: DaySlot[] = [];
+  day.blocks.forEach((b, bi) => {
+    if (!LIFT_KINDS.includes(b.kind)) return;
+    b.items.forEach((line, ii) => {
+      const p = parseLine(line);
+      if (p) out.push({ id: `${bi}-${ii}`, key: p.exercise.key });
+    });
+  });
+  for (const k of added) out.push({ id: `add-${k}`, key: k });
+  return out;
 }
 
-/** The group line `i` of a block is in, if any */
-export const groupOf = (b: Block, i: number): number[] | undefined => b.supersets?.find((g) => g.includes(i));
+export interface DayGroup {
+  /** The saved superset it comes from */
+  id: string;
+  /** A, B… in the order the groups start on the day */
+  letter: string;
+  /** Row ids, in day order */
+  rows: string[];
+}
+
+/**
+ * The supersets in force on a day. A saved group counts only when two or more of its exercises are there,
+ * so a stale one can never pair the wrong exercises; a row is in one group at most (the oldest wins).
+ */
+export function dayGroups(slots: DaySlot[], supersets: readonly Superset[]): DayGroup[] {
+  const taken = new Set<string>();
+  const found: { id: string; rows: string[] }[] = [];
+  for (const s of supersets) {
+    const keys = new Set(s.keys);
+    const seen = new Set<string>();
+    const rows: string[] = [];
+    for (const slot of slots) {
+      if (!keys.has(slot.key) || seen.has(slot.key) || taken.has(slot.id)) continue;
+      seen.add(slot.key);
+      rows.push(slot.id);
+    }
+    if (rows.length < 2) continue;
+    for (const r of rows) taken.add(r);
+    found.push({ id: s.id, rows });
+  }
+  const at = (id: string) => slots.findIndex((x) => x.id === id);
+  return found.sort((a, b) => at(a.rows[0]) - at(b.rows[0])).map((g, i) => ({ ...g, letter: String.fromCharCode(65 + i) }));
+}
+
+/** A change to the saved supersets: rows to delete, rows to add. Safe to apply twice. */
+export interface SupersetEdit {
+  remove: string[];
+  add: Superset[];
+}
+
+export const applyEdit = (list: readonly Superset[], e: SupersetEdit): Superset[] => {
+  const gone = new Set(e.remove);
+  const kept = list.filter((s) => !gone.has(s.id));
+  return [...kept, ...e.add.filter((a) => !kept.some((s) => s.id === a.id))];
+};
+
+/**
+ * The edit that makes `chosen` (row ids, `row` among them) one superset on this day; with `row` alone, the
+ * edit that takes `row` out of its superset and leaves the others together. Rows pulled from another group
+ * leave it. Exercises of a touched group that aren't on this day stay in it, so the same group on another
+ * day's workout isn't broken. Null when nothing would change.
+ */
+export function editGroup(supersets: readonly Superset[], slots: DaySlot[], row: string, chosen: readonly string[], newId: () => string): SupersetEdit | null {
+  const keyOf = (id: string) => slots.find((s) => s.id === id)?.key;
+  const groups = dayGroups(slots, supersets);
+  const mine = groups.find((g) => g.rows.includes(row));
+  const picked = slots.filter((s) => s.id === row || chosen.includes(s.id)).map((s) => s.id);
+  const want = picked.length >= 2 ? picked : [];
+  if (!keyOf(row)) return null;
+  if (mine && want.length === mine.rows.length && want.every((r) => mine.rows.includes(r))) return null;
+  if (!mine && !want.length) return null;
+
+  const wantKeys = want.map((r) => keyOf(r)!);
+  const edit: SupersetEdit = { remove: [], add: [] };
+  const replace = (g: DayGroup, keys: string[]) => {
+    edit.remove.push(g.id);
+    const uniq = [...new Set(keys)].slice(0, SUPERSET_MAX);
+    if (uniq.length >= 2) edit.add.push({ id: newId(), keys: uniq });
+  };
+  // Other groups on the day lose the rows that were picked
+  for (const g of groups) {
+    if (g === mine || !g.rows.some((r) => want.includes(r))) continue;
+    const saved = supersets.find((s) => s.id === g.id)!;
+    replace(g, saved.keys.filter((k) => !wantKeys.includes(k)));
+  }
+  if (mine) {
+    const saved = supersets.find((s) => s.id === mine.id)!;
+    const here = mine.rows.map((r) => keyOf(r)!);
+    const away = saved.keys.filter((k) => !here.includes(k));
+    // Leaving: the others stay together. Otherwise the group becomes exactly what was picked.
+    replace(mine, want.length ? [...wantKeys, ...away] : saved.keys.filter((k) => k !== keyOf(row)));
+  } else edit.add.push({ id: newId(), keys: [...new Set(wantKeys)].slice(0, SUPERSET_MAX) });
+  return edit;
+}

@@ -10,7 +10,6 @@ import { asExercise, type ExerciseInfo } from "@/lib/plan/catalog.ts";
 import { itemKey } from "@/lib/plan/swaps.ts";
 import type { ExerciseVideo } from "@/lib/plan/videos.ts";
 import type { ItemSwap } from "@/lib/plan/templates.ts";
-import type { RoundStep } from "@/lib/plan/workout.ts";
 import { deleteExercise } from "@/app/actions";
 import MuscleMap, { MuscleChips } from "./MuscleMap";
 import { compareSession, sessions, suggestWeight, toUnit, type Change, type Session } from "@/lib/plan/progress.ts";
@@ -220,7 +219,8 @@ export function SetsProvider({
         const sameDay = cur.some((s) => s.exercise_key === row.exercise_key && s.date === row.date && Number(s.weight_kg) >= optimistic.weight_kg!);
         if (before.length && !sameDay && optimistic.weight_kg > Math.max(...before) + 0.25) notify({ text: `New best: ${ex?.name ?? keyLabel(row.exercise_key)} ${row.weight} ${row.unit}`, tone: "good" });
       }
-      if (opts.finishes && !prev) rest.stop();
+      // The day's last set, or a set mid-round in a superset: a rest still counting from the set before is over
+      if ((opts.finishes || opts.rest === false) && !prev) rest.stop();
       else if (ex && !prev && opts.rest !== false) rest.start(opts.rest?.sec ?? restFor(asExercise(ex)), opts.rest?.label ?? `${ex.name} set ${row.set_no}`, opts.goto);
       // Logging without tapping Start starts the workout (queued first, so it replays before the set)
       if (opts.session) ensureStarted(opts.session);
@@ -249,7 +249,7 @@ export function SetsProvider({
                 save(
                   { date, exercise_key: key, set_no: setNo, weight: prev.weight, unit: prev.unit, reps: prev.reps, duration_sec: prev.duration_sec, light_week: prev.light_week },
                   "",
-                  { planDate: prev.plan_date },
+                  { planDate: prev.plan_date, rest: false },
                 ),
             },
           });
@@ -313,10 +313,14 @@ export interface RowProps {
   badge?: string;
   /** In a superset, while logging: what happens after each new set (replaces onComplete) */
   superset?: SupersetFlow;
-  /** "Superset with next": left out when the next line can't join */
-  onLink?: () => void;
-  /** Takes this row out of its superset */
-  onUnlink?: () => void;
+  /** In a superset: the colour of its bar down the row's left edge */
+  bar?: string;
+  /** In a superset: a line under the name of its first exercise ("Superset A · …") */
+  hint?: string;
+  /** Opens the sheet that picks what this exercise is supersetted with */
+  onSuperset?: () => void;
+  /** Takes this row out of its superset; the others stay together */
+  onLeave?: () => void;
   /** Where the rest timer's "Next set" brings you back to (this row) */
   goto?: Goto;
   /** An exercise added to this day mid-workout (not a template line): logged like any other, extra work */
@@ -329,15 +333,11 @@ export interface RowProps {
 
 /** How a row in a superset moves on: no rest mid-round, one rest after the round, then the next exercise */
 export interface SupersetFlow {
-  letter: string;
-  /** The group's longest rest */
-  restSec: number;
-  /** Where to go after set `setNo` of this row (see nextInRound) */
-  after: (setNo: number) => RoundStep;
-  /** Open (and scroll to) another exercise in the group */
-  onNext: (id: string) => void;
-  /** Every set of the group is done: on to the next exercise of the day */
-  onGroupDone: () => void;
+  /**
+   * Called as a new set of this row is logged (see nextInRound): the rest to start (false mid-round), where the
+   * timer's "Next set" should go, and `go`, which brings the next set into view.
+   */
+  after: () => { rest: { sec: number; label: string } | false; goto?: Goto; go: () => void };
 }
 
 export function ExerciseRow({
@@ -357,8 +357,10 @@ export function ExerciseRow({
   session,
   badge,
   superset,
-  onLink,
-  onUnlink,
+  bar,
+  hint,
+  onSuperset,
+  onLeave,
   goto,
   finishesDay,
   added,
@@ -388,7 +390,7 @@ export function ExerciseRow({
   const name = added ? added.exercise.name : swap ? swap.name : parsed!.name;
   // Sets logged for the original before the swap: never moved, shown read-only under the row
   const before = swap ? sets.filter((s) => planDayOf(s) === planDate && s.exercise_key === swap.from).sort((a, b) => a.set_no - b.set_no) : [];
-  const swapButtons = (onSwap || (swap && onPutBack) || onLink || onUnlink || onRemoveAdded) && (
+  const swapButtons = (onSwap || (swap && onPutBack) || onSuperset || onLeave || onRemoveAdded) && (
     <>
       {onRemoveAdded && (
         <button type="button" className="btn-ghost px-3 text-xs" onClick={onRemoveAdded}>
@@ -405,14 +407,14 @@ export function ExerciseRow({
           Put back
         </button>
       )}
-      {onLink && (
-        <button type="button" className="btn-ghost px-3 text-xs" onClick={onLink}>
-          Superset with next
+      {onSuperset && (
+        <button type="button" className="btn-ghost px-3 text-xs" onClick={onSuperset}>
+          {badge ? "Edit superset" : "Superset"}
         </button>
       )}
-      {onUnlink && (
-        <button type="button" className="btn-ghost px-3 text-xs" onClick={onUnlink}>
-          Unlink
+      {onLeave && (
+        <button type="button" className="btn-ghost px-3 text-xs" onClick={onLeave}>
+          Remove from superset
         </button>
       )}
     </>
@@ -426,7 +428,7 @@ export function ExerciseRow({
   const last = logDate ? null : sessions(sets, exercise.key)[0];
 
   return (
-    <li id={anchorId} className={`flex scroll-mt-20 flex-col ${complete && !open ? "opacity-70" : ""}`}>
+    <li id={anchorId} className={`flex scroll-mt-20 flex-col ${bar ? "border-l-[3px]" : ""} ${complete && !open ? "opacity-70" : ""}`} style={bar ? { borderLeftColor: bar } : undefined}>
       <div className="flex min-h-11 items-center gap-1">
         {video ? <VideoButton onClick={() => openVideo(video)} label={video.name} /> : <span className="w-11 flex-none" />}
         <button type="button" aria-expanded={open} onClick={onToggle} className="flex min-h-11 min-w-0 flex-1 items-center gap-2 text-left">
@@ -434,6 +436,7 @@ export function ExerciseRow({
             {badge && <span className="mr-1.5 font-mono text-[0.8rem] font-semibold text-accent-ink">{badge}</span>}
             <span className="font-medium">{name}</span> <span className="whitespace-nowrap font-mono text-[0.8rem] text-muted">{targetText}</span>
             {swap && <span className="block text-xs text-muted">⇄ Swapped from {nameOf(swap.from)}</span>}
+            {hint && <span className="block text-xs text-muted">{hint}</span>}
           </span>
           {logDate && (
             <span
@@ -599,10 +602,6 @@ function SetTable({
     count.current = done.length;
     if (before < target.sets && done.length >= target.sets) setTimeout(() => completeRef.current(), 600);
   }, [done.length, target.sets]);
-  // Called after the move-on delay, so it sees the set just logged
-  const supersetRef = useRef(superset);
-  supersetRef.current = superset;
-
   const cols = showWeight ? "grid-cols-[1.25rem_5rem_4rem_2.75rem]" : "grid-cols-[1.25rem_5rem_2.75rem]";
 
   return (
@@ -658,7 +657,7 @@ function SetTable({
             onSave={(w, r) => {
               // A new set in a superset: on to the next exercise in the round, or rest once the round is over
               const fresh = !done.some((d) => d.set_no === n);
-              const step = superset && fresh ? superset.after(n) : null;
+              const step = superset && fresh ? superset.after() : null;
               // The day's last planned set: the workout's done, so no rest to count down
               const last = fresh && !!finishesDay?.(exercise.key);
               save(
@@ -676,16 +675,12 @@ function SetTable({
                 {
                   planDate,
                   session,
-                  goto,
+                  goto: step ? step.goto : goto,
                   finishes: last,
-                  rest: last ? false : step && superset ? step.rest && { sec: superset.restSec, label: `Superset ${superset.letter}, round ${n}` } : undefined,
+                  rest: last ? false : step ? step.rest : undefined,
                 },
               );
-              if (step)
-                setTimeout(() => {
-                  if (step.groupDone) supersetRef.current?.onGroupDone();
-                  else if (step.next) supersetRef.current?.onNext(step.next);
-                }, 400);
+              step?.go();
             }}
             onRemove={() => remove(date, exercise.key, n)}
           />
