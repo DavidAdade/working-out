@@ -80,9 +80,29 @@ export interface SheetRow {
 }
 
 /** Pick which of the day's exercises are done back to back with `row` */
-export function SupersetSheet({ rows, row, current, onSave, onClose }: { rows: SheetRow[]; row: string; current: string[]; onSave: (chosen: string[]) => void; onClose: () => void }) {
+export function SupersetSheet({
+  rows,
+  row,
+  current,
+  preset,
+  onSave,
+  onClose,
+  onAddNew,
+}: {
+  rows: SheetRow[];
+  row: string;
+  /** The rows of the superset it's in now */
+  current: string[];
+  /** What to start ticked, when coming back from the library */
+  preset?: string[];
+  onSave: (chosen: string[]) => void;
+  onClose: () => void;
+  /** Opens the library to add an exercise to the day and tick it here; left out where exercises can't be added */
+  onAddNew?: (chosen: string[]) => void;
+}) {
   const me = rows.find((r) => r.id === row);
   const [chosen, setChosen] = useState<string[]>(() => {
+    if (preset) return preset.filter((id) => rows.some((r) => r.id === id));
     if (current.length) return current;
     // Nothing yet: offer the exercise after this one
     const next = rows[rows.findIndex((r) => r.id === row) + 1];
@@ -144,6 +164,11 @@ export function SupersetSheet({ rows, row, current, onSave, onClose }: { rows: S
             );
           })}
         </ul>
+        {onAddNew && (
+          <button type="button" className="btn-ghost mx-4 my-2 self-start" disabled={full} onClick={() => onAddNew(chosen)}>
+            + Add from library
+          </button>
+        )}
         <div className="sticky bottom-0 flex flex-col gap-2 border-t border-line bg-surface px-4 pt-3">
           <button type="button" className="btn w-full" disabled={same || (n < 2 && !current.length)} onClick={() => onSave(chosen)}>
             {n >= 2 ? `Save superset (${n})` : current.length ? "Remove from superset" : "Tick at least one more"}

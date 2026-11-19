@@ -230,6 +230,9 @@ export function DayBlocks({
   };
   const [addingEx, setAddingEx] = useState(false);
   const [grouping, setGrouping] = useState<string | null>(null);
+  // Ticks to start the superset sheet with: kept while the library is open to add one more exercise to the group
+  const [preset, setPreset] = useState<string[] | null>(null);
+  const [regroup, setRegroup] = useState<string | null>(null);
   const canAddEx = !!logDate && !locked && day.blocks.length > 0;
 
   const where = day.date === today ? "today" : `on ${dowName(day.date)}`;
@@ -247,11 +250,23 @@ export function DayBlocks({
           light={false}
           inDay={new Set([...order.map((x) => x.key), ...added])}
           logged={[]}
-          onClose={() => setAddingEx(false)}
+          onClose={() => {
+            setAddingEx(false);
+            // Opened from the superset sheet: back to it, as it was
+            if (regroup) setGrouping(regroup);
+            setRegroup(null);
+          }}
           onPick={(to) => {
             setAddingEx(false);
             savePicked([...picked.filter((k) => k !== to.key), to.key]);
             const id = `add-${to.key}`;
+            if (regroup) {
+              // Picked for a superset: back to its sheet with the new exercise ticked
+              setPreset((cur) => [...(cur ?? [regroup]).filter((x) => x !== id), id]);
+              setGrouping(regroup);
+              setRegroup(null);
+              return;
+            }
             setOpenId(id);
             scrollToRow(`ex-${day.date}-${id}`);
           }}
@@ -510,10 +525,25 @@ export function DayBlocks({
           rows={sheetRows()}
           row={grouping}
           current={groupAt(grouping)?.rows ?? []}
-          onClose={() => setGrouping(null)}
+          preset={preset ?? undefined}
+          onClose={() => {
+            setGrouping(null);
+            setPreset(null);
+          }}
+          onAddNew={
+            canAddEx
+              ? (chosen) => {
+                  setPreset(chosen);
+                  setRegroup(grouping);
+                  setGrouping(null);
+                  setAddingEx(true);
+                }
+              : undefined
+          }
           onSave={(chosen) => {
             const row = grouping;
             setGrouping(null);
+            setPreset(null);
             saveGroup(row, chosen);
           }}
         />
