@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { catchUp, dayForDate, dayKind, dayTitle, weekForDate, PHASE_NAMES, type Day, type Move, type PlanSettings, type Week } from "@/lib/plan/generate.ts";
+import { catchUp, dayForDate, dayKind, dayTitle, makeUpDay, weekForDate, PHASE_NAMES, type Day, type Move, type PlanSettings, type Week } from "@/lib/plan/generate.ts";
 import { addDays, daysBetween, dowName, fmtDay, fmtShort, mondayOf } from "@/lib/plan/dates.ts";
 import type { Warning } from "@/lib/plan/warnings.ts";
 import type { Fitness } from "@/lib/plan/paces.ts";
@@ -18,7 +18,7 @@ import WeekCard, { loggedDates } from "./WeekCard";
 import { MoveSheet, moveNote, moveTargets, type OnMoves } from "./DayCard";
 import { ScoreLink, type ScoreInputs } from "./AccountabilityPanel";
 import { ClassLines, ClassSheet } from "./ClassSheet";
-import { CopiedLine, CopySheet, copyable, restDates, restDay, useCopy } from "./CopySheet";
+import { CopiedLine, CopySheet, copyable, restDates, restDay, useCopy, useMissed } from "./CopySheet";
 
 interface Props {
   profile: ProfileRow;
@@ -63,11 +63,13 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
   const canCopy = !!copyApi && !!day && copyable(day) && !logged.has(today);
   // A rest day: repeat any workout from the plan today, as extra work
   const canAddToday = !!copyApi && !day && !!week && restDates(week, today, logged).includes(today);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState<"any" | "missed" | null>(null);
+  // Workouts of the last 7 days that weren't done: today's rest day can make one up
+  const toMakeUp = useMissed(today);
   const [classing, setClassing] = useState(false);
   const canMove = !!week && !!day && !day.fixed && !logged.has(today) && moveTargets(week, today, today, logged).some((t) => t.moves);
   // The most recent workout this week that wasn't done or skipped
-  const missed = week?.days.filter((d) => d.date < today && !d.skipped && !d.fixed && !d.added && d.blocks.length && !logged.has(d.date)).at(-1);
+  const missed = week?.days.filter((d) => d.date < today && !d.skipped && !d.fixed && !d.added && d.blocks.length && !logged.has(d.date) && !makeUpDay(weeks, d)).at(-1);
   const catchMoves = week && missed && !logged.has(today) ? catchUp(week, missed.date, today) : null;
 
   const scoreShown = !!score;
@@ -156,8 +158,13 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
                 Restore today
               </button>
             )}
+            {canAddToday && toMakeUp.length > 0 && (
+              <button className="btn" onClick={() => setAdding("missed")}>
+                Make up a missed workout
+              </button>
+            )}
             {canAddToday && (
-              <button className="btn-ghost" onClick={() => setAdding(true)}>
+              <button className="btn-ghost" onClick={() => setAdding("any")}>
                 Add a workout
               </button>
             )}
@@ -171,7 +178,7 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
             </button>
           </div>
           <ClassLines logs={logs} date={today} />
-          {adding && <CopySheet day={restDay(today)} today={today} logged={logged} onClose={() => setAdding(false)} />}
+          {adding && <CopySheet day={restDay(today)} today={today} logged={logged} makeUp={adding === "missed"} onClose={() => setAdding(null)} />}
           {early && next && (
             <div className="border-t border-line pt-2.5">
               <div className="label mb-1">

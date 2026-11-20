@@ -11,10 +11,13 @@
 // A day swapped for another day's workout (Day.copy) is scored on the workout done; when its intensity doesn't
 // match (intensity.ts), the day's credit is multiplied by fit.credit (0.5 to 1) while its units stay full.
 // A workout added on a rest day (Day.added) is never planned: what's logged there counts as extra work (E).
+// The exception is a make-up: the added day repeats a day of the MAKEUP_DAYS before it that was missed (under
+// MAKEUP_MAX of it logged). What's logged there goes to the missed day, up to what that day asked for, so the
+// Score ends where it would have been had the day been done on time; only what's left over is extra.
 
 import { addDays, daysBetween, dowName, mondayOf, type ISODate } from "./dates.ts";
 import { adaptPlan } from "./adapt.ts";
-import { dayTitle, isHard, type Day, type Phase, type Week } from "./generate.ts";
+import { dayTitle, isHard, makeUpCandidates, planDateOf, MAKEUP_DAYS, type Day, type Phase, type Week } from "./generate.ts";
 import { exerciseByKey, parseLine } from "./exercises.ts";
 import { itemKey } from "./swaps.ts";
 import { painWarnings } from "./warnings.ts";
@@ -276,6 +279,10 @@ interface Tally {
   copyF: number;
   /** "W7 Wed": where a copied workout came from */
   copyFrom?: string;
+  /** A missed day: the rest day it was made up on */
+  madeUpOn?: ISODate;
+  /** A rest day: the missed day made up here */
+  makesUp?: ISODate;
 }
 
 /** Planned minutes or km, and the credit for what was logged. */
@@ -313,6 +320,58 @@ function blockLines(b: Block, sized: boolean, name: (k: string) => string): Line
 
 const blockUnits = (b: Block, name: (k: string) => string) =>
   isRun(b) ? (b.km || b.kind === "test" ? LONG_U : RUN_U) : isWalk(b) ? WALK_U : blockLines(b, true, name).reduce((t, l) => t + l.u, 0);
+
+/* ---------- making up a missed day ---------- */
+
+/** A day counts as missed while less than this share of its work is logged */
+export const MAKEUP_MAX = 0.3;
+
+/** The share (0–1) of a day's workout that is logged on the day itself, in the Score's units */
+export function doneShare(day: Pick<Day, "date" | "blocks">, sets: AcctSet[], logs: AcctLog[]): number {
+  const n = new Map<string, number>();
+  for (const s of sets) if (counts(s) && planDay(s) === day.date) n.set(s.exercise_key, (n.get(s.exercise_key) ?? 0) + 1);
+  const dayLogs = logs.filter((l) => l.date === day.date && l.kind !== "check" && l.kind !== "class");
+  const runs = dayLogs.filter((l) => !l.auto && (l.kind === "run" || l.kind === "test"));
+  const active = n.size > 0 || dayLogs.length > 0;
+  const lines = day.blocks.flatMap((b) => blockLines(b, true, (k) => k));
+  creditLines(lines, day.blocks, n, active);
+  let u = lines.reduce((t, l) => t + l.u, 0);
+  let c = lines.reduce((t, l) => t + l.c, 0);
+  for (const [i, b] of day.blocks.filter(isRun).entries()) {
+    const bu = b.km || b.kind === "test" ? LONG_U : RUN_U;
+    u += bu;
+    c += runCredit(b, bu, i === 0 ? runs : []).c;
+  }
+  for (const b of day.blocks.filter(isWalk)) {
+    u += WALK_U;
+    if (active) c += WALK_U;
+  }
+  return u > 0 ? c / u : 1;
+}
+
+/** The missed workouts a rest day `date` can make up, newest first (see MAKEUP_DAYS, MAKEUP_MAX) */
+export function missedDays(weeks: Week[], date: ISODate, sets: AcctSet[], logs: AcctLog[]): Day[] {
+  return makeUpCandidates(weeks, date).filter((d) => doneShare(d, sets, logs) < MAKEUP_MAX);
+}
+
+/** Credits each line with the sets logged for it (or for the exercise it was swapped from), taking them out of `daySets` */
+function creditLines(lines: Line[], blocks: Block[], daySets: Map<string, number>, active: boolean): Map<string, string> {
+  const swapFrom = new Map<string, string>();
+  for (const b of blocks) for (const s of Object.values(b.swaps ?? {})) swapFrom.set(s.to, s.from);
+  for (const l of lines) {
+    if (!l.key) {
+      l.c = active ? l.u : 0;
+      continue;
+    }
+    for (const k of [l.key, swapFrom.get(l.key)]) {
+      if (!k || l.c >= l.u) continue;
+      const take = Math.min(l.u - l.c, daySets.get(k) ?? 0);
+      l.c += take;
+      daySets.set(k, (daySets.get(k) ?? 0) - take);
+    }
+  }
+  return swapFrom;
+}
 
 /* ---------- the whole thing ---------- */
 
@@ -430,20 +489,7 @@ export function accountability(input: AccountabilityInput): Accountability {
     }
 
     const lines = t.blocks.flatMap((b) => blockLines(b, true, name));
-    const swapFrom = new Map<string, string>();
-    for (const b of t.blocks) for (const s of Object.values(b.swaps ?? {})) swapFrom.set(s.to, s.from);
-    for (const l of lines) {
-      if (!l.key) {
-        l.c = t.active ? l.u : 0;
-        continue;
-      }
-      for (const k of [l.key, swapFrom.get(l.key)]) {
-        if (!k || l.c >= l.u) continue;
-        const take = Math.min(l.u - l.c, daySets.get(k) ?? 0);
-        l.c += take;
-        daySets.set(k, (daySets.get(k) ?? 0) - take);
-      }
-    }
+    const swapFrom = creditLines(lines, t.blocks, daySets, t.active);
     t.lines = lines;
     const onDay = new Map(lines.flatMap((l) => (l.key ? [[l.key, l.light] as const] : [])));
     for (const [k, n] of daySets) if (n > 0) t.extraSets.set(k, { n, onDay: onDay.has(k) || [...swapFrom.values()].includes(k), light: !!onDay.get(k) });
@@ -464,6 +510,50 @@ export function accountability(input: AccountabilityInput): Accountability {
     // Walks logged on a day without one are extra
     if (!t.blocks.some(isWalk)) t.extraLogs.push(...dayLogs.filter((l) => !l.auto && l.kind === "walk"));
     t.extraLogs.push(...(classesByDay.get(date) ?? []));
+  }
+
+  /* pass 1b: a missed day made up on a rest day gets its credit back from what was logged there, never more */
+  for (const m of tallies) {
+    const d = m.day;
+    if (!d?.added || !d.copy || !m.active) continue;
+    const src = tallies.find((t) => t.day && !t.day.added && planDateOf(t.day) === d.copy!.from);
+    const gap = src ? daysBetween(src.date, m.date) : 0;
+    if (!src || src.state !== "planned" || src.madeUpOn || gap < 1 || gap > MAKEUP_DAYS) continue;
+    const full = src.lines.reduce((s, l) => s + l.u, 0) + src.runs.reduce((s, r) => s + r.u, 0) + src.walkU;
+    const own = src.lines.reduce((s, l) => s + l.c, 0) + src.runs.reduce((s, r) => s + r.c, 0) + src.walkC;
+    // Done on its own day: the repeat is extra work like any other added workout
+    if (!full || own >= MAKEUP_MAX * full) continue;
+    // Either day may show an exercise swapped: sets under the plan's exercise or what it was swapped for all count
+    const srcFrom = new Map<string, string>();
+    for (const b of src.blocks) for (const s of Object.values(b.swaps ?? {})) srcFrom.set(s.to, s.from);
+    const hereTo = new Map<string, string>();
+    for (const b of d.blocks) for (const s of Object.values(b.swaps ?? {})) hereTo.set(s.from, s.to);
+    for (const l of src.lines) {
+      if (!l.key) {
+        l.c = l.u;
+        continue;
+      }
+      const orig = srcFrom.get(l.key) ?? l.key;
+      for (const k of new Set([l.key, orig, hereTo.get(orig)])) {
+        const e = k ? m.extraSets.get(k) : undefined;
+        if (!k || !e || l.c >= l.u) continue;
+        const take = Math.min(l.u - l.c, e.n);
+        l.c += take;
+        e.n -= take;
+        if (e.n <= 0) m.extraSets.delete(k);
+      }
+    }
+    const spare = m.extraLogs.filter((l) => l.kind === "run" || l.kind === "test");
+    const open = src.runs.find((r) => r.c === 0);
+    if (open && spare.length) {
+      const credit = runCredit(open.block, open.u, spare);
+      Object.assign(open, { c: credit.c, short: credit.short, from: m.date });
+      m.extraLogs = m.extraLogs.filter((l) => !spare.includes(l));
+    }
+    src.walkC = src.walkU;
+    src.active = true;
+    src.madeUpOn = m.date;
+    m.makesUp = src.date;
   }
 
   /* pass 2: a run logged on another day of the same week stands for a missed run (logs have no plan date) */
@@ -503,7 +593,8 @@ export function accountability(input: AccountabilityInput): Accountability {
       const raw = liftC + runC + t.walkC;
       const c = raw * t.copyF;
       const logged = t.active || c > 0;
-      if (t.date === today) {
+      // Today's own workout, or yesterday's being made up today: only what's done so far counts
+      if (t.date === today || (t.date === yesterday && t.madeUpOn === today)) {
         t.u = raw;
         t.c = c;
         t.counted = c > 0;
@@ -701,7 +792,7 @@ function glyphOf(t: Tally, today: ISODate): Glyph {
   if (t.date > today) return "future";
   const extra = t.extraLogs.length > 0 || t.extraSets.size > 0;
   if (t.state === "skipped") return "skipped";
-  if (t.state === "rest") return extra ? "extra" : "rest";
+  if (t.state === "rest") return extra ? "extra" : t.makesUp ? "moved" : "rest";
   if (t.grace) return "grace";
   const full = t.fullU > 0 && t.c >= t.fullU * t.copyF - 1e-9;
   if (t.date === today) return full ? "done" : "today";
@@ -732,8 +823,9 @@ function feedFor(t: Tally, noExtra: string | null, name: (k: string) => string, 
     else out.push({ id: id("part"), kind: "partial", date: t.date, tone: "neutral", title: liftU && liftC < liftU ? `${title}: ${liftC} of ${liftU} sets` : `${title}: part done`, delta: liftU && liftC < liftU ? `${liftC}/${liftU} sets` : `${Math.round((100 * t.c) / t.fullU)}%` });
 
     if (t.day?.movedFrom && t.date <= today) out.push({ id: id("moved"), kind: "moved", date: t.date, tone: "neutral", title: `Moved from ${dowName(t.day.movedFrom)}`, delta: "no change" });
+    if (t.madeUpOn) out.push({ id: id("makeup"), kind: "done_other_day", date: t.date, tone: "good", title: `Made up on ${dowName(t.madeUpOn)}`, detail: "Counts as this day's workout, not as extra work", delta: "credit back" });
     for (const r of t.runs) {
-      if (r.from) out.push({ id: id("other", r.block.title), kind: "done_other_day", date: t.date, tone: "good", title: `${r.block.title}: done ${dowName(r.from)}`, delta: r.c >= r.u ? "full credit" : `${Math.round((100 * r.c) / r.u)}%` });
+      if (r.from && r.from !== t.madeUpOn) out.push({ id: id("other", r.block.title), kind: "done_other_day", date: t.date, tone: "good", title: `${r.block.title}: done ${dowName(r.from)}`, delta: r.c >= r.u ? "full credit" : `${Math.round((100 * r.c) / r.u)}%` });
       if (r.c > 0 && r.c < r.u && r.short) out.push({ id: id("short", r.block.title), kind: "run_short", date: t.date, tone: "neutral", title: `${r.block.title}: ${r.short}`, delta: `${Math.round((100 * r.c) / r.u)}%` });
     }
     if (!t.grace && t.c > 0)

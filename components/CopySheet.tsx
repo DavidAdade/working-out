@@ -4,19 +4,25 @@
 // Every candidate is compared by intensity (lib/plan/intensity.ts): a match counts in full, anything else can
 // still be picked but is warned about, and costs Score credit once done. Saved as a day copy (DayCopy in generate.ts).
 // On a rest day it's "Add a workout": the same sheet without the intensity comparison (an added day is extra work).
+// A workout missed in the 7 days before that rest day is listed first: adding that one is a make-up, which gives
+// the missed day its Score credit back instead of counting as extra (`makeUp` shows only those).
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { addDays, dowName, fmtShort, type ISODate } from "@/lib/plan/dates.ts";
-import { canAdd, canCopy, copyNote, dayTitle, ownBlocks, planDateOf, weekForDate, PHASE_NAMES, type Day, type Week } from "@/lib/plan/generate.ts";
+import { doneShare, missedDays, MAKEUP_MAX, type AcctLog } from "@/lib/plan/accountability.ts";
+import { canAdd, canCopy, copyNote, dayTitle, makeUpSource, ownBlocks, planDateOf, weekForDate, MAKEUP_DAYS, PHASE_NAMES, type Day, type Week } from "@/lib/plan/generate.ts";
 import { compareDays, dayIntensity, fitBadge, fitWarning, COPY_TOLERANCE, type CopyFit, type Intensity } from "@/lib/plan/intensity.ts";
 import type { BlockKind } from "@/lib/plan/templates.ts";
 import { Chip, PreviewBlocks } from "./DayView";
 import { useDates } from "./DateLabels";
+import { useSets } from "./Sets";
 
 /* ---------- saving a copy: provided by the Dashboard, which owns the plan ---------- */
 export interface CopyApi {
   /** The plan as shown, to list every other day */
   weeks: Week[];
+  /** What's logged, to tell which days were missed */
+  logs: AcctLog[];
   /** Plan day `planDate` does plan day `source`'s workout (null puts its own back); `note` shows once saved, with Undo */
   copy: (planDate: ISODate, source: ISODate | null, note: string) => void;
 }
@@ -47,6 +53,13 @@ export function restDates(week: Week, today: ISODate, logged: Set<ISODate>): ISO
 /** "W7 Wed": a plan date by its week and weekday */
 const where = (weeks: Week[], date: ISODate) => `${weekForDate(weeks, date)?.label ?? ""} ${dowName(date)}`.trim();
 
+/** The missed workouts a rest day can make up (none where copying isn't offered) */
+export function useMissed(date: ISODate): Day[] {
+  const api = useCopy();
+  const { sets } = useSets();
+  return useMemo(() => (api ? missedDays(api.weeks, date, sets, api.logs) : []), [api, date, sets]);
+}
+
 const kindsOf = (d: Day) => [...new Set(ownBlocks(d).map((b) => b.kind))] as BlockKind[];
 
 interface Candidate {
@@ -64,14 +77,18 @@ interface Candidate {
 export function CopiedLine({ day, logged }: { day: Day; logged: Set<ISODate> }) {
   const api = useCopy();
   const dates = useDates();
+  const { sets } = useSets();
   if (!day.copy || !api) return null;
   const { from, fit, replaced } = day.copy;
   const own = dayTitle({ ...day, blocks: replaced });
+  // A missed day of the week before, repeated here: a make-up, not extra work
+  const src = makeUpSource(api.weeks, day);
+  const makeUp = !!src && doneShare(src, sets, api.logs) < MAKEUP_MAX;
   return (
     <div className="flex flex-col text-sm text-muted">
       <div className="flex items-center justify-between gap-2">
         <span>
-          {day.added ? "Added on a rest day, from" : "Copied from"} {where(api.weeks, from)}
+          {makeUp ? "Making up" : day.added ? "Added on a rest day, from" : "Copied from"} {where(api.weeks, from)}
           {dates.hide ? "" : ` ${fmtShort(from)}`}
         </span>
         {!logged.has(day.date) && (
@@ -83,15 +100,16 @@ export function CopiedLine({ day, logged }: { day: Day; logged: Set<ISODate> }) 
           </button>
         )}
       </div>
-      {day.added && <span>Extra work: counts toward your Score once the week is on track.</span>}
+      {day.added && <span>{makeUp ? "Gives that day its Score credit back, the same as doing it on time. Not extra work." : "Extra work: counts toward your Score once the week is on track."}</span>}
       {!fit.match && <span className="text-warn">Intensity doesn&apos;t match: counts as {Math.round(fit.credit * 100)}% of this day in your Score.</span>}
     </div>
   );
 }
 
 /** Pick any other day of the program, see its workout, then use it here. */
-export function CopySheet({ day, today, logged, onClose }: { day: Day; today: ISODate; logged: Set<ISODate>; onClose: () => void }) {
+export function CopySheet({ day, today, logged, onClose, makeUp = false }: { day: Day; today: ISODate; logged: Set<ISODate>; onClose: () => void; /** A rest day: only the workouts missed before it */ makeUp?: boolean }) {
   const api = useCopy();
+  const missedList = useMissed(day.date);
   const dates = useDates();
   const closeRef = useRef<HTMLButtonElement>(null);
   const [picked, setPicked] = useState<Candidate | null>(null);
@@ -100,7 +118,7 @@ export function CopySheet({ day, today, logged, onClose }: { day: Day; today: IS
   // A rest day, or a workout already added on one: nothing of its own to compare with
   const adding = !ownBlocks(day).length;
 
-  const { orig, list, closest } = useMemo(() => {
+  const { orig, list, closest, missed } = useMemo(() => {
     const orig = dayIntensity({ blocks: ownBlocks(day) });
     const list: Candidate[] = (weeks ?? []).flatMap((week) =>
       week.days
@@ -122,8 +140,10 @@ export function CopySheet({ day, today, logged, onClose }: { day: Day; today: IS
           .filter((c) => c.fit.match && !c.why)
           .sort((a, b) => gap(a) - gap(b))
           .slice(0, 5);
-    return { orig, list, closest };
-  }, [weeks, day, planDate, today, logged, adding]);
+    // Missed in the week before this rest day: adding one of these makes it up
+    const missed = adding ? missedList.flatMap((m) => list.find((c) => c.source === planDateOf(m)) ?? []) : [];
+    return { orig, list, closest: closest.filter((c) => !missed.includes(c)), missed };
+  }, [weeks, day, planDate, today, logged, adding, missedList]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -141,8 +161,8 @@ export function CopySheet({ day, today, logged, onClose }: { day: Day; today: IS
   if (!api || !weeks) return null;
   const title = dayTitle(day);
 
-  const row = (c: Candidate, withWeek: boolean) => (
-    <li key={`${withWeek ? "top" : "all"}-${c.source}`}>
+  const row = (c: Candidate, withWeek: boolean, group = withWeek ? "top" : "all") => (
+    <li key={`${group}-${c.source}`}>
       <button
         disabled={!!c.why}
         onClick={() => setPicked(c)}
@@ -177,7 +197,7 @@ export function CopySheet({ day, today, logged, onClose }: { day: Day; today: IS
     const name = dayTitle({ ...c.day, blocks: ownBlocks(c.day) });
     const on = day.date === today ? "today" : dowName(day.date);
     const cost = c.fit.match ? "" : ` It counts as ${Math.round(c.fit.credit * 100)}% in your Score.`;
-    api.copy(planDate, c.source, adding ? `Added ${where(weeks, c.source)}'s ${name} on ${on}.` : `Doing ${where(weeks, c.source)}'s ${name} on ${on} instead.${cost}`);
+    api.copy(planDate, c.source, missed.includes(c) ? `Making up ${where(weeks, c.source)}'s ${name} on ${on}.` : adding ? `Added ${where(weeks, c.source)}'s ${name} on ${on}.` : `Doing ${where(weeks, c.source)}'s ${name} on ${on} instead.${cost}`);
     onClose();
   };
 
@@ -192,19 +212,23 @@ export function CopySheet({ day, today, logged, onClose }: { day: Day; today: IS
         className={`flex max-h-[85dvh] w-full max-w-[520px] flex-col gap-3 overflow-y-auto rounded-t-2xl border border-line bg-surface p-4 sm:rounded-2xl ${picked ? "pb-0" : "pb-[max(16px,env(safe-area-inset-bottom,0px))]"}`}
       >
         {picked ? (
-          <Preview candidate={picked} adding={adding} orig={orig} weeks={weeks} planDate={planDate} closeRef={closeRef} onBack={() => setPicked(null)} onUse={() => confirm(picked)} />
+          <Preview candidate={picked} adding={adding} makeUp={missed.includes(picked)} orig={orig} weeks={weeks} planDate={planDate} closeRef={closeRef} onBack={() => setPicked(null)} onUse={() => confirm(picked)} />
         ) : (
           <>
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
-                <div className="label">{adding ? "Add a workout" : "Swap for another day"}</div>
+                <div className="label">{makeUp ? "Make up a missed workout" : adding ? "Add a workout" : "Swap for another day"}</div>
                 <h3 className="truncate font-display text-xl font-bold">{adding ? (day.added ? `${dates.day(day.date)} · ${title}` : `${dates.day(day.date)} · Rest day`) : title}</h3>
               </div>
               <button ref={closeRef} className="btn-ghost" onClick={onClose}>
                 Cancel
               </button>
             </div>
-            {adding ? (
+            {makeUp ? (
+              <p className="text-sm text-muted">
+                Do a workout you missed in the last {MAKEUP_DAYS} days on this rest day. It gives that day its Score credit back, the same as doing it on time. It doesn&apos;t count as extra work.
+              </p>
+            ) : adding ? (
               <p className="text-sm text-muted">Repeat any workout from your plan on this rest day. Your planned days stay as they are, and what you log here counts as extra work in your Score.</p>
             ) : (
               <p className="text-sm text-muted">
@@ -212,14 +236,22 @@ export function CopySheet({ day, today, logged, onClose }: { day: Day; today: IS
                 your Score.
               </p>
             )}
-            {closest.length > 0 && (
+            {missed.length > 0 && (
+              <section className="flex flex-col gap-1.5">
+                <div className="label">Missed · last {MAKEUP_DAYS} days</div>
+                <ul className="flex flex-col gap-1.5">{missed.map((c) => row(c, true, "missed"))}</ul>
+                {!makeUp && <p className="text-xs text-muted">Making one of these up gives that day its Score credit back. It isn&apos;t extra work.</p>}
+              </section>
+            )}
+            {makeUp && !missed.length && <p className="text-sm text-muted">Nothing to make up: no workout in the last {MAKEUP_DAYS} days was missed.</p>}
+            {!makeUp && closest.length > 0 && (
               <section className="flex flex-col gap-1.5">
                 <div className="label">{adding ? "This week" : "Closest match"}</div>
                 <ul className="flex flex-col gap-1.5">{closest.map((c) => row(c, true))}</ul>
               </section>
             )}
             {weeks.map((w) => {
-              const rows = list.filter((c) => c.week === w);
+              const rows = makeUp ? [] : list.filter((c) => c.week === w);
               if (!rows.length) return null;
               return (
                 <section key={w.start} className="flex flex-col gap-1.5">
@@ -231,7 +263,7 @@ export function CopySheet({ day, today, logged, onClose }: { day: Day; today: IS
                 </section>
               );
             })}
-            <p className="text-xs text-muted">Tests, the time trial and the race stay as planned, and a day with anything logged keeps its workout.</p>
+            {!makeUp && <p className="text-xs text-muted">Tests, the time trial and the race stay as planned, and a day with anything logged keeps its workout.</p>}
           </>
         )}
       </div>
@@ -243,6 +275,7 @@ export function CopySheet({ day, today, logged, onClose }: { day: Day; today: IS
 function Preview({
   candidate: c,
   adding,
+  makeUp,
   orig,
   weeks,
   planDate,
@@ -252,6 +285,8 @@ function Preview({
 }: {
   candidate: Candidate;
   adding: boolean;
+  /** A missed day being made up: its credit back, not extra work */
+  makeUp: boolean;
   orig: Intensity;
   weeks: Week[];
   planDate: ISODate;
@@ -283,10 +318,11 @@ function Preview({
       {note && <p className="text-sm text-muted">{note}</p>}
       <PreviewBlocks blocks={blocks} />
       <div className="sticky bottom-0 -mx-4 mt-auto flex flex-col gap-1.5 border-t border-line bg-surface px-4 pb-[max(16px,env(safe-area-inset-bottom,0px))] pt-3">
+        {makeUp && <p className="text-xs text-muted">Gives {where(weeks, c.source)} its Score credit back, the same as doing it on time. Not extra work.</p>}
         {!c.fit.match && <p className="text-xs text-muted">Counts as {Math.round(c.fit.credit * 100)}% of this day in your Score once done.</p>}
         <div className="flex gap-2">
           <button className="btn flex-1" onClick={onUse}>
-            {adding ? "Add this workout" : "Use this workout"}
+            {makeUp ? "Make it up here" : adding ? "Add this workout" : "Use this workout"}
           </button>
           <button ref={closeRef} className="btn-ghost" onClick={onBack}>
             Back

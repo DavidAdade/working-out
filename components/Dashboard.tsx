@@ -325,7 +325,7 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
     },
     [notify, send],
   );
-  const copyApi = useMemo<CopyApi>(() => ({ weeks, copy }), [weeks, copy]);
+  const copyApi = useMemo<CopyApi>(() => ({ weeks, logs, copy }), [weeks, logs, copy]);
 
   const openLog = (date: string) => {
     setLogDate(date);

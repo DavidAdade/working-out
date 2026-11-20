@@ -124,7 +124,14 @@ export function SupersetSheet({
   const n = chosen.length;
   const full = n >= SUPERSET_MAX;
   const same = n === current.length && chosen.every((id) => current.includes(id));
-  const toggle = (id: string) => setChosen((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  const toggle = (id: string) =>
+    setChosen((cur) => {
+      if (cur.includes(id)) return cur.filter((x) => x !== id);
+      // In another superset: all of it comes along, so combining two never leaves one of its exercises on its own
+      const letter = current.includes(id) ? undefined : rows.find((r) => r.id === id)?.letter;
+      const group = letter ? rows.filter((r) => r.letter === letter && r.id !== id).map((r) => r.id) : [];
+      return [...cur, ...[id, ...group].filter((x) => !cur.includes(x))].slice(0, SUPERSET_MAX);
+    });
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center overscroll-contain bg-black/60 sm:items-center sm:p-4" onClick={onClose} role="presentation">
@@ -145,7 +152,7 @@ export function SupersetSheet({
               Cancel
             </button>
           </div>
-          <p className="text-sm text-muted">Tick what you do back to back with it. One set of each, then rest. Saved for this workout every week.</p>
+          <p className="text-sm text-muted">Tick what you do back to back with it. One set of each, then rest. Saved for this workout every week. Every exercise stays in the workout either way.</p>
         </div>
         <ul className="flex flex-col divide-y divide-line px-4">
           {rows.map((r) => {
@@ -157,7 +164,7 @@ export function SupersetSheet({
                   <input type="checkbox" className="h-5 w-5 flex-none accent-[rgb(var(--accent))]" checked={on} disabled={fixed || (!on && full)} onChange={() => toggle(r.id)} />
                   <span className="min-w-0 flex-1 break-words">
                     <span className="font-medium">{r.name}</span> <span className="whitespace-nowrap font-mono text-[0.8rem] text-muted">{r.target}</span>
-                    {r.letter && !current.includes(r.id) && <span className="block text-xs text-muted">In superset {r.letter} now: ticking moves it here</span>}
+                    {r.letter && !current.includes(r.id) && <span className="block text-xs text-muted">In superset {r.letter} now: ticking brings all of superset {r.letter} here</span>}
                   </span>
                 </label>
               </li>

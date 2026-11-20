@@ -545,6 +545,34 @@ export function canAdd(weeks: Week[], date: ISODate, source: ISODate, today: ISO
   return null;
 }
 
+/** A missed workout can be made up on a rest day up to this many days later */
+export const MAKEUP_DAYS = 7;
+const makesUp = (missed: ISODate, on: ISODate) => daysBetween(missed, on) >= 1 && daysBetween(missed, on) <= MAKEUP_DAYS;
+
+/**
+ * The day an added day repeats, when that day fell in the MAKEUP_DAYS before it: doing it is making that day up
+ * (the Score gives that day its credit back when it was missed, instead of counting extra work; accountability.ts).
+ */
+export function makeUpSource(weeks: Week[], added: Day): Day | null {
+  if (!added.added || !added.copy) return null;
+  const src = weeks.flatMap((w) => w.days).find((d) => !d.added && planDateOf(d) === added.copy!.from);
+  return src && !src.skipped && makesUp(src.date, added.date) ? src : null;
+}
+
+/** The added day that repeats `day`'s workout within MAKEUP_DAYS after it, if there is one */
+export function makeUpDay(weeks: Week[], day: Day): Day | null {
+  if (day.added || day.skipped) return null;
+  return weeks.flatMap((w) => w.days).find((d) => d.added && d.copy?.from === planDateOf(day) && makesUp(day.date, d.date)) ?? null;
+}
+
+/** The workouts a rest day `date` could make up, newest first: the plan's days of the MAKEUP_DAYS before it, as planned (no test, race or swapped day) */
+export function makeUpCandidates(weeks: Week[], date: ISODate): Day[] {
+  return weeks
+    .flatMap((w) => w.days)
+    .filter((d) => !d.added && !d.skipped && !d.copy && !copyLocked(d) && makesUp(d.date, date) && ownBlocks(d).length > 0 && !makeUpDay(weeks, d))
+    .reverse();
+}
+
 /** Advice, never a block: a hard workout copied into a week that already has one, or added next to a hard day */
 export function copyNote(weeks: Week[], planDate: ISODate, source: ISODate): string | null {
   const shown = weeks.flatMap((x) => x.days).find((d) => planDateOf(d) === planDate);

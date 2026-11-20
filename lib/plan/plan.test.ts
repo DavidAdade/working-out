@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { generatePlan, dayTitle, weekLongRunKm, weekForDate, dayForDate, moveDay, catchUp, isHard, canAdd, canCopy, copyNote, type PlanSettings, type Week } from "./generate.ts";
+import { generatePlan, dayTitle, weekLongRunKm, weekForDate, dayForDate, moveDay, catchUp, isHard, canAdd, canCopy, copyNote, makeUpCandidates, makeUpDay, makeUpSource, planDateOf, MAKEUP_DAYS, type PlanSettings, type Week } from "./generate.ts";
 import { compareDays, dayIntensity, COPY_TOLERANCE } from "./intensity.ts";
 import { painWarnings } from "./warnings.ts";
 import { parseDuration, duration, pace } from "./format.ts";
@@ -16,14 +16,14 @@ import { adaptPlan, planFor } from "./adapt.ts";
 import { applySwaps, itemKey, itemLine, rankForSwap, searchScore, swapTarget, swapsShown, targetLine } from "./swaps.ts";
 import { onTrack, wins } from "./ontrack.ts";
 import { planToIcs } from "./ics.ts";
-import { addDays, daysBetween } from "./dates.ts";
+import { addDays, daysBetween, dowName } from "./dates.ts";
 import { addedKeys, addedTarget, clampEnd, completion, dayExercises, elapsed, finishesDay, heldSeconds, holdPhases, isLocked, nextInRound, READY_SEC, sessionDate, sessionDateFor, sessionState, SWITCH_SEC, withReady, type WorkoutSession } from "./workout.ts";
 import { applyEdit, dayGroups, daySlots, daySupersets, editGroup, templateSupersets, type Superset } from "./supersets.ts";
 import { ABS, LEGS, UPPER } from "./templates.ts";
 import { cleanOwnRuns, formatOwnRuns, LONG_KM, ownHard, ownWeeks, parseOwnRuns, type OwnRun } from "./ownruns.ts";
 import { bestsByWeek, fiveKEquivalent, mondaysBetween, paceNeeded, strengthIndex, strengthSeries } from "./stats.ts";
 import { countsForDay } from "../types.ts";
-import { accountability, classU, runCredit, type AcctLog, type AcctSet, type AccountabilityInput } from "./accountability.ts";
+import { accountability, classU, doneShare, missedDays, runCredit, type AcctLog, type AcctSet, type AccountabilityInput } from "./accountability.ts";
 
 const david: PlanSettings = {
   startDate: "2026-11-16",
@@ -1570,6 +1570,66 @@ test("accountability: an added workout counts as extra work, never as a planned 
     const skippedIt = acct(added, sun, logPlan(plain, a.start, sun), { horizon: a.start });
     assert.equal(skippedIt.parts.a, without.parts.a, name);
     assert.ok(!skippedIt.feed.some((f) => f.date === sat && f.kind === "missed"), name);
+  }
+});
+
+test("make-up: a missed day done on a rest day within 7 days gets its credit back, never extra, every profile", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const plain = generatePlan(p);
+    const a = plain.filter((w) => w.phase === "build" && !w.cutback).at(-1)!;
+    const from = addDays(a.start, -14);
+    const dates = Array.from({ length: 14 }, (_, i) => addDays(a.start, i));
+    const isRest = (d: string) => !plain.some((w) => w.days.some((x) => x.date === d));
+    // A rest day with a missed workout it can make up: the newest plan day before it that the rules let it repeat
+    const pick = dates.flatMap((rest) => {
+      if (!isRest(rest)) return [];
+      const src = makeUpCandidates(plain, rest).find((d) => !canAdd(plain, rest, planDateOf(d), from, new Set()));
+      return src ? [{ rest, src }] : [];
+    })[0];
+    assert.ok(pick, `${name}: a rest day with something to make up`);
+    const { rest, src } = pick;
+    const today = addDays(rest, 2);
+    const made = generatePlan(p, { copies: [{ planDate: rest, source: planDateOf(src) }] });
+    assert.equal(makeUpSource(made, dayOf(made, rest))?.date, src.date, name);
+    assert.equal(makeUpDay(made, dayOf(made, src.date))?.date, rest, name);
+
+    const onTime = logPlan(plain, from, today);
+    const without = (h: History, date: string): History => ({ sets: h.sets.filter((s) => s.date !== date), logs: h.logs.filter((l) => l.date !== date) });
+    const missed = without(onTime, src.date);
+    const madeUp = without(logPlan(made, from, today), src.date);
+    const full = acct(plain, today, onTime, { horizon: from });
+    const miss = acct(made, today, missed, { horizon: from });
+    const back = acct(made, today, madeUp, { horizon: from });
+    assert.ok(miss.parts.a < full.parts.a, `${name}: the miss costs`);
+    assert.equal(back.parts.a, full.parts.a, `${name}: made up scores like done on time`);
+    assert.equal(back.parts.e, full.parts.e, `${name}: and adds nothing extra`);
+    assert.equal(back.score, full.score, name);
+    assert.ok(back.feed.some((f) => f.date === src.date && f.title === `Made up on ${dowName(rest)}`), name);
+    assert.ok(!back.feed.some((f) => f.date === rest && (f.kind === "exercise_extra" || f.kind === "extra_workout")), `${name}: nothing left over on the rest day`);
+    assert.ok(!back.feed.some((f) => f.date === src.date && f.kind === "missed"), name);
+
+    // Offered only while it's missed, and only for 7 days
+    assert.ok(missedDays(plain, rest, missed.sets, missed.logs).some((d) => d.date === src.date), name);
+    assert.ok(!missedDays(plain, rest, onTime.sets, onTime.logs).some((d) => d.date === src.date), `${name}: done days aren't offered`);
+    assert.ok(!missedDays(made, rest, missed.sets, missed.logs).some((d) => d.date === src.date), `${name}: not offered twice`);
+    assert.ok(makeUpCandidates(plain, rest).every((d) => daysBetween(d.date, rest) >= 1 && daysBetween(d.date, rest) <= MAKEUP_DAYS && !d.fixed), name);
+    assert.equal(doneShare(src, onTime.sets, onTime.logs), 1, name);
+    assert.equal(doneShare(src, missed.sets, missed.logs), 0, name);
+
+    // The day was done on time as well: the repeat is extra work, like any added workout
+    const both = acct(made, today, logPlan(made, from, today), { horizon: from });
+    assert.equal(both.parts.a, full.parts.a, name);
+    assert.ok(!both.feed.some((f) => f.title.startsWith("Made up")), name);
+    assert.ok(both.feed.some((f) => f.date === rest && (f.kind === "exercise_extra" || f.kind === "extra_workout")), `${name}: counted as extra`);
+
+    // Older than 7 days: extra work, the miss stays
+    const old = plain.flatMap((w) => w.days).filter((d) => daysBetween(d.date, rest) > MAKEUP_DAYS && !d.fixed && !canAdd(plain, rest, planDateOf(d), from, new Set())).at(-1);
+    if (old) {
+      const late = generatePlan(p, { copies: [{ planDate: rest, source: planDateOf(old) }] });
+      assert.equal(makeUpSource(late, dayOf(late, rest)), null, name);
+      const r = acct(late, today, without(logPlan(late, from, today), old.date), { horizon: from });
+      assert.ok(r.feed.some((f) => f.date === old.date && f.kind === "missed"), `${name}: still missed`);
+    }
   }
 });
 

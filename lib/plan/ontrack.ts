@@ -2,7 +2,7 @@
 
 import { addDays, daysBetween, type ISODate } from "./dates.ts";
 import { duration } from "./format.ts";
-import type { PlanSettings, Week } from "./generate.ts";
+import { makeUpDay, type Day, type PlanSettings, type Week } from "./generate.ts";
 import type { Fitness } from "./paces.ts";
 import { bestOn, sessions, type SetLike } from "./progress.ts";
 import type { Warning } from "./warnings.ts";
@@ -31,7 +31,9 @@ export function consistency(weeks: Week[], activeDates: Set<ISODate>, today: ISO
   const from = addDays(today, -28);
   const planned = weeks.flatMap((w) => w.days).filter((d) => d.date >= from && d.date < today && !d.skipped && !d.added && d.blocks.length);
   if (planned.length < 3) return null;
-  return { done: planned.filter((d) => activeDates.has(d.date)).length, planned: planned.length };
+  // A missed day made up on a rest day counts as done
+  const made = (d: Day) => makeUpDay(weeks, d);
+  return { done: planned.filter((d) => activeDates.has(d.date) || (!!made(d) && activeDates.has(made(d)!.date))).length, planned: planned.length };
 }
 
 /** Worst score per area this week vs the week before, e.g. "knee 1 ↓ from 3" */
