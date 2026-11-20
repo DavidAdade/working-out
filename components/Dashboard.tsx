@@ -32,6 +32,7 @@ import type { Superset } from "@/lib/plan/supersets.ts";
 import type { WorkoutSession } from "@/lib/plan/workout.ts";
 import { WorkoutProvider } from "./Workout";
 import { CopyProvider, type CopyApi } from "./CopySheet";
+import { GoalsToggle, useGoalsHidden } from "./GoalsHidden";
 import type { DayCopy } from "@/lib/plan/generate.ts";
 
 type Tab = "today" | "plan" | "log" | "score" | "progress" | "library";
@@ -395,6 +396,24 @@ function GoalHeader({ settings, fitness, thisWeek, daysToTT }: { settings: PlanS
   const dates = useDates();
   const goal = settings.goal5kSec;
   const tenK = predict(goal, 5, 10, 1.06);
+  // Hidden for screenshots (GoalsHidden.tsx)
+  const [hidden, hide] = useGoalsHidden();
+  const settingsLink = (
+    <Link href="/settings" aria-label="Settings" className="-mr-3 flex h-11 w-11 flex-none items-center justify-center rounded-lg text-muted active:bg-sunk">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+      </svg>
+    </Link>
+  );
+  if (hidden)
+    return (
+      <header className="flex items-center justify-between gap-2 rounded-md border border-line bg-surface pl-2 pr-[22px]" aria-label="Goal">
+        <span className="label min-w-0 flex-1 px-2">Goals hidden</span>
+        <GoalsToggle hidden onChange={hide} />
+        {settingsLink}
+      </header>
+    );
   return (
     <header className="relative flex flex-col gap-3 rounded-md border border-line bg-surface px-[22px] pb-[18px] pt-4" aria-label="Goal">
       <span className="bib-pin left-[9px] top-[9px]" />
@@ -405,12 +424,10 @@ function GoalHeader({ settings, fitness, thisWeek, daysToTT }: { settings: PlanS
           <div className="label">5K time trial</div>
           <div className="text-sm font-semibold">{dates.long(settings.timeTrialDate)}</div>
         </div>
-        <Link href="/settings" aria-label="Settings" className="-mr-3 flex h-11 w-11 flex-none items-center justify-center rounded-lg text-muted active:bg-sunk">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-          </svg>
-        </Link>
+        <div className="flex flex-none items-center">
+          <GoalsToggle hidden={false} onChange={hide} />
+          {settingsLink}
+        </div>
       </div>
       <div className="flex items-end justify-between gap-4">
         <div className="min-w-0">

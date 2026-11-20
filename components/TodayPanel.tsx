@@ -18,6 +18,7 @@ import WeekCard, { loggedDates } from "./WeekCard";
 import { MoveSheet, moveNote, moveTargets, type OnMoves } from "./DayCard";
 import { ScoreLink, type ScoreInputs } from "./AccountabilityPanel";
 import { ClassLines, ClassSheet } from "./ClassSheet";
+import { useGoalsHidden } from "./GoalsHidden";
 import { CopiedLine, CopySheet, copyable, restDates, restDay, useCopy, useMissed } from "./CopySheet";
 
 interface Props {
@@ -259,13 +260,15 @@ function CatchUpCard({
 const STATUS_CLS: Record<OnTrack["status"], string> = { good: "bg-good/15 text-good", hold: "bg-warn/15 text-warn", stop: "bg-bad/15 text-bad" };
 
 function OnTrackCard({ track, children }: { track: OnTrack; children?: React.ReactNode }) {
+  // Goal times stay out of screenshots when goals are hidden (GoalsHidden.tsx)
+  const [goalsHidden] = useGoalsHidden();
   return (
     <article className="card gap-1.5">
       <div className="flex items-start justify-between gap-2">
         <h3 className="font-display text-xl font-bold">{track.headline}</h3>
         <span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_CLS[track.status]}`}>{STATUS_LABEL[track.status]}</span>
       </div>
-      {track.lines.map((l) => (
+      {(goalsHidden ? track.lines.map((l) => l.replace(/ to \d+:\d+(:\d+)?$/, "").replace(/ off \d+:\d+(:\d+)?$/, " off the goal")) : track.lines).map((l) => (
         <p key={l} className="text-sm text-muted first-letter:uppercase">
           {l}
         </p>

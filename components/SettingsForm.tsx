@@ -7,6 +7,7 @@ import { saveSettings, signOut, type ActionResult } from "@/app/actions";
 import { duration } from "@/lib/plan/format.ts";
 import { REST_CHOICES, type ProfileRow } from "@/lib/types";
 import RestPush from "./RestPush";
+import { GoalsToggle, useGoalsHidden } from "./GoalsHidden";
 import { clearSnapshot } from "@/lib/offline";
 
 const t = (s: number | null) => (s ? duration(s) : "");
@@ -27,6 +28,9 @@ export default function SettingsForm({
 }) {
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(saveSettings, null);
   const [injury, setInjury] = useState(profile.returning_from_injury);
+  // Goal times and the race can be hidden for screenshots (GoalsHidden.tsx); never while setting up
+  const [goalsHidden, setGoalsHidden] = useGoalsHidden();
+  const hideGoals = goalsHidden && !firstRun;
   // After a failed save React resets the form, so default every field to what was just typed
   const typed = state && !state.ok ? state.values : undefined;
   const val = (name: string, saved: string) => typed?.[name] ?? saved;
@@ -58,8 +62,15 @@ export default function SettingsForm({
             ))}
           </select>
         </div>
-        <Field label="Current 5K" name="current_5k" defaultValue={val("current_5k", t(profile.current_5k_sec))} placeholder="35:00" required />
-        <Field label="Goal 5K" name="goal_5k" defaultValue={val("goal_5k", t(profile.goal_5k_sec))} placeholder="29:59" required />
+        <div className="flex items-center justify-between gap-2 sm:col-span-2">
+          <span className="label">{hideGoals ? "Your 5K times: hidden" : "Your 5K times"}</span>
+          {!firstRun && <GoalsToggle hidden={hideGoals} onChange={setGoalsHidden} />}
+        </div>
+        {/* Hidden fields stay in the form, so saving keeps them */}
+        <div className={hideGoals ? "hidden" : "contents"}>
+          <Field label="Current 5K" name="current_5k" defaultValue={val("current_5k", t(profile.current_5k_sec))} placeholder="35:00" required />
+          <Field label="Goal 5K" name="goal_5k" defaultValue={val("goal_5k", t(profile.goal_5k_sec))} placeholder="29:59" required />
+        </div>
         <Field label="Running starts (a Monday)" name="start_date" type="date" defaultValue={val("start_date", profile.start_date ?? "")} required />
         <Field label="5K time trial date" name="time_trial_date" type="date" defaultValue={val("time_trial_date", profile.time_trial_date ?? "")} required />
 
@@ -117,11 +128,16 @@ export default function SettingsForm({
         </div>
         {vapidKey && <RestPush userId={profile.id} vapidKey={vapidKey} />}
 
-        <div className="label mt-2 sm:col-span-2">Optional half marathon, at least 3 weeks after the time trial</div>
-        <Field label="Race name" name="race_name" defaultValue={val("race_name", profile.race_name ?? "")} placeholder="Toronto Marathon: half" />
-        <Field label="Race date" name="race_date" type="date" defaultValue={val("race_date", profile.race_date ?? "")} />
-        <Field label="Half goal, fastest" name="half_goal_min" defaultValue={val("half_goal_min", t(profile.half_goal_min_sec))} placeholder="2:30:00" />
-        <Field label="Half goal, slowest" name="half_goal_max" defaultValue={val("half_goal_max", t(profile.half_goal_max_sec))} placeholder="2:45:00" />
+        <div className="mt-2 flex items-center justify-between gap-2 sm:col-span-2">
+          <span className="label">{hideGoals ? "Half marathon: hidden" : "Optional half marathon, at least 3 weeks after the time trial"}</span>
+          {!firstRun && <GoalsToggle hidden={hideGoals} onChange={setGoalsHidden} />}
+        </div>
+        <div className={hideGoals ? "hidden" : "contents"}>
+          <Field label="Race name" name="race_name" defaultValue={val("race_name", profile.race_name ?? "")} placeholder="Toronto Marathon: half" />
+          <Field label="Race date" name="race_date" type="date" defaultValue={val("race_date", profile.race_date ?? "")} />
+          <Field label="Half goal, fastest" name="half_goal_min" defaultValue={val("half_goal_min", t(profile.half_goal_min_sec))} placeholder="2:30:00" />
+          <Field label="Half goal, slowest" name="half_goal_max" defaultValue={val("half_goal_max", t(profile.half_goal_max_sec))} placeholder="2:45:00" />
+        </div>
 
         <div className="flex min-w-0 flex-col gap-1 sm:col-span-2">
           <label className="label mt-2" htmlFor="own_runs">

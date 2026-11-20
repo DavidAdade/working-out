@@ -14,6 +14,7 @@ import { fitness5k, trainingPaces } from "@/lib/plan/paces.ts";
 import { bestsByWeek, fiveKEquivalent, mondaysBetween, paceNeeded, strengthIndex, strengthSeries } from "@/lib/plan/stats.ts";
 import { useMemo, useState } from "react";
 import Pager, { usePage } from "./Pager";
+import { GoalsToggle, useGoalsHidden } from "./GoalsHidden";
 
 const AREA_COLORS = ["rgb(var(--area1))", "rgb(var(--area2))", "rgb(var(--area3))"];
 /** Weeks shown on the weekly charts */
@@ -28,6 +29,7 @@ export default function ProgressPanel({ logs, settings, painAreas, today }: { lo
   const recent = wins(logs, sets, nameOf, addDays(today, -27), today);
   const asc = useMemo(() => [...logs].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)), [logs]);
   const goal = settings.goal5kSec;
+  const [goalsHidden, hideGoals] = useGoalsHidden();
 
   /* ---------- 5K: tests against the pace of improvement the goal needs ---------- */
   const tests = asc.map((l) => ({ l, sec: fiveKEquivalent(l) })).filter((t): t is { l: LogRow; sec: number } => t.sec != null);
@@ -87,13 +89,22 @@ export default function ProgressPanel({ logs, settings, painAreas, today }: { lo
 
   return (
     <section className="flex flex-col gap-3.5">
+      {goalsHidden ? (
+        <article className="card flex-row items-center justify-between gap-2 py-1">
+          <span className="label">5K goal hidden</span>
+          <GoalsToggle hidden onChange={hideGoals} />
+        </article>
+      ) : (
       <article className="card">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
             <div className="label">5K: on course for the goal?</div>
             <h3 className="font-display text-xl font-bold">{best5 ? `Best ${duration(best5)}` : `Start point ${duration(settings.current5kSec)}`}</h3>
           </div>
-          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${best5 && best5 < goal ? "bg-good/15 text-good" : "bg-sunk"}`}>Goal {duration(goal - 1)}</span>
+          <span className="flex items-center gap-1">
+            <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${best5 && best5 < goal ? "bg-good/15 text-good" : "bg-sunk"}`}>Goal {duration(goal - 1)}</span>
+            <GoalsToggle hidden={false} onChange={hideGoals} />
+          </span>
         </div>
         <LineChart
           series={[
@@ -122,6 +133,7 @@ export default function ProgressPanel({ logs, settings, painAreas, today }: { lo
           </p>
         )}
       </article>
+      )}
 
       {easyPaces.length >= 2 && (
         <article className="card">
