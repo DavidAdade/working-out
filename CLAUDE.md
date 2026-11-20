@@ -41,6 +41,7 @@ Next.js 15 (App Router, Server Actions) + Supabase (Postgres, Auth, RLS) + Tailw
 ## Testing
 
 - `test@mailinator.com` is the shared test account. Mailinator inboxes are public and this repo is public, so treat it as untrusted: never give it real data. `npm run seed:test` resets it to ~5 weeks of history (runs, a 5K test, lifting sets, a stalled `lat-pulldown` and a dropped `db-ohp` so both warnings show, a skipped day, a cutback week, two supersets on the next lifting day). The script refuses any non-`@mailinator.com` address.
+- `automation@mailinator.com` is the demo account for the share video. `npm run seed:demo` (needs `DEMO_PASSWORD`) resets it to about 27 weeks of good-looking made-up history in pounds, with today's workout three sets from done, ready to film. Mailinator only. Making the video: `.claude/skills/demo-video/SKILL.md`.
 - Never run `next build` in this folder while `npm run dev` is running: both write `.next` and the dev server breaks. Build in a separate worktree instead (`npx next build` there skips the exercise sync).
 - `lib/coach/review.test.ts` tests the AI check-in with `MockLanguageModelV4`; no key needed.
 
