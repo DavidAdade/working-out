@@ -4,7 +4,7 @@
 //   opens instead, and it draws the app from the copy saved on this phone (lib/offline.ts).
 //   No page with someone's data in it is ever cached here.
 // - /_next/static (hashed, never changes) and fonts: cache first.
-// - Server actions (POST), RSC fetches, /api, /auth, /cal and /login: never touched.
+// - Server actions (POST), RSC fetches, /api, /auth, /cal, /login, /signup and /join: never touched.
 // Registered as /sw.js?v=<build> by components/ServiceWorker.tsx, so every deploy installs a new one,
 // takes over at once, and deletes the old caches.
 
@@ -101,7 +101,7 @@ async function navigate(event) {
 }
 
 /** Pages that must always come from the server: sign-in and token routes */
-const LIVE_ONLY = /^\/(api|auth|cal|login)(\/|$)/;
+const LIVE_ONLY = /^\/(api|auth|cal|login|signup|join)(\/|$)/;
 
 self.addEventListener("fetch", (event) => {
   const req = event.request;

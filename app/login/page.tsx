@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { Suspense } from "react";
 import { sendMagicLink, signInWithPassword, type ActionResult } from "@/app/actions";
 import { clearSnapshot } from "@/lib/offline";
@@ -56,6 +57,12 @@ function LoginForm() {
           </form>
         )}
       </div>
+      <p className="text-center text-sm text-muted">
+        Have an invite code?{" "}
+        <Link href="/signup" className="font-semibold text-ink underline underline-offset-2">
+          Create an account
+        </Link>
+      </p>
     </main>
   );
 }

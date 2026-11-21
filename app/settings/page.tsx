@@ -26,6 +26,8 @@ export default async function SettingsPage() {
     if (error || !profile) throw new Error("Couldn't load your profile");
   }
   const zones = Intl.supportedValuesOf("timeZone");
+  // Only the owner sees "Invite someone" (row-level security shows this row to nobody else; no table yet = nobody)
+  const { data: owner } = await supabase.from("app_owners").select("user_id").eq("user_id", user.id).maybeSingle();
   const { data: tokens } = await supabase.from("user_tokens").select("purpose, created_at, last_used_at").returns<TokenInfo[]>();
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host");
@@ -33,7 +35,7 @@ export default async function SettingsPage() {
   return (
     // The rest timer carries on here, so changing a setting between sets doesn't lose it
     <RestTimerProvider userId={profile.id} enabled={profile.rest_timer} seconds={profile.rest_seconds ?? null} push={pushEnabled()}>
-      <SettingsForm profile={profile} firstRun={!profile.start_date} zones={zones.includes(profile.timezone) ? zones : [profile.timezone, ...zones]} vapidKey={vapidPublicKey()}>
+      <SettingsForm profile={profile} firstRun={!profile.start_date} zones={zones.includes(profile.timezone) ? zones : [profile.timezone, ...zones]} vapidKey={vapidPublicKey()} owner={!!owner}>
         {profile.start_date && <Connections tokens={tokens ?? []} origin={origin} />}
       </SettingsForm>
       <RestTimerDock />

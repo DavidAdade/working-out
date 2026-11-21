@@ -4,6 +4,7 @@ import Link from "next/link";
 import { formatOwnRuns } from "@/lib/plan/ownruns.ts";
 import { useActionState, useEffect, useState } from "react";
 import { saveSettings, setPassword, signOut, type ActionResult } from "@/app/actions";
+import { inviteUser, type InviteResult } from "@/app/invite-actions";
 import { addDays, mondayOf, todayIn } from "@/lib/plan/dates.ts";
 import { DEFAULT_DAYS, MAX_TRAIN_DAYS, MIN_TRAIN_DAYS, MODE_NAMES, PROGRAM_MIN_DAYS, RUN_MODES, runMode, type RunMode } from "@/lib/plan/shape.ts";
 
@@ -27,6 +28,7 @@ export default function SettingsForm({
   firstRun,
   zones,
   vapidKey,
+  owner,
   children,
 }: {
   profile: ProfileRow;
@@ -34,6 +36,8 @@ export default function SettingsForm({
   zones: string[];
   /** Set when the server can send pushes; shows the rest notification toggle */
   vapidKey?: string | null;
+  /** The person who runs this app: they can invite others */
+  owner?: boolean;
   children?: React.ReactNode;
 }) {
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(saveSettings, null);
@@ -256,7 +260,10 @@ export default function SettingsForm({
 
       {children}
 
-      {!firstRun && <PasswordForm />}
+      {owner && !firstRun && <InviteForm />}
+
+      {/* Someone who came in by an invite link has no password yet, and the Home Screen app needs one */}
+      <PasswordForm open={firstRun} />
 
       {/* Forget the data saved on this phone for offline use (the login page clears it too) */}
       <form action={signOut} onSubmit={forgetPhone}>
@@ -284,10 +291,67 @@ function forgetPhone() {
 }
 
 /** A password of the person's own: an invite or emailed link opens in Safari, but the home-screen app needs one */
-function PasswordForm() {
-  const [state, action, pending] = useActionState<ActionResult | null, FormData>(setPassword, null);
+/** The owner's way to let someone in: a one-time link to pass on, since this app sends no email of its own */
+function InviteForm() {
+  const [state, action, pending] = useActionState<InviteResult | null, FormData>(inviteUser, null);
+  const [copied, setCopied] = useState(false);
+  const link = state?.ok ? state.link : null;
+  useEffect(() => setCopied(false), [link]);
+  const pass = async () => {
+    if (!link) return;
+    const text = "Here's your invite to WorkoutFlex. Open it on your phone:";
+    try {
+      // The phone's own share sheet (Messages, WhatsApp, Mail); copying is the fallback
+      if (navigator.share) return await navigator.share({ text, url: link });
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+    } catch {}
+  };
   return (
     <details className="card gap-3">
+      <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold">Invite someone</summary>
+      <p className="text-sm text-muted">Enter their email to get a link you send them yourself. It signs them in once; then they set up their plan and choose their own password.</p>
+      <form action={action} className="flex flex-col gap-3">
+        <div className="flex min-w-0 flex-col gap-1">
+          <label className="label" htmlFor="invite_email">
+            Their email
+          </label>
+          <input id="invite_email" name="invite_email" type="email" autoComplete="off" autoCapitalize="none" required className="input" />
+        </div>
+        {state && !state.ok && (
+          <p role="alert" className="text-sm text-bad">
+            {state.error}
+          </p>
+        )}
+        <div>
+          <button className="btn" disabled={pending}>
+            {pending ? "Making the link…" : "Get invite link"}
+          </button>
+        </div>
+      </form>
+      {state?.ok && (
+        <div role="status" className="flex flex-col gap-2 border-t border-line pt-3">
+          <p className="text-sm">
+            {state.existing ? `${state.email} already has an account. This is a fresh sign-in link for them (good for about an hour).` : `Invite for ${state.email}. The link works once, for about a day.`}
+          </p>
+          <p aria-label="Invite link" className="select-all break-all rounded-lg bg-sunk p-2 font-mono text-xs">
+            {state.link}
+          </p>
+          <div>
+            <button type="button" className="btn" onClick={() => void pass()}>
+              {copied ? "Copied" : "Send or copy link"}
+            </button>
+          </div>
+        </div>
+      )}
+    </details>
+  );
+}
+
+function PasswordForm({ open }: { open?: boolean }) {
+  const [state, action, pending] = useActionState<ActionResult | null, FormData>(setPassword, null);
+  return (
+    <details className="card gap-3" open={open}>
       <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold">Set or change your password</summary>
       <p className="text-sm text-muted">Sign in with your email and this password, including in the app on your Home Screen.</p>
       <form action={action} className="grid grid-cols-1 gap-3 sm:grid-cols-2">

@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { checkUser } from "./user";
 
 // Token routes (calendar feed, Apple Health, the push sender) check their own key instead of a session; the push worker script loads signed out
-const PUBLIC_PATHS = ["/login", "/auth", "/cal/", "/api/health", "/api/push/due", "/sw-push.js"];
+const PUBLIC_PATHS = ["/login", "/signup", "/join", "/auth", "/cal/", "/api/health", "/api/push/due", "/sw-push.js"];
 
 /** Refreshes the session cookie on every request and sends signed-out visitors to /login (and signed-in ones away from it). */
 export async function updateSession(request: NextRequest) {
@@ -32,7 +32,7 @@ export async function updateSession(request: NextRequest) {
   const isPublic = PUBLIC_PATHS.some((p) => path.startsWith(p));
   if (!user && !isPublic) return redirectTo(request, "/login", response);
   // Still signed in: /login has nothing to do, so go back to the app
-  if (user && path === "/login") return redirectTo(request, "/", response);
+  if (user && (path === "/login" || path === "/signup")) return redirectTo(request, "/", response);
   return response;
 }
 
