@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { addExercise, type ActionResult } from "@/app/actions";
 import { MUSCLES, MUSCLE_GROUPS, type MuscleId } from "@/lib/plan/muscles.ts";
 import type { ExerciseInfo } from "@/lib/plan/catalog.ts";
@@ -38,6 +38,24 @@ export default function LibraryPanel() {
   }, [exercises, q, group, gear]);
   const list = usePage(shown, 15, page);
 
+  // Typing on a phone: the keyboard takes the bottom half of the screen, so while the search box is in use the
+  // filters and the add button step aside and the results are brought up right under it
+  const [typing, setTyping] = useState(false);
+  const leave = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toResults = () => document.getElementById("library-list")?.scrollIntoView({ block: "start" });
+  const startTyping = () => {
+    if (leave.current) clearTimeout(leave.current);
+    setTyping(true);
+    // Once the filters have gone, and again after the keyboard has finished sliding up (iOS scrolls on its own then)
+    requestAnimationFrame(() => requestAnimationFrame(toResults));
+    setTimeout(toResults, 400);
+  };
+  // A tap on a result blurs the box first: wait for the tap to land before anything moves
+  const stopTyping = () => {
+    leave.current = setTimeout(() => setTyping(false), 300);
+  };
+  useEffect(() => () => void (leave.current && clearTimeout(leave.current)), []);
+
   return (
     <section className="flex flex-col gap-3">
       <div className="sticky top-[calc(env(safe-area-inset-top,0px)+3.6rem)] z-[5] -mx-1 flex flex-col gap-2 bg-bg px-1 pb-2">
@@ -51,9 +69,15 @@ export default function LibraryPanel() {
           onChange={(e) => {
             setQ(e.target.value);
             setPage(0);
+            if (typing) requestAnimationFrame(toResults);
           }}
+          onFocus={startTyping}
+          onBlur={stopTyping}
+          // "Search" on the keyboard puts it away, leaving the results
+          onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
           className="input"
         />
+        <div className={typing ? "hidden" : "contents"}>
         <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 [scrollbar-width:none]" role="group" aria-label="Muscle group">
           {[null, ...MUSCLE_GROUPS].map((g) => (
             <button
@@ -77,15 +101,16 @@ export default function LibraryPanel() {
             setPage(0);
           }}
         />
+        </div>
       </div>
 
-      {adding ? <AddExercise onDone={() => setAdding(false)} /> : (
+      {adding ? <AddExercise onDone={() => setAdding(false)} /> : typing ? null : (
         <button type="button" className="btn-ghost self-start" onClick={() => setAdding(true)}>
           + Add your own exercise
         </button>
       )}
 
-      <article id="library-list" className="card scroll-mt-40 gap-0 p-0">
+      <article id="library-list" className={`card gap-0 p-0 ${typing ? "scroll-mt-32" : "scroll-mt-40"}`}>
         {shown.length === 0 ? (
           <p className="p-4 text-center text-muted">No exercises match. Try another word or filter, or add it.</p>
         ) : (
@@ -97,6 +122,8 @@ export default function LibraryPanel() {
         )}
       </article>
       <Pager current={list.current} pages={list.pages} label={`${list.from}–${list.to} of ${shown.length}`} onPage={setPage} listId="library-list" />
+      {/* Room to scroll a short list of results up above the keyboard */}
+      {typing && <div aria-hidden className="h-[60vh]" />}
     </section>
   );
 }
