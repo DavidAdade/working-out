@@ -39,6 +39,8 @@ async function requireUser() {
 export async function sendMagicLink(_: unknown, form: FormData): Promise<ActionResult> {
   const email = String(form.get("email") ?? "").trim().toLowerCase();
   if (!/^\S+@\S+\.\S+$/.test(email)) return { ok: false, error: "Enter a valid email address." };
+  // The test and demo accounts live on public inboxes: a link sent there is a link for anyone. Password only
+  if (/@mailinator\.com$/.test(email)) return { ok: false, error: "This account signs in with its password." };
   const supabase = await createClient();
   const h = await headers();
   const origin = h.get("origin") ?? process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
@@ -60,6 +62,17 @@ export async function signInWithPassword(_: unknown, form: FormData): Promise<Ac
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return { ok: false, error: "Wrong email or password." };
   redirect("/");
+}
+
+/** Set or change the password, so the person can sign in inside the home-screen app with one only they know. */
+export async function setPassword(_: unknown, form: FormData): Promise<ActionResult> {
+  const { supabase } = await requireUser();
+  const password = String(form.get("new_password") ?? "");
+  if (password.length < 8) return { ok: false, error: "Use at least 8 characters." };
+  if (password !== String(form.get("new_password_again") ?? "")) return { ok: false, error: "The two passwords don't match." };
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) return { ok: false, error: /different|same/i.test(error.message) ? "That's already your password." : "Couldn't save the password. Sign in again and retry." };
+  return { ok: true };
 }
 
 export async function signOut() {
@@ -110,9 +123,13 @@ export async function saveSettings(_: unknown, form: FormData): Promise<ActionRe
   if (ownRuns.bad.length) return fail(`Couldn't read this run: "${ownRuns.bad[0].slice(0, 60)}". Write each as: 2026-11-16, 5, Easy Run`);
   if (ownRuns.runs.length > 400) return fail("That's more than 400 runs. Keep the list to the coming months.");
   if (!update.start_date || !update.time_trial_date) return fail("Add a start date and a time trial date.");
+  // The plan's weeks run Monday to Sunday: any other day would quietly start on the Monday before it
+  if (/^\d{4}-\d{2}-\d{2}$/.test(update.start_date) && !isMonday(update.start_date)) return fail(`Running starts on a Monday. The nearest are ${mondayOf(update.start_date)} and ${addDays(mondayOf(update.start_date), 7)}.`);
   if (!update.current_5k_sec || !update.goal_5k_sec) return fail("5K times should look like 35:00.");
   if (update.goal_5k_sec >= update.current_5k_sec) return fail("The goal 5K should be faster than your current time.");
   if (update.time_trial_date <= update.start_date) return fail("The time trial has to come after the start date.");
+  // Monday to Thursday would land on that week's Friday anyway: say so instead of moving it quietly
+  if (/^\d{4}-\d{2}-\d{2}$/.test(update.time_trial_date) && daysBetween(mondayOf(update.time_trial_date), update.time_trial_date) < 4) return fail(`Put the time trial on a Friday, Saturday or Sunday: the week's easy runs come before it. That week's Friday is ${addDays(mondayOf(update.time_trial_date), 4)}.`);
   if (!isTimeZone(update.timezone)) return fail("Pick a time zone from the list.");
   if (update.recovery_start && update.recovery_start >= update.start_date) return fail("The strength-only phase has to start before running does.");
   if (update.race_date && daysBetween(update.time_trial_date, update.race_date) < MIN_RACE_GAP_WEEKS * 7)
@@ -389,8 +406,21 @@ export async function upsertSet(input: SetInput): Promise<ActionResult> {
   if (!ISO.test(input.date) || input.setNo < 1 || input.setNo > 20) return { ok: false, error: "Couldn't save that set." };
   const reps = num(input.reps, 200);
   const duration_sec = num(input.durationSec, 3600);
-  if (reps == null && duration_sec == null) return { ok: false, error: "Add reps or seconds." };
+  // A set with nothing done isn't a set: the workout would read as complete while the Score counts none of it
+  if (!((reps ?? 0) >= 1) && !((duration_sec ?? 0) >= 1)) return { ok: false, error: "Add reps or seconds." };
   if (await lockedDay(supabase, user.id, input.planDate && ISO.test(input.planDate) ? input.planDate : input.date)) return { ok: false, error: LOCKED };
+  const planDate = input.planDate && ISO.test(input.planDate) && input.planDate !== input.date ? input.planDate : null;
+  // Set numbers are unique per date and exercise. A set saved under a number another workout holds on this date
+  // (a later day done early) would overwrite it: refuse, so nothing logged is ever replaced by another day's set
+  const { data: held } = await supabase
+    .from("set_logs")
+    .select("plan_date")
+    .eq("user_id", user.id)
+    .eq("date", input.date)
+    .eq("exercise_key", input.exerciseKey)
+    .eq("set_no", input.setNo)
+    .maybeSingle<{ plan_date: string | null }>();
+  if (held && (held.plan_date ?? input.date) !== (planDate ?? input.date)) return { ok: false, error: "That set is already logged for another workout today. Reload and log it again." };
   const { error } = await supabase.from("set_logs").upsert(
     {
       user_id: user.id,
@@ -402,7 +432,7 @@ export async function upsertSet(input: SetInput): Promise<ActionResult> {
       reps,
       duration_sec,
       light_week: input.light,
-      plan_date: input.planDate && ISO.test(input.planDate) && input.planDate !== input.date ? input.planDate : null,
+      plan_date: planDate,
     },
     { onConflict: "user_id,date,exercise_key,set_no" },
   );
@@ -608,7 +638,7 @@ export async function weeklyReview(refresh = false): Promise<ReviewResult> {
   const from = addDays(today, -60);
   const [{ data: logs }, { data: sets }, { data: skips }, { data: moves }, { data: exercises }, { data: swaps }, { data: copies }] = await Promise.all([
     supabase.from("logs").select("*").gte("date", from).order("date", { ascending: false }).returns<LogRow[]>(),
-    supabase.from("set_logs").select("id, date, exercise_key, set_no, weight, unit, weight_kg, reps, duration_sec, light_week, plan_date").gte("date", from).returns<SetRow[]>(),
+    supabase.from("set_logs").select("id, date, exercise_key, set_no, weight, unit, weight_kg, reps, duration_sec, light_week, plan_date").gte("date", from).order("date", { ascending: false }).returns<SetRow[]>(),
     supabase.from("day_overrides").select("date").eq("status", "skipped").returns<{ date: string }[]>(),
     supabase.from("day_moves").select("from:from_date, to:to_date").returns<Move[]>(),
     supabase.from("exercises").select("key, name, load").returns<{ key: string; name: string; load: Load }[]>(),

@@ -582,7 +582,22 @@ function SetTable({
   // Every set hit the top of the range last time: the grey numbers move up a step
   const suggested = lightSession || exercise.load !== "weight" ? null : suggestWeight(all.find((s) => s.date < date && !s.light), target, unit);
   const [extra, setExtra] = useState(0);
-  const rowCount = Math.max(target.sets, done.length ? done[done.length - 1].set_no : 0) + extra;
+  // Set numbers are unique per date and exercise, not per workout. When another workout's sets for this exercise
+  // were logged on this date (a later day done early, a workout repeated), this day's rows step around their
+  // numbers: saving under one of them would overwrite that set
+  const takenKey = sets
+    .filter((s) => s.date === date && s.exercise_key === exercise.key && planDayOf(s) !== (planDate ?? date))
+    .map((s) => s.set_no)
+    .sort((a, b) => a - b)
+    .join(",");
+  const taken = useMemo(() => new Set(takenKey ? takenKey.split(",").map(Number) : []), [takenKey]);
+  /** The set number row `n` saves under: the nth number no other workout holds on this date */
+  const no = (n: number) => {
+    let k = 0;
+    for (let i = 1; ; i++) if (!taken.has(i) && ++k === n) return i;
+  };
+  const rowOf = (setNo: number) => setNo - [...taken].filter((x) => x < setNo).length;
+  const rowCount = Math.max(target.sets, done.length ? rowOf(done[done.length - 1].set_no) : 0) + extra;
   const change = done.length >= Math.min(target.sets, prev?.sets.length ?? target.sets) ? compareSession(all, done[0]?.date ?? date) : null;
   const timed = exercise.load === "time";
   // Bodyweight and timed work can carry optional weight (weighted plank, dip belt…): on when it did last time
@@ -590,7 +605,7 @@ function SetTable({
   const [addWeight, setAddWeight] = useState(() => hasWeight(done) || hasWeight(prev?.sets));
   const showWeight = exercise.load === "weight" || addWeight;
   // The hold timer fills (and at zero, ticks) the first set not yet logged
-  const nextSet = Array.from({ length: rowCount }, (_, i) => i + 1).find((n) => !done.some((d) => d.set_no === n)) ?? rowCount + 1;
+  const nextSet = Array.from({ length: rowCount }, (_, i) => i + 1).find((n) => !done.some((d) => d.set_no === no(n))) ?? rowCount + 1;
   const [fill, setFill] = useState<{ setNo: number; sec: number; commit: boolean; n: number } | null>(null);
 
   // Move on once the last planned set is ticked; opening an already-finished exercise doesn't count
@@ -638,7 +653,8 @@ function SetTable({
       </div>
       {Array.from({ length: rowCount }, (_, i) => i + 1).map((n) => {
         // What was just logged for the set before this one, else last session's same set
-        const chain = done.filter((d) => d.set_no < n).at(-1);
+        const chain = done.filter((d) => d.set_no < no(n)).at(-1);
+        const logged = done.find((d) => d.set_no === no(n));
         return (
           <SetRowView
             key={`${date}-${n}`}
@@ -647,7 +663,7 @@ function SetTable({
             showWeight={showWeight}
             setNo={n}
             isNext={n === nextSet}
-            logged={done.find((d) => d.set_no === n)}
+            logged={logged}
             last={chain ?? (prev ? prev.sets.find((s) => s.set_no === n) ?? prev.sets[prev.sets.length - 1] : undefined)}
             suggested={chain ? null : suggested}
             target={target}
@@ -656,7 +672,7 @@ function SetTable({
             onFilled={() => setFill(null)}
             onSave={(w, r) => {
               // A new set in a superset: on to the next exercise in the round, or rest once the round is over
-              const fresh = !done.some((d) => d.set_no === n);
+              const fresh = !logged;
               const step = superset && fresh ? superset.after() : null;
               // The day's last planned set: the workout's done, so no rest to count down
               const last = fresh && !!finishesDay?.(exercise.key);
@@ -664,7 +680,7 @@ function SetTable({
                 {
                   date,
                   exercise_key: exercise.key,
-                  set_no: n,
+                  set_no: no(n),
                   weight: showWeight ? w : null,
                   unit,
                   reps: timed ? null : r,
@@ -682,7 +698,7 @@ function SetTable({
               );
               step?.go();
             }}
-            onRemove={() => remove(date, exercise.key, n)}
+            onRemove={() => remove(logged?.date ?? date, exercise.key, logged?.set_no ?? no(n))}
           />
         );
       })}
@@ -870,6 +886,12 @@ function SetRowView({
       countRef.current?.focus();
       return;
     }
+    // A weighted lift with no weight typed and none to suggest (the first time it's done): ask, don't save it blank
+    if (weight == null && exercise.load === "weight") {
+      notify({ text: "Add the weight you used.", tone: "error" });
+      weightRef.current?.focus();
+      return;
+    }
     onSave(weight, Math.round(count));
   };
 
@@ -983,7 +1005,13 @@ function ExerciseSheet({ exerciseKey, focus, onClose }: { exerciseKey: string; f
     [weeks, exerciseKey],
   );
 
+  // An exercise that's gone (a custom one deleted since): nothing to show, so close instead of locking the page
+  const missing = !ex;
   useEffect(() => {
+    if (missing) onClose();
+  }, [missing, onClose]);
+  useEffect(() => {
+    if (missing) return;
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
     const overflow = document.body.style.overflow;
@@ -994,7 +1022,7 @@ function ExerciseSheet({ exerciseKey, focus, onClose }: { exerciseKey: string; f
       document.removeEventListener("keydown", onKey);
       document.body.style.overflow = overflow;
     };
-  }, [onClose]);
+  }, [onClose, missing]);
 
   if (!ex) return null;
   const weighted = ex.load === "weight";

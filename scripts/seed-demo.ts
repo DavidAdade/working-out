@@ -474,7 +474,7 @@ async function main() {
   console.log(`  Missed: ${[...missed].join(", ")}. Skipped: ${skips.map((s) => s.date).join(", ")}. Moves: ${moves.map((m) => `${m.from}→${m.to}`).join(", ")}.`);
   console.log(`  Easy pace ${paceOf(easyRuns[0])}/km → ${paceOf(easyRuns.at(-1))}/km. Longest run ${longest} km. 5K tests: ${acctLogs.filter((l) => l.kind === "test").map((l) => `${l.km === 10 ? "10K " : ""}${duration(l.duration_sec!)}`).join(" → ")}.`);
   console.log(`  Lifts (lb): ${summary.join(", ")}.`);
-  console.log(`  Score: ${score.score ?? "—"}% (${score.band ? BANDS[score.band].label : score.status}; adherence ${score.parts.a}, extra +${score.parts.e}, bests +${score.parts.p}, drops −${score.parts.d}). ${score.streak} weeks kept in a row; ${score.sessions.done}/${score.sessions.planned} sessions, ${score.sets.done}/${score.sets.planned} sets, ${score.extras} extra.`);
+  console.log(`  Score: ${score.score ?? "—"}% (${score.band ? BANDS[score.band].label : score.status}; adherence ${score.parts.a}, extra +${score.parts.e}, bests +${score.parts.p}, drops −${score.parts.d}). ${score.streak} weeks kept in a row; ${score.sessions.done}/${score.sessions.planned} sessions, ${score.sets.done}/${score.sets.planned} sets, ${score.extra.sets} extra sets, ${score.extra.workouts} extra workouts.`);
   console.log(`  Weeks shown: ${score.weeks.map((w) => `${w.label} ${w.pct ?? "—"}%`).join(", ")}.`);
   console.log(`  Feed, last 14 days: ${count("weight_up")} heavier, ${count("weight_same")} weight held, ${count("weight_down")} lighter (${fortnight.filter((f) => f.kind === "weight_down").map((f) => `${f.title} ${f.date}`).join("; ") || "none"}).`);
   console.log(`  Today: ${STATUS_LABEL[track.status]}. ${track.headline}. ${track.lines.join(". ")}.`);

@@ -297,7 +297,9 @@ export function generatePlan(s: PlanSettings, opts: GenerateOptions = {}): Week[
       mk(ws, 1, [tue]),
       mk(ws, 2, [wed, U(UPPER.push), U(ABS.condoA)]),
       mk(ws, 3, [U(stage === "L" ? LEGS.L_condo : stage === "B" ? LEGS.B_condo : LEGS.C_condo), U(UPPER.backArms), U(ABS.condoB)]),
-      mk(ws, 4, [fri]),
+      // The time trial is run on its own date when that's a Friday, Saturday or Sunday (a Saturday parkrun);
+      // earlier in the week it stays on the Friday, after the week's easy runs
+      mk(ws, phase === "tt" ? Math.max(4, Math.min(6, daysBetween(ws, s.timeTrialDate))) : 4, [fri]),
     ];
     if (phase === "tt" || phase === "race") days[3].blocks = [days[3].blocks[0]]; // nothing heavy late in a goal week
     if (phase === "tt") days[4].fixed = true;
@@ -308,7 +310,10 @@ export function generatePlan(s: PlanSettings, opts: GenerateOptions = {}): Week[
         halfMin && halfMax ? `Start around ${pace(halfMax - 10)}/km, settle at ${pace((halfMin + halfMax) / 2)}/km after 5 km` : "Start easy, settle after 5 km",
         "Watch the knees on any downhill sections",
       ];
-      days.push({ date: addDays(ws, off), blocks: [test(s.raceName || "Half marathon", raceItems)], skipped: false, skippable: false, fixed: true, alerts: [] });
+      // A race before Sunday takes its day, and nothing is planned after it that week
+      const raceDay = addDays(ws, off);
+      days.splice(0, days.length, ...days.filter((d) => d.date < raceDay));
+      days.push({ date: raceDay, blocks: [test(s.raceName || "Half marathon", raceItems)], skipped: false, skippable: false, fixed: true, alerts: [] });
     }
     const notes = phase === "tt" && s.raceDate && !raceUsable ? [`${s.raceName || "The race"} is less than ${MIN_RACE_GAP_WEEKS} weeks after the time trial, so it isn't in the plan. Move one of the dates in Settings.`] : [];
     weeks.push({ label: `W${i}`, index: i, start: ws, phase, cutback: cut, days, notes });

@@ -102,7 +102,7 @@ export default function ProgressPanel({ logs, settings, painAreas, today }: { lo
             <h3 className="font-display text-xl font-bold">{best5 ? `Best ${duration(best5)}` : `Start point ${duration(settings.current5kSec)}`}</h3>
           </div>
           <span className="flex items-center gap-1">
-            <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${best5 && best5 < goal ? "bg-good/15 text-good" : "bg-sunk"}`}>Goal {duration(goal - 1)}</span>
+            <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${best5 && best5 < goal ? "bg-good/15 text-good" : "bg-sunk"}`}>Goal {duration(goal % 60 === 0 ? goal - 1 : goal)}</span>
             <GoalsToggle hidden={false} onChange={hideGoals} />
           </span>
         </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { accountability, BANDS, GLYPHS, type Accountability, type AcctSkip, type FeedItem, type FeedKind } from "@/lib/plan/accountability.ts";
+import { accountability, BANDS, GLYPHS, type Glyph, type Accountability, type AcctSkip, type FeedItem, type FeedKind } from "@/lib/plan/accountability.ts";
 import { addDays } from "@/lib/plan/dates.ts";
 import type { Phase, Week } from "@/lib/plan/generate.ts";
 import { toUnit } from "@/lib/plan/progress.ts";
@@ -140,7 +140,22 @@ export default function AccountabilityPanel({ inputs, onLog, onToday }: { inputs
               </li>
             ))}
           </ul>
-          <p className="text-xs text-muted">● done ◐ partial ○ missed ⨯ skipped ⇢ moved ✚ extra ⏸ eased by plan ◌ not logged yet. Tap a week to see why.</p>
+          <p className="text-xs text-muted">Tap a week to see why.</p>
+          <details>
+            <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold">What the symbols mean</summary>
+            <ul className="flex flex-col gap-1.5 pb-1 text-sm text-muted">
+              {SYMBOLS.map(([glyph, label, note]) => (
+                <li key={label} className="flex items-baseline gap-2.5">
+                  <span aria-hidden className="w-5 flex-none text-center font-mono text-ink">
+                    {GLYPHS[glyph]}
+                  </span>
+                  <span>
+                    <b className="font-semibold text-ink">{label}</b>: {note}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
         </article>
       )}
 
@@ -186,6 +201,18 @@ export default function AccountabilityPanel({ inputs, onLog, onToday }: { inputs
   );
 }
 
+/** The week rows' symbols, one to a line */
+const SYMBOLS: [Glyph, string, string][] = [
+  ["done", "Done", "everything the day asked for"],
+  ["partial", "Partial", "some of it"],
+  ["missed", "Missed", "nothing logged"],
+  ["skipped", "Skipped", "you skipped it ahead of time: half credit"],
+  ["moved", "Moved", "done on another day, or made up"],
+  ["extra", "Extra", "work on a day off"],
+  ["eased", "Eased", "the plan cut it back for pain: counts as done"],
+  ["grace", "Not logged yet", "yesterday or today, still open"],
+];
+
 function Hero({ r }: { r: Accountability }) {
   const band = r.band ? BANDS[r.band] : null;
   // The bar runs to 110 so work beyond the plan shows past the 100 tick
@@ -221,8 +248,19 @@ function Hero({ r }: { r: Accountability }) {
       <p className="text-sm">
         {r.sessions.done} of {r.sessions.planned} sessions
         {r.sets.planned > 0 && ` · ${r.sets.done} of ${r.sets.planned} sets`}
-        {r.extras > 0 && ` · +${r.extras} extra`}
       </p>
+      {(r.extra.sets > 0 || r.extra.workouts > 0) && (
+        <p className="text-sm">
+          Extra:{" "}
+          {[r.extra.sets > 0 && `${r.extra.sets} set${r.extra.sets === 1 ? "" : "s"}`, r.extra.workouts > 0 && `${r.extra.workouts} workout${r.extra.workouts === 1 ? "" : "s"}`].filter(Boolean).join(" · ")}
+          {r.score != null && ` · +${r.parts.e} point${r.parts.e === 1 ? "" : "s"}`}
+          {r.extra.unscoredDays > 0 && (
+            <span className="block text-xs text-muted">
+              Extra work on {r.extra.unscoredDays} day{r.extra.unscoredDays === 1 ? "" : "s"} added no points. {r.extra.unscoredWhy}.
+            </span>
+          )}
+        </p>
+      )}
       {r.score == null ? (
         <p className="text-sm text-muted">
           Building your score: {Math.min(r.counted, r.needed)}/{r.needed} sessions. The number shows once {r.needed} planned days have passed.
@@ -256,12 +294,30 @@ function HowScored() {
     <details className="card gap-1.5">
       <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold">How it&apos;s scored</summary>
       <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm text-muted">
-        <li>Doing the plan as shown is 100%. Every planned set, run and walk counts, and recent days count more than older ones.</li>
-        <li>Rest days, cutback weeks, moved days, swapped exercises and pain or gate changes all count as sticking to the plan.</li>
-        <li>Doing another day&apos;s workout instead counts in full when its intensity matches. When it doesn&apos;t, that day counts 50 to 80%.</li>
-        <li>A skipped day counts half: better than a silent miss. Yesterday doesn&apos;t count against you until today is over.</li>
-        <li>Extra work adds up to 8 points, but only in weeks you&apos;re already keeping and never when the plan says ease off.</li>
-        <li>New bests add a little; a lift 5% lighter than last time takes a little off. The same weight again is full marks.</li>
+        <li>
+          <b className="text-ink">Do the plan, get 100.</b> Every planned set, run and walk counts. Recent days count more.
+        </li>
+        <li>
+          <b className="text-ink">These never cost you:</b> rest days, cutback weeks, moving a day, swapping an exercise, or the plan easing off for pain.
+        </li>
+        <li>
+          <b className="text-ink">Skip beats miss.</b> A skipped day counts half; a missed one counts nothing. Yesterday isn&apos;t a miss until today is over.
+        </li>
+        <li>
+          <b className="text-ink">Extra work: up to +8.</b> Extra sets, added exercises, classes, extra runs and work on days off. Full value in weeks you&apos;re 80% or more done, less below that, none at 50% or under.
+        </li>
+        <li>
+          <b className="text-ink">When extra doesn&apos;t count:</b> taper, time trial, race and cutback weeks, and after a pain check-in of 4 or more. In recovery and return weeks everything counts except extra running.
+        </li>
+        <li>
+          <b className="text-ink">Bests and drops.</b> A new best adds a little (up to +3). A lift 5% lighter than last time takes a little off (up to −2).
+        </li>
+        <li>
+          <b className="text-ink">Another day&apos;s workout</b> counts in full when it&apos;s as hard as the one planned, 50 to 80% when it isn&apos;t.
+        </li>
+        <li>
+          <b className="text-ink">The score stops at 100.</b> Extra shows as the striped part of the bar.
+        </li>
       </ul>
     </details>
   );

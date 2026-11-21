@@ -123,7 +123,8 @@ export function DayBlocks({
   // else logged on this day that it doesn't show. Logged like the rest, counted as extra work.
   const pickedKey = `wf-added:${day.date}`;
   const [picked, setPicked] = useState<string[]>([]);
-  const added = useMemo(() => (logDate ? addedKeys(day, sets, picked) : []), [logDate, day, sets, picked]);
+  // A pick whose exercise is gone (a custom one deleted since) is dropped
+  const added = useMemo(() => (logDate ? addedKeys(day, sets, picked.filter((k) => info(k))) : []), [logDate, day, sets, picked, info]);
   const addedExercise = (key: string): { exercise: Exercise; target: Target } => {
     const e = info(key);
     if (e) return { exercise: asExercise(e), target: addedTarget(e) };
@@ -250,7 +251,7 @@ export function DayBlocks({
           current={null}
           target={null}
           light={false}
-          inDay={new Set([...order.map((x) => x.key), ...added])}
+          inDay={new Set([...order.map((x) => x.key), ...added, ...day.blocks.flatMap((b) => Object.values(b.swaps ?? {}).map((s) => s.from))])}
           logged={[]}
           onClose={() => {
             setAddingEx(false);
@@ -289,7 +290,7 @@ export function DayBlocks({
         current={current}
         target={p.target}
         light={!!b.light || !!b.foldedFrom}
-        inDay={new Set(order.filter((x) => x.id !== id).map((x) => x.key))}
+        inDay={new Set([...order.filter((x) => x.id !== id).map((x) => x.key), ...added])}
         logged={sets.filter((s) => planDayOf(s) === day.date && s.exercise_key === current.key)}
         onClose={() => closeSwap(id)}
         onPick={(to) => {

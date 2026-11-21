@@ -73,6 +73,14 @@ export async function loadSnapshot<T>(userId?: string): Promise<Snapshot<T> | nu
 
 /** Forget the saved data (sign-out, or someone else signing in on this phone) */
 export async function clearSnapshot(): Promise<void> {
+  // Exercises picked with "+ Add exercise" and not logged yet are kept per date, not per person: they go too,
+  // so the next person to sign in on this phone doesn't find them on their day
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k?.startsWith("wf-added:")) localStorage.removeItem(k);
+    }
+  } catch {}
   try {
     await tx("readwrite", (s) => s.delete(KEY));
   } catch {}

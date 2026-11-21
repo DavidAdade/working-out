@@ -39,7 +39,9 @@ export const LEG_GAP_DAYS = 2;
 export const MAX_DAYS = 6;
 
 const HARD = /repeat|interval|tempo|fartlek|hill|race|progressive run|\d00s|\bmiles\b|\d\s*[×x]\s*\d/i;
-export const ownHard = (r: OwnRun) => !!r.race || (r.hard ?? HARD.test(r.title));
+/** "Easy 3 miles", "Recovery run", "Easy 5k (Hillside Park)": the title says it's easy, whatever else is in it */
+const EASY = /\b(easy|recovery)\b/i;
+export const ownHard = (r: OwnRun) => !!r.race || (r.hard ?? (HARD.test(r.title) && !EASY.test(r.title)));
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -64,7 +66,8 @@ export function parseOwnRuns(text: string): { runs: OwnRun[]; bad: string[] } {
     const [date, km, ...rest] = line.split(",").map((x) => x.trim());
     const flags = rest.filter((x) => /^(hard|easy|race)$/i.test(x)).map((x) => x.toLowerCase());
     const title = rest.filter((x) => !/^(hard|easy|race)$/i.test(x)).join(", ");
-    if (!ISO.test(date ?? "") || Number.isNaN(Date.parse(date)) || !(Number(km?.replace(/\s*km$/i, "")) > 0)) {
+    // A date that doesn't exist (30 February) would silently drop the run
+    if (!ISO.test(date ?? "") || Number.isNaN(Date.parse(date)) || new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date || !(Number(km?.replace(/\s*km$/i, "")) > 0)) {
       bad.push(line);
       continue;
     }

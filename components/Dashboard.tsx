@@ -230,8 +230,8 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
   );
   // A skip made here and not yet reloaded was made today
   const scoreInputs = useMemo<ScoreInputs>(
-    () => ({ weeks, logs, skips: optimisticSkips.map((date) => ({ date, createdAt: score.skippedAt[date] ?? `${today}T12:00:00Z` })), events: score.events, sessions: workouts.filter((w) => w.auto_ended), gatesPending, today, horizon: score.horizon }),
-    [weeks, logs, optimisticSkips, score, workouts, gatesPending, today],
+    () => ({ weeks, logs, skips: optimisticSkips.map((date) => ({ date, createdAt: score.skippedAt[date] ?? today })), events: score.events, sessions: workouts.filter((w) => w.auto_ended), gatesPending, today, timeZone: safeTimeZone(profile.timezone), horizon: score.horizon }),
+    [weeks, logs, optimisticSkips, score, workouts, gatesPending, today, profile.timezone],
   );
   const openTab = (t: Tab) => {
     setTab(t);
@@ -431,7 +431,7 @@ function GoalHeader({ settings, fitness, thisWeek, daysToTT }: { settings: PlanS
       </div>
       <div className="flex items-end justify-between gap-4">
         <div className="min-w-0">
-          <div className="font-display text-[clamp(3.6rem,15vw,5.6rem)] font-bold leading-[0.9] text-accent">SUB-{Math.ceil(goal / 60)}</div>
+          <div className="font-display text-[clamp(3.6rem,15vw,5.6rem)] font-bold leading-[0.9] text-accent">{goal % 60 === 0 ? `SUB-${goal / 60}` : duration(goal)}</div>
           {thisWeek && (
             <div className="label mt-1.5">
               {PHASE_NAMES[thisWeek.phase]}

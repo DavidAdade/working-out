@@ -2,6 +2,8 @@ import type { PlanSettings } from "@/lib/plan/generate.ts";
 import { cleanOwnRuns, type OwnRun } from "./plan/ownruns.ts";
 
 export interface ProfileRow {
+  /** When the account was made */
+  created_at?: string | null;
   id: string;
   display_name: string | null;
   timezone: string;

@@ -15,6 +15,9 @@ import Dashboard from "@/components/Dashboard";
 
 export const dynamic = "force-dynamic";
 
+const SETS_PAGE = 1000;
+const SETS_MAX = 5000;
+
 export default async function Home() {
   const supabase = await createClient();
   const { user, transient } = await checkUser(supabase);
@@ -32,17 +35,29 @@ export default async function Home() {
     .then((r) => r);
   const supersetsRead = supabase.from("supersets").select("id, keys, off").order("created_at").returns<Superset[]>().then((r) => r);
   const copiesRead = supabase.from("day_copies").select("planDate:plan_date, source:source_date").returns<DayCopy[]>().then((r) => r);
+  // The API returns at most 1,000 rows a request (max_rows), so the set history is read a page at a time
+  const setsRead = async () => {
+    const rows: SetRow[] = [];
+    for (let from = 0; from < SETS_MAX; from += SETS_PAGE) {
+      const r = await supabase
+        .from("set_logs")
+        .select("id, date, exercise_key, set_no, weight, unit, weight_kg, reps, duration_sec, light_week, plan_date")
+        .order("date", { ascending: false })
+        .order("id")
+        .range(from, from + SETS_PAGE - 1)
+        .returns<SetRow[]>();
+      if (r.error) return { data: null, error: r.error };
+      rows.push(...r.data);
+      if (r.data.length < SETS_PAGE) break;
+    }
+    return { data: rows, error: null };
+  };
   const reads = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle<ProfileRow>(),
     supabase.from("logs").select("*").order("date", { ascending: false }).order("created_at", { ascending: false }).limit(1000).returns<LogRow[]>(),
     supabase.from("day_overrides").select("date, created_at").eq("status", "skipped").returns<SkipRow[]>(),
     supabase.from("day_moves").select("from:from_date, to:to_date").returns<Move[]>(),
-    supabase
-      .from("set_logs")
-      .select("id, date, exercise_key, set_no, weight, unit, weight_kg, reps, duration_sec, light_week, plan_date")
-      .order("date", { ascending: false })
-      .limit(5000)
-      .returns<SetRow[]>(),
+    setsRead(),
     supabase.from("exercises").select("key, name, load, primary_muscles, secondary_muscles, equipment, video_ids, video_query, lines, owner").order("name").returns<ExerciseInfo[]>(),
     supabase.from("exercise_swaps").select("planDate:plan_date, from:from_key, to:to_key").returns<Swap[]>(),
   ]);
@@ -62,7 +77,12 @@ export default async function Home() {
   const byKey = new Map(builtinRows().map((e) => [e.key, e]));
   for (const e of exercises ?? []) byKey.set(e.key, e);
 
-  if (!profile) redirect("/login");
+  // Signed in but no profile row (it's made when the account is): make it, then set up. /login would bounce back here
+  if (!profile) {
+    const { error } = await supabase.rpc("ensure_profile");
+    if (error) throw new Error("Couldn't load your profile");
+    redirect("/settings");
+  }
   const settings = profileToSettings(profile);
   if (!settings) redirect("/settings");
   const today = todayIn(safeTimeZone(profile.timezone));
@@ -73,7 +93,11 @@ export default async function Home() {
     supabase.from("activity_events").select("kind, date, payload, created_at").gte("date", addDays(today, -84)).order("date", { ascending: false }).limit(1000).returns<ActivityEventRow[]>(),
   ]);
   // History is capped above: before the oldest row of a full read, the Score tab can't tell a miss from a gap
-  const horizon = [logs?.length === 1000 ? logs.at(-1)?.date : null, sets?.length === 5000 ? sets.at(-1)?.date : null].filter((d): d is string => !!d).sort().at(-1) ?? null;
+  const capped = [logs?.length === 1000 ? logs.at(-1)?.date : null, sets?.length === SETS_MAX ? sets.at(-1)?.date : null].filter((d): d is string => !!d).sort().at(-1) ?? null;
+  // Days before the person was using the app are never misses, whatever date their plan starts on (joining
+  // mid-week, or a start set in the past): the first thing they logged, or the day the account was made
+  const firstUse = [logs?.at(-1)?.date, sets?.at(-1)?.date].filter((d): d is string => !!d).sort()[0] ?? (profile.created_at ? todayIn(safeTimeZone(profile.timezone), new Date(profile.created_at)) : null);
+  const horizon = [capped, firstUse].filter((d): d is string => !!d).sort().at(-1) ?? null;
 
   return (
     <Dashboard

@@ -5,17 +5,22 @@
 // target = 1, "Optional" lines = 0, a run = 20, a long run or test = 30, a walk or gate check = 6.
 // Score = clamp(A + E + P − D, 0, 100):
 //   A  adherence, recent days weigh more (half-life 14 days)        doing the plan = 100
-//   E  extra work, up to +8, only in weeks that are already kept and only when the plan isn't easing off
+//   E  extra work, up to +8, only when the plan isn't easing off (a 3/10 "hold" still counts; in recovery and
+//      return weeks lifting, classes and walks count but extra running doesn't), in full in weeks
+//      that are kept (80%+), less below that and nothing at 50% or under.
+//      A day adds at most half its own plan (10 at least); a day off, a lifting day's worth (30)
 //   P  new bests, +0.5 each up to +3        D  lifts that dropped 5%+, −0.5 each down to −2
 // Rest days, cutback weeks, moved days and pain or gate changes all count as doing the plan.
 // A day swapped for another day's workout (Day.copy) is scored on the workout done; when its intensity doesn't
 // match (intensity.ts), the day's credit is multiplied by fit.credit (0.5 to 1) while its units stay full.
 // A workout added on a rest day (Day.added) is never planned: what's logged there counts as extra work (E).
-// The exception is a make-up: the added day repeats a day of the MAKEUP_DAYS before it that was missed (under
-// MAKEUP_MAX of it logged). What's logged there goes to the missed day, up to what that day asked for, so the
-// Score ends where it would have been had the day been done on time; only what's left over is extra.
+// The exception is a make-up: the added day repeats a day of the MAKEUP_DAYS before it that wasn't finished.
+// What's logged there goes to that day, up to what it still asked for, so the Score ends where it would have
+// been had the day been done on time; only what's left over is extra.
+// On a run day, the runs the plan's run needs go to it; a run beyond that is extra, and so is going well past
+// the planned distance or time (RUN_OVER_MIN).
 
-import { addDays, daysBetween, dowName, mondayOf, type ISODate } from "./dates.ts";
+import { addDays, daysBetween, dowName, mondayOf, todayIn, type ISODate } from "./dates.ts";
 import { adaptPlan } from "./adapt.ts";
 import { dayTitle, isHard, makeUpCandidates, planDateOf, MAKEUP_DAYS, type Day, type Phase, type Week } from "./generate.ts";
 import { exerciseByKey, parseLine } from "./exercises.ts";
@@ -39,13 +44,15 @@ export interface AcctLog {
   duration_sec: number | null;
   pain: Record<string, number>;
   auto?: boolean;
+  /** Where it came from ("health" for an import): the same run logged by hand and imported isn't two runs */
+  source?: string | null;
   /** Effort 1–10: sizes a class's extra credit */
   rpe?: number | null;
 }
 
 export interface AcctSkip {
   date: ISODate;
-  /** When the skip was made (timestamptz); a skip made after the day is shown as such */
+  /** When the skip was made (timestamptz, or a plain date); a skip made after the day is shown as such */
   createdAt?: string | null;
 }
 
@@ -72,6 +79,8 @@ export interface AccountabilityInput {
   events?: AcctEvent[];
   gatesPending?: boolean;
   today: ISODate;
+  /** The profile's time zone: a skip's timestamp is read as the date it was there */
+  timeZone?: string;
   /** Oldest date the loaded history is complete from; nothing before it counts as missed */
   horizon?: ISODate | null;
   /** Exercise names for the feed */
@@ -174,8 +183,16 @@ export interface Accountability {
   needed: number;
   sessions: { done: number; planned: number };
   sets: { done: number; planned: number };
-  /** Unplanned workouts in the window */
-  extras: number;
+  /** Work beyond the plan in the window, as logged (whether or not it added points: that is parts.e) */
+  extra: {
+    /** Sets beyond the plan on any day: past a line's target, added exercises, lifting on rest days */
+    sets: number;
+    /** Unplanned sessions: runs, walks, classes and strength logs the plan didn't ask for, plus rest days with sets */
+    workouts: number;
+    /** Days whose extra work added no points, and the commonest reason */
+    unscoredDays: number;
+    unscoredWhy: string | null;
+  };
   /** Weeks kept (80%+) in a row */
   streak: number;
   from: ISODate;
@@ -188,6 +205,10 @@ export interface Accountability {
 export const WINDOW_DAYS = 28;
 export const HALF_LIFE_DAYS = 14;
 export const KEPT_PCT = 80;
+/** Extra work counts in full in a kept week, in part down to this, and not at all at or under it */
+export const EXTRA_FROM_PCT = 50;
+/** A run this far past the plan (10%) is extra work, not GPS noise */
+const RUN_OVER_MIN = 0.1;
 export const MIN_COUNTED = 3;
 const E_MAX = 8;
 const E_SCALE = 50;
@@ -198,6 +219,9 @@ const D_MAX = 2;
 const RUN_U = 20;
 const LONG_U = 30;
 const WALK_U = 6;
+/** The most extra work one day can add: half the day's own plan (10 at least), or a lifting day's worth on a day off */
+const EXTRA_MIN = 10;
+const EXTRA_DAY_OFF = 30;
 /** Runs this close to the plan get full credit */
 const RUN_FULL = 0.9;
 /** Intervals, tests and runs without a number: any run this long counts in full */
@@ -211,6 +235,7 @@ const isWalk = (b: Block) => b.kind === "walk" || b.kind === "gate";
 /**
  * Extra units for a class: an easy run's worth (RUN_U) for 45 minutes at moderate effort, scaled by time (up to
  * 45 min) and effort (easy 0.6, moderate 1, hard 1.2; unknown counts as moderate). Still under the day's extra cap.
+ * A strength session logged by hand on a day off is sized the same way.
  */
 export const CLASS_FULL_MIN = 45;
 export function classU(l: { duration_sec: number | null; rpe?: number | null }): number {
@@ -219,7 +244,12 @@ export function classU(l: { duration_sec: number | null; rpe?: number | null }):
   return RUN_U * Math.min(1, min / CLASS_FULL_MIN) * effort;
 }
 
-const NO_EXTRA: Phase[] = ["recovery", "return", "tt", "taper", "race"];
+/** Weeks where the plan wants less: no extra work scores */
+const NO_EXTRA: Phase[] = ["tt", "taper", "race"];
+/** Weeks that protect an injury: extra lifting, classes and walks score, extra running doesn't */
+const NO_EXTRA_RUNS: Phase[] = ["recovery", "return"];
+const NO_EXTRA_NAME: Partial<Record<Phase, string>> = { recovery: "Recovery weeks", return: "Return weeks", tt: "Time trial week", taper: "Taper weeks", race: "Race week" };
+const isRunLog = (l: AcctLog) => l.kind === "run" || l.kind === "test";
 const counts = (s: SetLike) => (s.reps ?? 0) >= 1 || (s.duration_sec ?? 0) >= 1;
 const planDay = (s: AcctSet) => s.plan_date ?? s.date;
 const r1 = (n: number) => Math.round(n * 10) / 10;
@@ -248,6 +278,8 @@ interface RunMatch {
   from?: ISODate;
   /** "24 of 30 min" when short */
   short?: string;
+  /** Well past the plan: the extra units and "45 of 30 min" */
+  over?: { u: number; text: string };
 }
 
 interface Tally {
@@ -286,7 +318,7 @@ interface Tally {
 }
 
 /** Planned minutes or km, and the credit for what was logged. */
-export function runCredit(b: Block, u: number, logs: AcctLog[]): { c: number; short?: string } {
+export function runCredit(b: Block, u: number, logs: AcctLog[]): { c: number; short?: string; over?: number } {
   if (!logs.length) return { c: 0 };
   const km = logs.reduce((t, l) => t + (l.km ?? 0), 0);
   const sec = logs.reduce((t, l) => t + (l.duration_sec ?? 0), 0);
@@ -302,7 +334,7 @@ export function runCredit(b: Block, u: number, logs: AcctLog[]): { c: number; sh
     short = `${Math.round(sec / 60)} of ${min} min`;
   }
   if (f == null) return { c: !sec || sec >= RUN_MIN_SEC ? u : (u * sec) / RUN_MIN_SEC };
-  if (f >= RUN_FULL) return { c: u };
+  if (f >= RUN_FULL) return { c: u, short, over: Math.max(0, f - 1) };
   return { c: u * Math.min(1, f), short };
 }
 
@@ -388,7 +420,7 @@ export function accountability(input: AccountabilityInput): Accountability {
     needed: MIN_COUNTED,
     sessions: { done: 0, planned: 0 },
     sets: { done: 0, planned: 0 },
-    extras: 0,
+    extra: { sets: 0, workouts: 0, unscoredDays: 0, unscoredWhy: null },
     streak: 0,
     from,
     weeks: [],
@@ -428,13 +460,25 @@ export function accountability(input: AccountabilityInput): Accountability {
   for (const l of logs) if (l.kind === "class") push(classesByDay, l.date, l);
   for (const l of logs) if (l.kind !== "check" && l.kind !== "class") push(logsByDay, l.date, l);
   const runLogs = (date: ISODate) => (logsByDay.get(date) ?? []).filter((l) => !l.auto && (l.kind === "run" || l.kind === "test"));
-  const skipMade = new Map((input.skips ?? []).map((s) => [s.date, s.createdAt ? s.createdAt.slice(0, 10) : null]));
+  // The day a skip was made, where the person is: an evening skip isn't "after the day" because UTC has moved on
+  const madeOn = (at: string): ISODate => {
+    const ms = at.length > 10 && input.timeZone ? Date.parse(at) : NaN;
+    return Number.isNaN(ms) ? at.slice(0, 10) : todayIn(input.timeZone!, new Date(ms));
+  };
+  const skipMade = new Map((input.skips ?? []).map((s) => [s.date, s.createdAt ? madeOn(s.createdAt) : null]));
 
   // Pain as it stood on a day: the plan eased off from what was logged before it
   const painMemo = new Map<ISODate, boolean>();
   const painOn = (date: ISODate) => {
     if (!painMemo.has(date)) painMemo.set(date, painWarnings(logs.filter((l) => l.date < date), date).length > 0);
     return painMemo.get(date)!;
+  };
+
+  // Extra work only stops counting when the plan eases off or pauses running; "hold" (3/10) still counts it
+  const easeMemo = new Map<ISODate, boolean>();
+  const easingOn = (date: ISODate) => {
+    if (!easeMemo.has(date)) easeMemo.set(date, painOn(date) && painWarnings(logs.filter((l) => l.date < date), date).some((w) => w.code !== "hold"));
+    return easeMemo.get(date)!;
   };
 
   /** A past day as the plan showed it then: pain and gate changes from that day's own point of view */
@@ -496,13 +540,25 @@ export function accountability(input: AccountabilityInput): Accountability {
 
     const runs = runLogs(date);
     const runBlocks = t.blocks.filter(isRun);
+    // The day's runs go to its first run block until it has what it asks for; any run after that is extra
+    let spare: AcctLog[] = [];
     for (const [i, b] of runBlocks.entries()) {
       const u = b.km || b.kind === "test" ? LONG_U : RUN_U;
-      // All of the day's runs go to its first run block
-      const r = runCredit(b, u, i === 0 ? runs : []);
-      t.runs.push({ block: b, u, c: r.c, short: r.short });
+      const taken: AcctLog[] = [];
+      if (i === 0)
+        for (const l of runs) {
+          if (taken.length && runCredit(b, u, taken).c >= u) spare.push(l);
+          else taken.push(l);
+        }
+      const r = runCredit(b, u, taken);
+      // Further than planned in one go: the part beyond the plan is extra, up to a run's worth
+      const over = r.over && r.over >= RUN_OVER_MIN && r.short ? { u: RUN_U * Math.min(1, r.over), text: r.short } : undefined;
+      t.runs.push({ block: b, u, c: r.c, short: r.c < u ? r.short : undefined, over });
+      // The same run logged by hand and imported from Health isn't a second run
+      if (i === 0) spare = spare.filter((l) => !taken.some((x) => (x.source ?? null) !== (l.source ?? null)));
     }
     if (!runBlocks.length || t.state !== "planned") t.extraLogs.push(...runs);
+    else t.extraLogs.push(...spare);
     for (const b of t.blocks.filter(isWalk)) {
       t.walkU += WALK_U;
       if (t.active || (b.kind === "gate" && !input.gatesPending)) t.walkC += WALK_U;
@@ -510,6 +566,8 @@ export function accountability(input: AccountabilityInput): Accountability {
     // Walks logged on a day without one are extra
     if (!t.blocks.some(isWalk)) t.extraLogs.push(...dayLogs.filter((l) => !l.auto && l.kind === "walk"));
     t.extraLogs.push(...(classesByDay.get(date) ?? []));
+    // A strength session logged by hand (no sets) on a day with no lifting is extra too
+    if (!daySets.size && !t.blocks.some((b) => LIFT.has(b.kind))) t.extraLogs.push(...dayLogs.filter((l) => !l.auto && l.kind === "strength"));
   }
 
   /* pass 1b: a missed day made up on a rest day gets its credit back from what was logged there, never more */
@@ -521,24 +579,23 @@ export function accountability(input: AccountabilityInput): Accountability {
     if (!src || src.state !== "planned" || src.madeUpOn || gap < 1 || gap > MAKEUP_DAYS) continue;
     const full = src.lines.reduce((s, l) => s + l.u, 0) + src.runs.reduce((s, r) => s + r.u, 0) + src.walkU;
     const own = src.lines.reduce((s, l) => s + l.c, 0) + src.runs.reduce((s, r) => s + r.c, 0) + src.walkC;
-    // Done on its own day: the repeat is extra work like any other added workout
-    if (!full || own >= MAKEUP_MAX * full) continue;
+    // Done in full on its own day: the repeat is extra work like any other added workout
+    if (!full || own >= full - 1e-9) continue;
+    let took = 0;
     // Either day may show an exercise swapped: sets under the plan's exercise or what it was swapped for all count
     const srcFrom = new Map<string, string>();
     for (const b of src.blocks) for (const s of Object.values(b.swaps ?? {})) srcFrom.set(s.to, s.from);
     const hereTo = new Map<string, string>();
     for (const b of d.blocks) for (const s of Object.values(b.swaps ?? {})) hereTo.set(s.from, s.to);
     for (const l of src.lines) {
-      if (!l.key) {
-        l.c = l.u;
-        continue;
-      }
+      if (!l.key) continue;
       const orig = srcFrom.get(l.key) ?? l.key;
       for (const k of new Set([l.key, orig, hereTo.get(orig)])) {
         const e = k ? m.extraSets.get(k) : undefined;
         if (!k || !e || l.c >= l.u) continue;
         const take = Math.min(l.u - l.c, e.n);
         l.c += take;
+        took += take;
         e.n -= take;
         if (e.n <= 0) m.extraSets.delete(k);
       }
@@ -547,9 +604,13 @@ export function accountability(input: AccountabilityInput): Accountability {
     const open = src.runs.find((r) => r.c === 0);
     if (open && spare.length) {
       const credit = runCredit(open.block, open.u, spare);
-      Object.assign(open, { c: credit.c, short: credit.short, from: m.date });
+      Object.assign(open, { c: credit.c, short: credit.c < open.u ? credit.short : undefined, from: m.date });
       m.extraLogs = m.extraLogs.filter((l) => !spare.includes(l));
+      took += credit.c;
     }
+    // Nothing of that day was done here: it isn't a make-up, and what was logged stays extra
+    if (!took && (src.lines.some((l) => l.key) || src.runs.length)) continue;
+    for (const l of src.lines) if (!l.key) l.c = l.u;
     src.walkC = src.walkU;
     src.active = true;
     src.madeUpOn = m.date;
@@ -568,7 +629,7 @@ export function accountability(input: AccountabilityInput): Accountability {
       if (!spare) break;
       spare.x.extraLogs = spare.x.extraLogs.filter((l) => l !== spare.l);
       const credit = runCredit(r.block, r.u, [spare.l]);
-      Object.assign(r, { c: credit.c, short: credit.short, from: spare.l.date });
+      Object.assign(r, { c: credit.c, short: credit.c < r.u ? credit.short : undefined, from: spare.l.date });
       t.active = true;
     }
   }
@@ -618,24 +679,50 @@ export function accountability(input: AccountabilityInput): Accountability {
   }
   const whyNoExtra = (t: Tally): string | null => {
     const w = t.week;
-    if (!w || NO_EXTRA.includes(w.phase)) return "Not counted in this phase";
+    if (!w) return "Outside the plan: extra work isn't scored";
+    if (NO_EXTRA.includes(w.phase)) return `${NO_EXTRA_NAME[w.phase] ?? "This week"}: extra work isn't scored`;
     if (w.cutback) return "Cutback week: the plan says less";
-    if (painOn(t.date) || (input.gatesPending && w.phase === "return")) return "Extra logged. Plan says ease off";
+    if (easingOn(t.date)) return "Extra logged. Plan says ease off";
     const pct = weekPct.get(w);
-    if (pct != null && pct < KEPT_PCT) return "Counts once the week is at 80%";
+    if (pct != null && pct <= EXTRA_FROM_PCT) return `Week under ${EXTRA_FROM_PCT}% done: extra work isn't scored`;
     return null;
   };
-  const unplannedU = (l: AcctLog) => {
-    if (l.kind === "class") return classU(l);
-    const min = l.duration_sec ? l.duration_sec / 60 : l.km ? l.km * 7 : 30;
-    return RUN_U * Math.min(1, min / 30);
+  /** Extra running that doesn't score where the rest does: the weeks that bring running back */
+  const whyNoRuns = (t: Tally): string | null => (t.week && NO_EXTRA_RUNS.includes(t.week.phase) ? `${NO_EXTRA_NAME[t.week.phase]}: extra running isn't scored` : null);
+  /** How much of a day's extra work counts: all of it in a kept week, sliding to none at EXTRA_FROM_PCT */
+  const weekShare = (t: Tally): number => {
+    const pct = t.week ? weekPct.get(t.week) : null;
+    return pct == null || pct >= KEPT_PCT ? 1 : Math.max(0, (pct - EXTRA_FROM_PCT) / (KEPT_PCT - EXTRA_FROM_PCT));
   };
+  const partNote = (t: Tally): string | null => {
+    const pct = t.week ? weekPct.get(t.week) : null;
+    return pct != null && pct < KEPT_PCT && pct > EXTRA_FROM_PCT ? `Week at ${Math.round(pct)}%: counts in part, in full from ${KEPT_PCT}%` : null;
+  };
+  const unplannedU = (l: AcctLog) => {
+    if (l.kind === "class" || l.kind === "strength") return classU(l);
+    // A walk is worth what a planned walk is, never a run's worth
+    const walk = l.kind === "walk";
+    const min = l.duration_sec ? l.duration_sec / 60 : l.km ? l.km * (walk ? 12 : 7) : 30;
+    return (walk ? WALK_U : RUN_U) * Math.min(1, min / 30);
+  };
+  const unscored = new Map<ISODate, string>();
   for (const t of tallies) {
-    if (whyNoExtra(t)) continue;
     let x = 0;
+    let ran = 0;
     for (const e of t.extraSets.values()) if (!e.light) x += e.n;
-    for (const l of t.extraLogs) x += unplannedU(l);
-    t.extraU = Math.min(x, Math.max(0.5 * t.fullU, 10));
+    for (const l of t.extraLogs) if (isRunLog(l)) ran += unplannedU(l);
+    else x += unplannedU(l);
+    for (const r of t.runs) ran += r.over?.u ?? 0;
+    const why = whyNoExtra(t);
+    const noRuns = whyNoRuns(t);
+    if (why) {
+      if (x + ran > 0) unscored.set(t.date, why);
+      continue;
+    }
+    if (!noRuns) x += ran;
+    else if (ran > 0 && x === 0) unscored.set(t.date, noRuns);
+    // A day off has no plan to take half of: it can add a lifting day's worth
+    t.extraU = weekShare(t) * Math.min(x, t.fullU > 0 ? Math.max(0.5 * t.fullU, EXTRA_MIN) : EXTRA_DAY_OFF);
   }
 
   /* the score */
@@ -664,7 +751,8 @@ export function accountability(input: AccountabilityInput): Accountability {
       if (s.date < shownFrom || s.date > today) continue;
       const scored = s.date >= from;
       const best = bestOn(all, s.date);
-      if (best && scored) bests++;
+      // A best in a light week isn't one (Stats leaves them out too)
+      if (best && scored && !s.light) bests++;
       const change = compareSession(all, s.date);
       const ph = weekAt.get(mondayOf(s.date))?.phase;
       const dropCounts = change?.kind === "dropped" && ph !== "recovery" && ph !== "return" && !painOn(s.date);
@@ -721,7 +809,7 @@ export function accountability(input: AccountabilityInput): Accountability {
   }
 
   /* the feed: what changed it */
-  for (const t of tallies.filter((x) => x.date >= shownFrom)) feed.push(...feedFor(t, whyNoExtra(t), name, today));
+  for (const t of tallies.filter((x) => x.date >= shownFrom)) feed.push(...feedFor(t, whyNoExtra(t), whyNoExtra(t) ?? whyNoRuns(t), partNote(t), name, today));
   for (const s of input.sessions ?? [])
     if (s.auto_ended && s.plan_date >= shownFrom && s.plan_date <= today)
       feed.push({ id: `ended|${s.plan_date}`, kind: "ended_early", date: s.plan_date, tone: "neutral", title: "Session closed on its own", detail: "Sets logged still count", delta: "no change" });
@@ -753,6 +841,7 @@ export function accountability(input: AccountabilityInput): Accountability {
   };
   feed.sort((x, y) => (x.date !== y.date ? (x.date < y.date ? 1 : -1) : order[x.kind] - order[y.kind]));
 
+  const whys = inWindow.flatMap((t) => unscored.get(t.date) ?? []);
   const windowSets = inWindow.filter((t) => t.counted).flatMap((t) => t.lines.filter((l) => l.key));
   const planned = inWindow.filter((t) => t.counted && (t.date < today || t.c > 0));
   const base: Accountability = {
@@ -765,7 +854,12 @@ export function accountability(input: AccountabilityInput): Accountability {
     needed: MIN_COUNTED,
     sessions: { done: planned.filter((t) => t.c > 0).length, planned: planned.length },
     sets: { done: windowSets.reduce((s, l) => s + l.c, 0), planned: windowSets.reduce((s, l) => s + l.u, 0) },
-    extras: inWindow.reduce((s, t) => s + t.extraLogs.length + (t.state !== "planned" && t.extraSets.size ? 1 : 0), 0),
+    extra: {
+      sets: inWindow.reduce((s, t) => s + [...t.extraSets.values()].reduce((n, x) => n + x.n, 0), 0),
+      workouts: inWindow.reduce((s, t) => s + t.extraLogs.length + (t.state !== "planned" && t.extraSets.size ? 1 : 0), 0),
+      unscoredDays: whys.length,
+      unscoredWhy: whys.length ? [...new Set(whys)].sort((x, y) => whys.filter((w) => w === y).length - whys.filter((w) => w === x).length)[0] : null,
+    },
     streak,
     from,
     weeks: tallyWeeks.slice(0, SHOWN_WEEKS),
@@ -803,7 +897,7 @@ function glyphOf(t: Tally, today: ISODate): Glyph {
   return "done";
 }
 
-function feedFor(t: Tally, noExtra: string | null, name: (k: string) => string, today: ISODate): FeedItem[] {
+function feedFor(t: Tally, noExtra: string | null, noRun: string | null, part: string | null, name: (k: string) => string, today: ISODate): FeedItem[] {
   const out: FeedItem[] = [];
   const title = t.day ? dayTitle(t.day) : "Rest day";
   const id = (k: string, x = "") => `${k}|${t.date}|${x}`;
@@ -826,6 +920,7 @@ function feedFor(t: Tally, noExtra: string | null, name: (k: string) => string, 
     if (t.madeUpOn) out.push({ id: id("makeup"), kind: "done_other_day", date: t.date, tone: "good", title: `Made up on ${dowName(t.madeUpOn)}`, detail: "Counts as this day's workout, not as extra work", delta: "credit back" });
     for (const r of t.runs) {
       if (r.from && r.from !== t.madeUpOn) out.push({ id: id("other", r.block.title), kind: "done_other_day", date: t.date, tone: "good", title: `${r.block.title}: done ${dowName(r.from)}`, delta: r.c >= r.u ? "full credit" : `${Math.round((100 * r.c) / r.u)}%` });
+      if (r.over) out.push({ id: id("over", r.block.title), kind: "extra_workout", date: t.date, tone: noRun ? "neutral" : "good", title: `${r.block.title}: ${r.over.text}`, detail: noRun ?? part ?? "Further than planned", delta: noRun ? "not counted" : "counts extra" });
       if (r.c > 0 && r.c < r.u && r.short) out.push({ id: id("short", r.block.title), kind: "run_short", date: t.date, tone: "neutral", title: `${r.block.title}: ${r.short}`, delta: `${Math.round((100 * r.c) / r.u)}%` });
     }
     if (!t.grace && t.c > 0)
@@ -851,20 +946,21 @@ function feedFor(t: Tally, noExtra: string | null, name: (k: string) => string, 
       tone: why ? "neutral" : "good",
       key,
       title: `${name(key)}: ${e.n} extra set${e.n === 1 ? "" : "s"}`,
-      detail: why ?? (kind === "exercise_extra" ? (t.day?.added ? `Added ${t.copyFrom}'s workout` : "Not in the plan that day") : undefined),
+      detail: why ?? part ?? (kind === "exercise_extra" ? (t.day?.added ? `Added ${t.copyFrom}'s workout` : "Not in the plan that day") : undefined),
       delta: why ? "not counted" : `+${e.n} set${e.n === 1 ? "" : "s"}`,
     });
   }
   for (const [i, l] of t.extraLogs.entries()) {
     const min = l.duration_sec ? Math.round(l.duration_sec / 60) : null;
+    const no = isRunLog(l) ? noRun : noExtra;
     out.push({
       id: id("xlog", String(i)),
       kind: "extra_workout",
       date: t.date,
-      tone: noExtra ? "neutral" : "good",
-      title: l.kind === "class" ? `${l.title || "Class"}${min ? ` ${min} min` : ""}` : `Extra ${l.kind === "walk" ? "walk" : "run"}${l.km ? ` ${fmtNum(l.km)} km` : min ? ` ${min} min` : ""}`,
-      detail: noExtra ?? undefined,
-      delta: noExtra ? "not counted" : "counts extra",
+      tone: no ? "neutral" : "good",
+      title: l.kind === "class" || l.kind === "strength" ? `${l.title || (l.kind === "class" ? "Class" : "Strength session")}${min ? ` ${min} min` : ""}` : `Extra ${l.kind === "walk" ? "walk" : "run"}${l.km ? ` ${fmtNum(l.km)} km` : min ? ` ${min} min` : ""}`,
+      detail: no ?? part ?? undefined,
+      delta: no ? "not counted" : "counts extra",
     });
   }
   return out;

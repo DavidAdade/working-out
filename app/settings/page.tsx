@@ -15,10 +15,16 @@ export default async function SettingsPage() {
   const { user, transient } = await checkUser(supabase);
   if (transient) throw new Error("Couldn't reach the server");
   if (!user) redirect("/login");
-  const { data: profile, error } = await supabase.from("profiles").select("*").eq("id", user.id).maybeSingle<ProfileRow>();
+  const read = () => supabase.from("profiles").select("*").eq("id", user.id).maybeSingle<ProfileRow>();
+  let { data: profile, error } = await read();
   // A failed read is a hiccup, not a sign-out
   if (error) throw new Error("Couldn't load your profile");
-  if (!profile) redirect("/login");
+  // Signed in but no profile row (it's made when the account is): make it. /login would only bounce back
+  if (!profile) {
+    if ((await supabase.rpc("ensure_profile")).error) throw new Error("Couldn't load your profile");
+    ({ data: profile, error } = await read());
+    if (error || !profile) throw new Error("Couldn't load your profile");
+  }
   const zones = Intl.supportedValuesOf("timeZone");
   const { data: tokens } = await supabase.from("user_tokens").select("purpose, created_at, last_used_at").returns<TokenInfo[]>();
   const h = await headers();

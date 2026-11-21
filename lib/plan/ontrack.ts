@@ -28,7 +28,11 @@ export const STATUS_LABEL: Record<OnTrack["status"], string> = { good: "On track
 
 /** Share of planned days with something logged, last 4 weeks up to yesterday. Skipped days don't count against you. */
 export function consistency(weeks: Week[], activeDates: Set<ISODate>, today: ISODate): { done: number; planned: number } | null {
-  const from = addDays(today, -28);
+  // Nothing before the first thing ever logged counts: those are days before the person was using the app,
+  // whatever date their plan starts on (someone who joins mid-week, or sets a start in the past)
+  const first = [...activeDates].sort()[0];
+  if (!first) return null;
+  const from = [addDays(today, -28), first].sort()[1];
   const planned = weeks.flatMap((w) => w.days).filter((d) => d.date >= from && d.date < today && !d.skipped && !d.added && d.blocks.length);
   if (planned.length < 3) return null;
   // A missed day made up on a rest day counts as done

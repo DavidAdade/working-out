@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { formatOwnRuns } from "@/lib/plan/ownruns.ts";
-import { useActionState, useState } from "react";
-import { saveSettings, signOut, type ActionResult } from "@/app/actions";
+import { useActionState, useEffect, useState } from "react";
+import { saveSettings, setPassword, signOut, type ActionResult } from "@/app/actions";
+import { addDays, mondayOf, todayIn } from "@/lib/plan/dates.ts";
 import { duration } from "@/lib/plan/format.ts";
 import { REST_CHOICES, type ProfileRow } from "@/lib/types";
 import RestPush from "./RestPush";
@@ -35,6 +36,18 @@ export default function SettingsForm({
   const typed = state && !state.ok ? state.values : undefined;
   const val = (name: string, saved: string) => typed?.[name] ?? saved;
   const on = (name: string, saved: boolean) => (typed ? typed[name] === "on" : saved);
+  // Setting up: start from this phone's time zone and the coming Monday, not from anyone else's defaults.
+  // Read after the page loads, since the server can't know either
+  const [here, setHere] = useState<{ zone: string; monday: string } | null>(null);
+  useEffect(() => {
+    if (!firstRun) return;
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const zone = zones.includes(tz) ? tz : profile.timezone;
+      const today = todayIn(zone);
+      setHere({ zone, monday: mondayOf(today) === today ? today : addDays(mondayOf(today), 7) });
+    } catch {}
+  }, [firstRun, zones, profile.timezone]);
 
   return (
     <main className="flex flex-col gap-4">
@@ -54,7 +67,7 @@ export default function SettingsForm({
           <label className="label" htmlFor="timezone">
             Time zone
           </label>
-          <select id="timezone" name="timezone" defaultValue={val("timezone", profile.timezone)} className="input">
+          <select key={here?.zone ?? "saved"} id="timezone" name="timezone" defaultValue={val("timezone", here?.zone ?? profile.timezone)} className="input">
             {zones.map((z) => (
               <option key={z} value={z}>
                 {z.replace(/_/g, " ")}
@@ -71,7 +84,7 @@ export default function SettingsForm({
           <Field label="Current 5K" name="current_5k" defaultValue={val("current_5k", t(profile.current_5k_sec))} placeholder="35:00" required />
           <Field label="Goal 5K" name="goal_5k" defaultValue={val("goal_5k", t(profile.goal_5k_sec))} placeholder="29:59" required />
         </div>
-        <Field label="Running starts (a Monday)" name="start_date" type="date" defaultValue={val("start_date", profile.start_date ?? "")} required />
+        <Field key={here?.monday ?? "saved"} label="Running starts (a Monday)" name="start_date" type="date" defaultValue={val("start_date", profile.start_date ?? here?.monday ?? "")} required />
         <Field label="5K time trial date" name="time_trial_date" type="date" defaultValue={val("time_trial_date", profile.time_trial_date ?? "")} required />
 
         <label className="flex items-start gap-2.5 sm:col-span-2">
@@ -160,7 +173,7 @@ export default function SettingsForm({
           </span>
         </div>
 
-        <Field label="Areas to track pain (up to 3, comma-separated)" name="pain_areas" defaultValue={val("pain_areas", profile.pain_areas.join(", "))} placeholder="knee, foot, heel" wide />
+        <Field label="Areas to track pain (up to 3, comma-separated)" name="pain_areas" defaultValue={val("pain_areas", firstRun ? "" : profile.pain_areas.join(", "))} placeholder="knee, foot, heel" hint={firstRun ? "Leave empty if nothing hurts. Each area gets a quick morning check-in." : undefined} wide />
 
         {state && !state.ok && (
           <p role="alert" className="text-sm text-bad sm:col-span-2">
@@ -176,11 +189,70 @@ export default function SettingsForm({
 
       {children}
 
+      {!firstRun && <PasswordForm />}
+
       {/* Forget the data saved on this phone for offline use (the login page clears it too) */}
-      <form action={signOut} onSubmit={() => void clearSnapshot()}>
+      <form action={signOut} onSubmit={forgetPhone}>
         <button className="btn-ghost">Sign out</button>
       </form>
     </main>
+  );
+}
+
+/** Signing out of this phone: drop what it saved for offline use, and stop its notifications for this account */
+function forgetPhone() {
+  void clearSnapshot();
+  try {
+    void navigator.serviceWorker
+      ?.getRegistration()
+      .then((reg) => reg?.pushManager?.getSubscription())
+      .then((sub) => {
+        if (!sub) return;
+        void fetch("/api/push/subscribe", { method: "DELETE", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ endpoint: sub.endpoint }) }).catch(() => {});
+        // Even if that request loses the race with signing out, the phone stops listening and the server forgets the address on its next try
+        void sub.unsubscribe().catch(() => {});
+      })
+      .catch(() => {});
+  } catch {}
+}
+
+/** A password of the person's own: an invite or emailed link opens in Safari, but the home-screen app needs one */
+function PasswordForm() {
+  const [state, action, pending] = useActionState<ActionResult | null, FormData>(setPassword, null);
+  return (
+    <details className="card gap-3">
+      <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold">Set or change your password</summary>
+      <p className="text-sm text-muted">Sign in with your email and this password, including in the app on your Home Screen.</p>
+      <form action={action} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-1">
+          <label className="label" htmlFor="new_password">
+            New password
+          </label>
+          <input id="new_password" name="new_password" type="password" autoComplete="new-password" minLength={8} required className="input" />
+        </div>
+        <div className="flex min-w-0 flex-col gap-1">
+          <label className="label" htmlFor="new_password_again">
+            Again
+          </label>
+          <input id="new_password_again" name="new_password_again" type="password" autoComplete="new-password" minLength={8} required className="input" />
+        </div>
+        {state && !state.ok && (
+          <p role="alert" className="text-sm text-bad sm:col-span-2">
+            {state.error}
+          </p>
+        )}
+        {state?.ok && (
+          <p role="status" className="text-sm text-good sm:col-span-2">
+            Password saved.
+          </p>
+        )}
+        <div className="sm:col-span-2">
+          <button className="btn" disabled={pending}>
+            {pending ? "Saving…" : "Save password"}
+          </button>
+        </div>
+      </form>
+    </details>
   );
 }
 

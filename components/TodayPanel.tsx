@@ -303,7 +303,7 @@ function CheckInCard({ areas, today }: { areas: string[]; today: string }) {
       <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
         <span>
           <b>Morning check-in</b>
-          <span className="block text-sm text-muted">How do {areas.join(", ")} feel today? 20 seconds.</span>
+          <span className="block text-sm text-muted">How {areas.length > 1 ? "do" : "does"} your {areas.join(", ")} feel today? 20 seconds.</span>
         </span>
         <span aria-hidden className="text-muted transition-transform group-open:rotate-180">
           ▾

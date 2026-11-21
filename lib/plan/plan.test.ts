@@ -16,7 +16,7 @@ import { adaptPlan, planFor } from "./adapt.ts";
 import { applySwaps, itemKey, itemLine, rankForSwap, searchScore, swapTarget, swapsShown, targetLine } from "./swaps.ts";
 import { onTrack, wins } from "./ontrack.ts";
 import { planToIcs } from "./ics.ts";
-import { addDays, daysBetween, dowName } from "./dates.ts";
+import { addDays, daysBetween, dowName, mondayOf } from "./dates.ts";
 import { addedKeys, addedTarget, clampEnd, completion, dayExercises, elapsed, finishesDay, heldSeconds, holdPhases, isLocked, nextInRound, READY_SEC, sessionDate, sessionDateFor, sessionState, SWITCH_SEC, withReady, type WorkoutSession } from "./workout.ts";
 import { applyEdit, dayGroups, daySlots, daySupersets, editGroup, templateSupersets, type Superset } from "./supersets.ts";
 import { ABS, LEGS, UPPER } from "./templates.ts";
@@ -271,6 +271,8 @@ const PROFILES: Record<string, PlanSettings> = {
   ownRuns: { startDate: "2026-10-05", returningFromInjury: false, timeTrialDate: "2027-03-26", current5kSec: 1980, goal5kSec: 1740, ownRuns: OWN_RUNS },
   // The same, switched to on a Thursday: that week's Monday to Wednesday stay the plan's own
   ownRunsFrom: { startDate: "2026-10-05", returningFromInjury: false, timeTrialDate: "2027-03-26", current5kSec: 1980, goal5kSec: 1740, ownRuns: OWN_RUNS, ownRunsFrom: "2026-11-19" },
+  // A Saturday time trial (a parkrun) and a race on a Wednesday: neither is on the day the plan would pick itself
+  weekendTrial: { startDate: "2027-05-03", returningFromInjury: false, timeTrialDate: "2027-09-18", raceDate: "2027-11-03", raceName: "Midweek 10 miler", current5kSec: 1500, goal5kSec: 1380 },
   longRace: { startDate: "2027-06-07", returningFromInjury: true, recoveryStart: "2027-05-17", timeTrialDate: "2027-11-05", raceDate: "2027-12-12", current5kSec: 2400, goal5kSec: 2100, halfGoalMinSec: 9600, halfGoalMaxSec: 10200 },
 };
 const HARD = /^(?!easy|long run|run-walk|shakeout)/i;
@@ -282,6 +284,31 @@ test("time trial pacing finishes under the goal", () => {
   const tt = generatePlan(david).flatMap((w) => w.days).flatMap((d) => d.blocks).find((b) => b.title === "5K TIME TRIAL")!;
   assert.match(tt.items.join(" "), /5:58\/km/);
   assert.match(tt.items.join(" "), /29:59 or faster/);
+});
+
+test("the time trial and the race are on their own dates, one workout a date, every profile", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const weeks = generatePlan(p);
+    for (const w of weeks) assert.equal(new Set(w.days.map((d) => d.date)).size, w.days.length, `${name} ${w.label}: one day per date`);
+    const tt = weeks.flatMap((w) => w.days).find((d) => d.blocks.some((b) => b.title === "5K TIME TRIAL"));
+    // Friday to Sunday as set; earlier in the week, that week's Friday
+    const off = daysBetween(mondayOf(p.timeTrialDate), p.timeTrialDate);
+    if (tt) assert.equal(tt.date, off >= 4 ? p.timeTrialDate : addDays(mondayOf(p.timeTrialDate), 4), `${name}: time trial`);
+    const raceWeek = weeks.find((w) => w.phase === "race");
+    if (raceWeek && p.raceDate) {
+      assert.equal(raceWeek.days.at(-1)!.date, p.raceDate, `${name}: nothing after the race that week`);
+      assert.ok(raceWeek.days.at(-1)!.fixed, name);
+    }
+  }
+  assert.equal(generatePlan(PROFILES.weekendTrial).flatMap((w) => w.days).find((d) => d.blocks.some((b) => b.title === "5K TIME TRIAL"))!.date, "2027-09-18");
+});
+
+test("own runs: a title that says easy isn't a hard session, and dates that don't exist are refused", () => {
+  const r = (title: string): OwnRun => ({ date: "2026-11-16", km: 5, title });
+  for (const t of ["Easy 3 miles", "Recovery run 4 miles", "8 miles easy", "Easy 5k (Hillside Park)"]) assert.equal(ownHard(r(t)), false, t);
+  for (const t of ["Tempo 5 miles", "Hill repeats", "6 x 800"]) assert.equal(ownHard(r(t)), true, t);
+  assert.equal(ownHard({ ...r("Easy run"), hard: true }), true, "said outright");
+  assert.deepEqual(parseOwnRuns("2026-02-30, 5, Easy Run").bad, ["2026-02-30, 5, Easy Run"]);
 });
 
 test("never more than one hard session or test a week", () => {
@@ -453,7 +480,7 @@ test("moving days: time trial, race, other weeks and run-walk clashes are refuse
     const plan = generatePlan(p);
     const tt = plan.find((w) => w.phase === "tt")!;
     const ttDay = tt.days.find((d) => d.blocks.some((b) => b.title === "5K TIME TRIAL"))!;
-    assert.equal(moveDay(tt, ttDay.date, at(tt, 5)), null, `${name}: time trial stays`);
+    assert.equal(moveDay(tt, ttDay.date, ttDay.date === at(tt, 5) ? at(tt, 6) : at(tt, 5)), null, `${name}: time trial stays`);
     assert.equal(moveDay(tt, at(tt, 0), ttDay.date), null, `${name}: nothing lands on the time trial`);
     assert.equal(moveDay(tt, at(tt, 0), at(tt, 7)), null, `${name}: not into next week`);
     const race = plan.find((w) => w.phase === "race");
@@ -1164,7 +1191,7 @@ test("accountability: runs get full credit from 90% of the plan", () => {
   assert.equal(runCredit(easy, 20, []).c, 0);
 });
 
-test("accountability: extras only count in kept weeks when the plan isn't easing off", () => {
+test("accountability: extras count in full in kept weeks, less under 80%, and never when the plan eases off", () => {
   const weeks = generatePlan(PROFILES.september);
   const ws = "2027-05-31"; // build
   const today = addDays(ws, 7);
@@ -1172,19 +1199,140 @@ test("accountability: extras only count in kept weeks when the plan isn't easing
   assert.equal(lots.parts.e, 8, "capped at +8");
   assert.equal(lots.score, 100);
   const low = acct(weeks, today, logPlan(weeks, ws, addDays(today, -1), { extra: 2, only: (d) => d !== addDays(ws, 2) && d !== addDays(ws, 3) }), { horizon: ws });
-  assert.ok(low.weeks[1].pct! < 80);
-  assert.equal(low.parts.e, 0, "under 80%");
-  assert.ok(low.feed.some((f) => f.detail === "Counts once the week is at 80%"));
-  const sore = logPlan(weeks, ws, addDays(today, -1), { extra: 2 });
-  for (const d of [-1, 1, 3, 5]) sore.logs.push(check(addDays(ws, d), 3));
-  const pained = acct(weeks, today, sore, { horizon: ws });
-  assert.equal(pained.parts.e, 0, "pain");
+  const kept = acct(weeks, today, logPlan(weeks, ws, addDays(today, -1), { extra: 2 }), { horizon: ws });
+  const lowPct = low.weeks[1].pct!;
+  assert.ok(lowPct < 80 && lowPct > 50);
+  assert.ok(low.parts.e > 0 && low.parts.e < kept.parts.e, "under 80%: in part");
+  assert.ok(low.feed.some((f) => f.detail === `Week at ${lowPct}%: counts in part, in full from 80%`));
+  // Most of the week missed: nothing
+  const bad = acct(weeks, today, logPlan(weeks, ws, addDays(today, -1), { extra: 2, only: (d) => d === ws }), { horizon: ws });
+  assert.ok(bad.weeks[1].pct! <= 50);
+  assert.equal(bad.parts.e, 0, "50% or under");
+  assert.ok(bad.feed.some((f) => f.detail === "Week under 50% done: extra work isn't scored"));
+  const withPain = (score: number) => {
+    const sore = logPlan(weeks, ws, addDays(today, -1), { extra: 2 });
+    for (const d of [-1, 1, 3, 5]) sore.logs.push(check(addDays(ws, d), score));
+    return acct(weeks, today, sore, { horizon: ws });
+  };
+  const pained = withPain(4);
+  assert.equal(pained.parts.e, 0, "pain the plan eases off for");
   assert.ok(pained.feed.some((f) => f.detail === "Extra logged. Plan says ease off"));
+  assert.equal(withPain(3).parts.e, kept.parts.e, "3/10 holds the plan's volume: extra still counts");
   const iw = generatePlan(PROFILES.shortInjury);
   const ret = iw.find((w) => w.phase === "return")!;
   const r = acct(iw, addDays(ret.start, 7), logPlan(iw, iw[0].start, addDays(ret.start, 6), { extra: 2 }), { horizon: ret.start });
-  assert.equal(r.parts.e, 0, "run-walk weeks");
+  assert.ok(r.parts.e > 0, "run-walk weeks: extra lifting counts");
   assert.equal(r.score, 100);
+  // ...but an extra run there doesn't, and neither does anything in a taper week
+  const base = logPlan(iw, iw[0].start, addDays(ret.start, 6));
+  const off = [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(ret.start, i)).find((d) => !ret.days.some((x) => x.date === d && x.blocks.length));
+  if (off) {
+    const ran = acct(iw, addDays(ret.start, 7), merge(base, { sets: [], logs: [{ date: off, kind: "run", km: 5, duration_sec: 1800, pain: {} }] }), { horizon: ret.start });
+    assert.equal(ran.parts.e, 0, "an extra run in a return week");
+    assert.equal(ran.extra.unscoredWhy, "Return weeks: extra running isn't scored");
+  }
+  const taper = weeks.find((w) => w.phase === "taper");
+  if (taper) {
+    const t = acct(weeks, addDays(taper.start, 7), logPlan(weeks, taper.start, addDays(taper.start, 6), { extra: 2 }), { horizon: taper.start });
+    assert.equal(t.parts.e, 0, "taper");
+  }
+});
+
+test("accountability: the extra figure counts sets on workout days and sizes a day off by what was done", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const weeks = generatePlan(p);
+    const w = weeks.filter((x) => x.phase === "build" && !x.cutback).at(-1)!;
+    const sun = addDays(w.start, 6);
+    const today = addDays(w.start, 7);
+    const from = addDays(w.start, -14);
+    const plain = logPlan(weeks, from, sun);
+    const base = acct(weeks, today, plain, { horizon: from });
+    assert.deepEqual(base.extra, { sets: 0, workouts: 0, unscoredDays: 0, unscoredWhy: null }, name);
+    // One more set on every line of every workout: all of it shows, none of it as a workout
+    const more = logPlan(weeks, from, sun, { extra: 1 });
+    const r = acct(weeks, today, more, { horizon: from });
+    assert.equal(r.extra.sets, more.sets.length - plain.sets.length, `${name}: every extra set`);
+    assert.equal(r.extra.workouts, 0, name);
+    assert.ok(r.parts.e > 0, name);
+    // A day off in the last week (none in a plan that trains all seven days)
+    const off = [0, 1, 2, 3, 4, 5, 6].map((i) => addDays(w.start, i)).find((d) => !w.days.some((x) => x.date === d && x.blocks.length));
+    if (!off) continue;
+    const day = (logs: AcctLog[], sets: AcctSet[] = []) => acct(weeks, today, merge(plain, { logs, sets }), { horizon: from });
+    const lift = (n: number): AcctSet[] => Array.from({ length: n }, (_, i) => ({ date: off, exercise_key: "goblet-squat", set_no: i + 1, weight: 20, unit: "kg", weight_kg: 20, reps: 10, duration_sec: null, light_week: false }));
+    const klass = (min: number, rpe: number): AcctLog => ({ date: off, kind: "class", title: "Spin", km: null, duration_sec: min * 60, pain: {}, rpe });
+    assert.ok(day([], lift(25)).parts.e > day([], lift(8)).parts.e, `${name}: 25 sets on a day off beat 8`);
+    assert.deepEqual([day([], lift(25)).extra.sets, day([], lift(25)).extra.workouts], [25, 1], name);
+    assert.ok(day([klass(45, 8)]).parts.e > day([klass(25, 5)]).parts.e, `${name}: a long hard class beats a short one`);
+    // A strength session logged by hand, no sets: extra work, sized like a class
+    const gym = day([{ date: off, kind: "strength", km: null, duration_sec: 3600, pain: {} }]);
+    assert.equal(gym.extra.workouts, 1, name);
+    assert.ok(gym.parts.e > 0, name);
+    assert.ok(gym.feed.some((f) => f.date === off && f.kind === "extra_workout" && f.title === "Strength session 60 min"), name);
+    // A walk is worth a planned walk, not a run
+    const walk = day([{ date: off, kind: "walk", km: null, duration_sec: 1800, pain: {} }]);
+    const run = day([{ date: off, kind: "run", km: null, duration_sec: 1800, pain: {} }]);
+    assert.ok(walk.parts.e > 0 && walk.parts.e < run.parts.e, `${name}: an extra walk counts less than an extra run`);
+  }
+});
+
+test("accountability: extra work the score leaves out is still shown, with the reason", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const weeks = generatePlan(p);
+    const cut = weeks.find((w) => w.cutback);
+    if (!cut) continue;
+    const today = addDays(cut.start, 7);
+    const data = logPlan(weeks, cut.start, addDays(cut.start, 6));
+    const day = cut.days.find((d) => d.blocks.length)!.date;
+    data.logs.push({ date: day, kind: "class", title: "Yoga", km: null, duration_sec: 2700, pain: {} });
+    const r = acct(weeks, today, data, { horizon: cut.start });
+    assert.equal(r.parts.e, 0, name);
+    assert.deepEqual(r.extra, { sets: 0, workouts: 1, unscoredDays: 1, unscoredWhy: "Cutback week: the plan says less" }, name);
+  }
+});
+
+test("accountability: a skip made in the evening isn't after the day", () => {
+  const weeks0 = generatePlan(PROFILES.september);
+  const ws = weeks0.find((w) => w.phase === "build" && !w.cutback)!.start;
+  const day = weeks0.find((w) => w.start === ws)!.days.find((d) => d.blocks.length)!.date;
+  const weeks = generatePlan(PROFILES.september, { skips: [day] });
+  const today = addDays(ws, 7);
+  const data = logPlan(weeks, ws, addDays(ws, 6));
+  // 21:30 in Toronto on the day itself is already the next day in UTC
+  const at = `${addDays(day, 1)}T02:30:00Z`;
+  const late = (more: Partial<AccountabilityInput>) => acct(weeks, today, data, { horizon: ws, skips: [{ date: day, createdAt: at }], ...more }).feed.some((f) => f.kind === "skipped_late");
+  assert.equal(late({ timeZone: "America/Toronto" }), false);
+  assert.equal(late({ timeZone: "Europe/London" }), true, "02:30 in London is the next day");
+  assert.equal(acct(weeks, today, data, { horizon: ws, timeZone: "America/Toronto", skips: [{ date: day, createdAt: addDays(day, 1) }] }).feed.some((f) => f.kind === "skipped_late"), true, "a plain date is read as it is");
+});
+
+test("accountability: a second run on a run day, or going well past the plan, is extra work", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const weeks = generatePlan(p);
+    const w = weeks.filter((x) => x.phase === "build" && !x.cutback).at(-1)!;
+    const sun = addDays(w.start, 6);
+    const today = addDays(w.start, 7);
+    const plain = logPlan(weeks, w.start, sun);
+    const base = acct(weeks, today, plain, { horizon: w.start });
+    const day = w.days.find((d) => d.blocks.filter((b) => b.kind === "run").length === 1 && !d.blocks.some((b) => b.kind === "test"));
+    if (!day) continue;
+    const mine = plain.logs.find((l) => l.date === day.date && l.kind === "run")!;
+    const again = acct(weeks, today, merge(plain, { sets: [], logs: [{ ...mine }] }), { horizon: w.start });
+    assert.equal(again.extra.workouts, base.extra.workouts + 1, `${name}: the second run is an extra workout`);
+    assert.ok(again.parts.e > base.parts.e, name);
+    assert.equal(again.parts.a, base.parts.a, name);
+    // The same run imported from Health as well isn't a second run
+    const twice = acct(weeks, today, merge(plain, { sets: [], logs: [{ ...mine, source: "health" }] }), { horizon: w.start });
+    assert.deepEqual([twice.extra.workouts, twice.parts.e], [base.extra.workouts, base.parts.e], `${name}: logged twice`);
+    // One run, half as long again as planned (where the plan gives a number)
+    const b = day.blocks.find((x) => x.kind === "run")!;
+    if (runCredit(b, 20, [mine]).over == null) continue;
+    const longer = { sets: plain.sets, logs: plain.logs.map((l) => (l === mine ? { ...l, km: l.km ? l.km * 1.5 : null, duration_sec: l.duration_sec! * 1.5 } : l)) };
+    const far = acct(weeks, today, longer, { horizon: w.start });
+    assert.ok(far.parts.e > base.parts.e, `${name}: further than planned`);
+    assert.ok(far.feed.some((f) => f.date === day.date && f.detail === "Further than planned"), name);
+    const bit = { sets: plain.sets, logs: plain.logs.map((l) => (l === mine ? { ...l, km: l.km ? l.km * 1.05 : null, duration_sec: l.duration_sec! * 1.05 } : l)) };
+    assert.equal(acct(weeks, today, bit, { horizon: w.start }).parts.e, base.parts.e, `${name}: 5% over is just the run`);
+  }
 });
 
 test("accountability: bests add up to +3, drops take up to −2", () => {
@@ -1259,7 +1407,7 @@ test("accountability: the worked example scores 78", () => {
   const weeks = generatePlan(p, { skips: [tue1] });
   const r = acct(weeks, today, fixture(weeks), { horizon: w1, skips: [{ date: tue1, createdAt: `${w1}T07:00:00Z` }] });
   assert.equal(r.parts.a, 77.4);
-  assert.equal(r.parts.e, 0.7); // 0.745
+  assert.equal(r.parts.e, 1); // 0.745 from W2, plus W1's curls at (64 − 50) / 30 of their worth
   assert.equal(r.parts.p, 0.5);
   assert.equal(r.parts.d, 0.5);
   assert.equal(r.score, 78);
@@ -1267,7 +1415,7 @@ test("accountability: the worked example scores 78", () => {
   assert.equal(r.weeks[1].pct, 64);
   assert.equal(r.weeks[0].pct, 96);
   assert.deepEqual(r.weeks[1].days.map((c) => c.glyph), ["done", "skipped", "partial", "missed", "done", "rest", "rest"]);
-  assert.ok(r.feed.some((f) => f.kind === "set_extra" && f.key === "curl" && f.delta === "not counted"), "W1 is under 80%");
+  assert.ok(r.feed.some((f) => f.kind === "set_extra" && f.key === "curl" && f.detail === "Week at 64%: counts in part, in full from 80%"), "W1 is under 80%");
   assert.ok(r.feed.some((f) => f.kind === "exercise_extra" && f.delta === "+3 sets"));
   assert.ok(r.feed.some((f) => f.kind === "weight_down" && f.key === "rdl"));
   assert.ok(r.feed.some((f) => f.kind === "weight_same" && f.tone === "good"));
@@ -1616,6 +1764,14 @@ test("make-up: a missed day done on a rest day within 7 days gets its credit bac
     assert.equal(doneShare(src, onTime.sets, onTime.logs), 1, name);
     assert.equal(doneShare(src, missed.sets, missed.logs), 0, name);
 
+    // Half done on its day, then repeated in full: the day is topped up to full, not left short with a capped extra
+    const own = onTime.sets.filter((x) => x.date === src.date);
+    const half = own.slice(0, Math.floor(own.length / 2));
+    if (half.length) {
+      const topped = acct(made, today, merge(madeUp, { sets: half, logs: onTime.logs.filter((l) => l.date === src.date && l.kind === "strength") }), { horizon: from });
+      assert.equal(topped.parts.a, full.parts.a, `${name}: a half-done day made up scores like done on time`);
+      assert.ok(topped.feed.some((f) => f.date === src.date && f.title === `Made up on ${dowName(rest)}`), name);
+    }
     // The day was done on time as well: the repeat is extra work, like any added workout
     const both = acct(made, today, logPlan(made, from, today), { horizon: from });
     assert.equal(both.parts.a, full.parts.a, name);
