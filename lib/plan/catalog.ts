@@ -18,6 +18,8 @@ export interface ExerciseInfo {
   lines: string[];
   /** null for built-ins */
   owner: string | null;
+  /** A custom exercise its owner deleted: it still names and scores past workouts, but can't be picked any more */
+  deleted_at?: string | null;
 }
 
 export function builtinRows(): ExerciseInfo[] {

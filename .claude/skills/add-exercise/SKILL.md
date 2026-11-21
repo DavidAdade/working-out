@@ -30,3 +30,8 @@ Every built-in exercise lives in code and is synced to the Supabase `exercises` 
    ```
 
 Custom exercises added in the app's Library tab don't need any of this. They're stored per person in Supabase with `owner` set.
+
+## Changing or removing a template line
+
+Past days are shown from the blocks saved when they were logged (`lib/plan/snapshots.ts`), and those saved lines are read with `parseLine` like any other. So when a template line changes or goes, **keep the old line text in the exercise's `lines`** in `lib/plan/exercises.ts`: it only stops being used by the template, it never stops being readable.
+

@@ -7,6 +7,7 @@ import { headers } from "next/headers";
 import { createHash } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { paged } from "@/lib/supabase/paged";
+import { cleanBlocks } from "@/lib/plan/snapshots.ts";
 import { checkUser } from "@/lib/supabase/user";
 import { duration, parseDuration } from "@/lib/plan/format.ts";
 import { addDays, daysBetween, isMonday, isTimeZone, mondayOf, safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
@@ -199,13 +200,28 @@ const KEY = /^[a-z0-9-]{1,40}$/;
 export async function setSwap(planDate: string, from: string, to: string | null): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
   if (!ISO.test(planDate) || !KEY.test(from) || !exerciseByKey(from) || (to != null && !KEY.test(to))) return { ok: false, error: "Couldn't swap that exercise." };
+  // A swap on a day that's behind, with sets logged under it, stays: taking it back would leave those sets
+  // outside the plan and the day short in the Score. (Today it can still be put back mid-workout.)
+  const { data: had } = await supabase.from("exercise_swaps").select("to_key").eq("user_id", user.id).eq("plan_date", planDate).eq("from_key", from).maybeSingle<{ to_key: string }>();
+  if (had && had.to_key !== to) {
+    const [{ data: me }, { data: moved }] = await Promise.all([
+      supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle<{ timezone: string }>(),
+      supabase.from("day_moves").select("to_date").eq("user_id", user.id).eq("from_date", planDate).returns<{ to_date: string }[]>(),
+    ]);
+    const today = todayIn(safeTimeZone(me?.timezone));
+    const shown = (moved?.length ? moved.map((m) => m.to_date) : [planDate]).filter((d) => d < today);
+    if (shown.length) {
+      const { data: done } = await supabase.from("set_logs").select("date, plan_date").eq("user_id", user.id).eq("exercise_key", had.to_key).gte("date", addDays(shown[0], -7)).lte("date", addDays(shown[0], 7)).returns<{ date: string; plan_date: string | null }[]>();
+      if (done?.some((s) => shown.includes(s.plan_date ?? s.date))) return { ok: false, error: "That day is done with sets logged for this exercise, so the swap stays." };
+    }
+  }
   if (to == null || to === from) {
     const { error } = await supabase.from("exercise_swaps").delete().eq("user_id", user.id).eq("plan_date", planDate).eq("from_key", from);
     if (error) return { ok: false, error: "Couldn't put it back. Try again." };
   } else {
     if (!exerciseByKey(to)) {
       // Not a built-in: it has to be one of this person's own exercises (RLS hides everyone else's)
-      const { data } = await supabase.from("exercises").select("key").eq("key", to).maybeSingle();
+      const { data } = await supabase.from("exercises").select("key").eq("key", to).is("deleted_at", null).maybeSingle();
       if (!data) return { ok: false, error: "That exercise is gone. Pick another." };
     }
     const { error } = await supabase
@@ -298,6 +314,8 @@ export interface LogInput {
   rpe: string;
   pain: Record<string, number>;
   notes: string;
+  /** The day's blocks as shown, for a run, test or walk on a planned day (snapshots.ts) */
+  snapshot?: unknown;
 }
 
 function cleanLog(input: LogInput) {
@@ -328,6 +346,9 @@ export async function addLog(input: LogInput): Promise<ActionResult> {
   if ("error" in c) return { ok: false, error: c.error! };
   const { error } = await supabase.from("logs").upsert({ id: input.id, user_id: user.id, ...c.row }, { onConflict: "id", ignoreDuplicates: true });
   if (error) return { ok: false, error: "Couldn't save the session. Try again." };
+  // The day's workout as shown, unless it's already kept (a log can be for an earlier date, whose copy stands)
+  const blocks = input.snapshot == null ? null : cleanBlocks(input.snapshot);
+  if (blocks) await supabase.from("day_snapshots").upsert({ user_id: user.id, plan_date: c.row.date, blocks }, { onConflict: "user_id,plan_date", ignoreDuplicates: true });
   revalidatePath("/");
   return { ok: true };
 }
@@ -393,6 +414,8 @@ export interface SetInput {
   planDate?: string | null;
   /** No sets on this date yet, so the day's Log entry needs creating */
   firstOfDay?: boolean;
+  /** The day's blocks as shown, sent when not saved yet or changed: past days keep showing them (snapshots.ts) */
+  snapshot?: unknown;
 }
 
 const num = (v: number | null, max: number) => (v == null || !Number.isFinite(v) || v < 0 || v > max ? null : v);
@@ -438,6 +461,10 @@ export async function upsertSet(input: SetInput): Promise<ActionResult> {
     { onConflict: "user_id,date,exercise_key,set_no" },
   );
   if (error) return { ok: false, error: "Couldn't save that set. Try again." };
+  // The workout as shown, kept for the day it was for. The set is saved either way: a failed copy only means
+  // that day keeps following the live plan
+  const blocks = input.snapshot == null ? null : cleanBlocks(input.snapshot);
+  if (blocks) await supabase.from("day_snapshots").upsert({ user_id: user.id, plan_date: planDate ?? input.date, blocks, updated_at: new Date().toISOString() }, { onConflict: "user_id,plan_date" });
   // First set of the day: add one "strength" entry to the Log tab. A unique index makes a repeat a harmless no-op.
   if (input.firstOfDay) {
     const { error: logError } = await supabase.from("logs").insert({ user_id: user.id, date: input.date, kind: "strength", auto: true, title: input.dayTitle.slice(0, 120) });
@@ -570,7 +597,7 @@ export async function addExercise(_: unknown, form: FormData): Promise<ActionRes
   const videoRaw = String(form.get("video") ?? "").trim();
   const video = videoRaw ? youtubeId(videoRaw) : null;
   if (videoRaw && !video) return { ok: false, error: "That doesn't look like a YouTube link." };
-  const { error } = await supabase.from("exercises").insert({
+  const row = {
     key: customKey(name, user.id.slice(0, 6)),
     name,
     load,
@@ -580,19 +607,29 @@ export async function addExercise(_: unknown, form: FormData): Promise<ActionRes
     video_ids: video ? [video] : [],
     video_query: name,
     owner: user.id,
-  });
-  if (error) return { ok: false, error: error.code === "23505" ? "You already have an exercise with that name." : "Couldn't save. Try again." };
+  };
+  const { error } = await supabase.from("exercises").insert(row);
+  if (error?.code === "23505") {
+    // One of the same name that was deleted comes back, with its history, as just entered
+    const { data: back } = await supabase.from("exercises").update({ ...row, deleted_at: null }).eq("key", row.key).eq("owner", user.id).not("deleted_at", "is", null).select("key");
+    if (!back?.length) return { ok: false, error: "You already have an exercise with that name." };
+    revalidatePath("/");
+    return { ok: true };
+  }
+  if (error) return { ok: false, error: "Couldn't save. Try again." };
   revalidatePath("/");
   return { ok: true };
 }
 
 export async function deleteExercise(key: string): Promise<ActionResult> {
   const { supabase, user } = await requireUser();
-  // Built-ins have no owner, so this only ever removes your own. Logged sets stay in your history.
-  const { error } = await supabase.from("exercises").delete().eq("key", key).eq("owner", user.id);
+  // Built-ins have no owner, so this only ever touches your own. It's hidden, not removed: workouts already done
+  // with it keep its name, its sets and their credit in the Score
+  const { error } = await supabase.from("exercises").update({ deleted_at: new Date().toISOString() }).eq("key", key).eq("owner", user.id);
   if (error) return { ok: false, error: "Couldn't delete. Try again." };
-  // Days it was swapped in on go back to their planned exercise (the plan ignores those rows anyway)
-  await supabase.from("exercise_swaps").delete().eq("user_id", user.id).eq("to_key", key);
+  // Days still ahead that it was swapped in on go back to their planned exercise; days behind keep it
+  const { data: me } = await supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle<{ timezone: string }>();
+  await supabase.from("exercise_swaps").delete().eq("user_id", user.id).eq("to_key", key).gt("plan_date", todayIn(safeTimeZone(me?.timezone)));
   revalidatePath("/");
   return { ok: true };
 }

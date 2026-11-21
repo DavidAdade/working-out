@@ -10,6 +10,7 @@ import type { LogKind, LogRow } from "@/lib/types";
 import { Chip } from "./DayView";
 import { useDates } from "./DateLabels";
 import { fmtSet, useSets } from "./Sets";
+import { snapshotOf } from "@/lib/plan/snapshots.ts";
 
 interface Props {
   weeks: Week[];
@@ -45,6 +46,9 @@ export default function LogPanel({ weeks, logs, today, painAreas, initialDate }:
     if (get("time").trim() && parseDuration(get("time")) == null) return setState({ ok: false, text: "Time should look like 34:10 or 1:02:30." });
     if (get("km").trim() && !Number.isFinite(Number(get("km").replace(",", ".")))) return setState({ ok: false, text: "Distance should be a number, like 5 or 7.5." });
     const input: LogInput = { id: crypto.randomUUID(), date: get("date"), kind: get("kind") as LogKind, title: get("title"), km: get("km"), time: get("time"), rpe: get("rpe"), pain, notes: get("notes") };
+    // A run, test or walk for a planned day keeps that day as it's shown now (lib/plan/snapshots.ts)
+    const logged = ["run", "test", "walk"].includes(input.kind) && input.date <= today ? dayForDate(weeks, input.date) : undefined;
+    if (logged?.blocks.length && !logged.skipped) input.snapshot = snapshotOf(logged);
     setPending(true);
     const r = await send({ id: input.id, t: "log", input });
     setPending(false);

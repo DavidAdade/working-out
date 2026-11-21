@@ -80,6 +80,8 @@ export interface AccountabilityInput {
   sessions?: AcctSession[];
   events?: AcctEvent[];
   gatesPending?: boolean;
+  /** The day the last return-to-running gate was ticked, when known: days before it are judged as gates pending */
+  gatesPassedOn?: ISODate | null;
   today: ISODate;
   /** The profile's time zone: a skip's timestamp is read as the date it was there */
   timeZone?: string;
@@ -487,13 +489,17 @@ export function accountability(input: AccountabilityInput): Accountability {
     return easeMemo.get(date)!;
   };
 
+  // The gates as they stood on a day: still pending now, or passed only after it
+  const pendingOn = (date: ISODate) => !!input.gatesPending || (!!input.gatesPassedOn && date < input.gatesPassedOn);
+
   /** A past day as the plan showed it then: pain and gate changes from that day's own point of view */
   const shownThen = (date: ISODate, w: Week, d: Day): Day => {
-    if (date >= input.today || d.skipped || !d.blocks.some(isRun)) return d;
-    const gated = !!input.gatesPending && w.phase === "return";
+    // A frozen day already is what was shown that day
+    if (date >= input.today || d.skipped || d.frozen || !d.blocks.some(isRun)) return d;
+    const gated = pendingOn(date) && w.phase === "return";
     if (!gated && !painOn(date)) return d;
     const warnings = painWarnings(logs.filter((l) => l.date < date), date);
-    return adaptPlan([w], { today: date, gatesPending: !!input.gatesPending, warnings })[0].days.find((x) => x.date === date) ?? d;
+    return adaptPlan([w], { today: date, gatesPending: pendingOn(date), warnings })[0].days.find((x) => x.date === date) ?? d;
   };
 
   /* pass 1: each day's plan, lift credit and same-day runs */
@@ -567,7 +573,7 @@ export function accountability(input: AccountabilityInput): Accountability {
     else t.extraLogs.push(...spare);
     for (const b of t.blocks.filter(isWalk)) {
       t.walkU += WALK_U;
-      if (t.active || (b.kind === "gate" && !input.gatesPending)) t.walkC += WALK_U;
+      if (t.active || (b.kind === "gate" && !pendingOn(date))) t.walkC += WALK_U;
     }
     // Walks logged on a day without one are extra
     if (!t.blocks.some(isWalk)) t.extraLogs.push(...dayLogs.filter((l) => !l.auto && l.kind === "walk"));

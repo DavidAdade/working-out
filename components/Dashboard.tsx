@@ -28,6 +28,7 @@ import { SupersetProvider, useSupersets } from "./Superset";
 import OfflineBanner, { goLive } from "./OfflineBanner";
 import { saveSnapshot } from "@/lib/offline";
 import type { Swap } from "@/lib/plan/swaps.ts";
+import type { DaySnapshot } from "@/lib/plan/snapshots.ts";
 import type { Superset } from "@/lib/plan/supersets.ts";
 import type { WorkoutSession } from "@/lib/plan/workout.ts";
 import { WorkoutProvider } from "./Workout";
@@ -58,6 +59,8 @@ export interface DashboardProps {
   supersets: Superset[];
   /** Plan days doing another day's workout instead */
   copies: DayCopy[];
+  /** Past days as they were shown when logged (lib/plan/snapshots.ts) */
+  snapshots: DaySnapshot[];
   /** Started / ended workouts, by the plan's own date */
   workouts: WorkoutSession[];
   sets: SetRow[];
@@ -79,10 +82,10 @@ export interface DashboardProps {
  */
 export default function Dashboard({ offline, ...props }: DashboardProps & { offline?: { savedAt: number } }) {
   // Every fresh load from the server is saved on this phone for next time there's no signal
-  const { profile, settings, logs, skips, moves, swaps, supersets, copies, workouts, sets, exercises, today, ai, review, push, score } = props;
+  const { profile, settings, logs, skips, moves, swaps, supersets, copies, snapshots, workouts, sets, exercises, today, ai, review, push, score } = props;
   useEffect(() => {
-    if (!offline) void saveSnapshot<DashboardProps>(profile.id, { profile, settings, logs, skips, moves, swaps, supersets, copies, workouts, sets, exercises, today, ai, review, push, score });
-  }, [offline, profile, settings, logs, skips, moves, swaps, supersets, copies, workouts, sets, exercises, today, ai, review, push, score]);
+    if (!offline) void saveSnapshot<DashboardProps>(profile.id, { profile, settings, logs, skips, moves, swaps, supersets, copies, snapshots, workouts, sets, exercises, today, ai, review, push, score });
+  }, [offline, profile, settings, logs, skips, moves, swaps, supersets, copies, snapshots, workouts, sets, exercises, today, ai, review, push, score]);
 
   return (
     <RestTimerProvider userId={profile.id} enabled={profile.rest_timer} seconds={profile.rest_seconds ?? null} push={props.push}>
@@ -119,7 +122,7 @@ function queuedLog(i: LogInput): LogRow {
 
 const swapId = (planDate: string, from: string) => `${planDate}|${from}`;
 
-function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swaps: serverSwaps, supersets: serverSupersets, copies: serverCopies, workouts, sets, exercises, today, ai, review, offline, score }: DashboardProps & { offline: boolean }) {
+function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swaps: serverSwaps, supersets: serverSupersets, copies: serverCopies, snapshots, workouts, sets, exercises, today, ai, review, offline, score }: DashboardProps & { offline: boolean }) {
   const [tab, setTab] = useState<Tab>("today");
   // The rest timer's "Next set": to the tab the set was logged from (that day's view opens the exercise)
   useGotoListener((g) => setTab(g.where));
@@ -225,13 +228,18 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
   const byKey = useMemo(() => new Map(exercises.map((e) => [e.key, e])), [exercises]);
   const gatesPending = settings.returningFromInjury && GATES.some((g) => !profile.gates?.[g.key]);
   const { weeks, fitness, warnings } = useMemo(
-    () => planFor({ settings, logs, skips: optimisticSkips, moves: optimisticMoves, gatesPending, today, swaps, exercise: (k) => byKey.get(k), copies }),
-    [settings, logs, optimisticSkips, optimisticMoves, gatesPending, today, swaps, byKey, copies],
+    () => planFor({ settings, logs, skips: optimisticSkips, moves: optimisticMoves, gatesPending, today, swaps, exercise: (k) => byKey.get(k), copies, snapshots }),
+    [settings, logs, optimisticSkips, optimisticMoves, gatesPending, today, swaps, byKey, copies, snapshots],
   );
+  // The day the last gate was ticked, in the person's time zone: days before it were walked with the gates pending
+  const gatesPassedOn = useMemo(() => {
+    const at = Object.values(profile.gates_at ?? {}).filter((v): v is string => typeof v === "string" && !Number.isNaN(Date.parse(v)));
+    return gatesPending || !at.length ? null : todayIn(safeTimeZone(profile.timezone), new Date(at.sort().at(-1)!));
+  }, [profile.gates_at, profile.timezone, gatesPending]);
   // A skip made here and not yet reloaded was made today
   const scoreInputs = useMemo<ScoreInputs>(
-    () => ({ weeks, logs, skips: optimisticSkips.map((date) => ({ date, createdAt: score.skippedAt[date] ?? today })), events: score.events, sessions: workouts.filter((w) => w.auto_ended), gatesPending, today, timeZone: safeTimeZone(profile.timezone), horizon: score.horizon }),
-    [weeks, logs, optimisticSkips, score, workouts, gatesPending, today, profile.timezone],
+    () => ({ weeks, logs, skips: optimisticSkips.map((date) => ({ date, createdAt: score.skippedAt[date] ?? today })), events: score.events, sessions: workouts.filter((w) => w.auto_ended), gatesPending, gatesPassedOn, today, timeZone: safeTimeZone(profile.timezone), horizon: score.horizon }),
+    [weeks, logs, optimisticSkips, score, workouts, gatesPending, gatesPassedOn, today, profile.timezone],
   );
   const openTab = (t: Tab) => {
     setTab(t);
@@ -338,7 +346,7 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
     <DateLabelsProvider hide={profile.hide_dates} weeks={weeks}>
       <VideoProvider>
         <WorkoutProvider initial={workouts}>
-        <SetsProvider initial={sets} unit={profile.weight_unit} today={today} weeks={weeks} exercises={exercises}>
+        <SetsProvider initial={sets} unit={profile.weight_unit} today={today} weeks={weeks} exercises={exercises} snapshots={snapshots}>
           <SwapProvider value={swapApi}>
           <SupersetProvider value={supersetApi}>
           <CopyProvider value={copyApi}>

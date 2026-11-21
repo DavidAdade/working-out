@@ -24,6 +24,7 @@ import { cleanOwnRuns, formatOwnRuns, LONG_KM, ownHard, ownWeeks, parseOwnRuns, 
 import { bestsByWeek, fiveKEquivalent, mondaysBetween, paceNeeded, strengthIndex, strengthSeries } from "./stats.ts";
 import { countsForDay } from "../types.ts";
 import { accountability, classU, doneShare, missedDays, runCredit, type AcctLog, type AcctSet, type AccountabilityInput } from "./accountability.ts";
+import { cleanBlocks, snapshotOf } from "./snapshots.ts";
 
 const david: PlanSettings = {
   startDate: "2026-11-16",
@@ -1333,6 +1334,60 @@ test("accountability: a second run on a run day, or going well past the plan, is
     const bit = { sets: plain.sets, logs: plain.logs.map((l) => (l === mine ? { ...l, km: l.km ? l.km * 1.05 : null, duration_sec: l.duration_sec! * 1.05 } : l)) };
     assert.equal(acct(weeks, today, bit, { horizon: w.start }).parts.e, base.parts.e, `${name}: 5% over is just the run`);
   }
+});
+
+test("snapshots: a logged day keeps the workout it showed, whatever the templates say later, every profile", () => {
+  for (const [name, p] of Object.entries(PROFILES)) {
+    const live = generatePlan(p);
+    const w = live.filter((x) => x.phase === "build" && !x.cutback).at(-1)!;
+    const day = w.days.find((d) => d.blocks.some((b) => b.kind === "legs" || b.kind === "upper"))!;
+    const today = addDays(w.start, 7);
+    // As it was shown and logged: the first lifting block had one line fewer than the template has now
+    const bi = day.blocks.findIndex((b) => b.kind === "legs" || b.kind === "upper");
+    const then = day.blocks.map((b, i) => (i === bi ? { ...b, items: b.items.slice(0, -1) } : b));
+    const snapshots = [{ planDate: day.date, blocks: snapshotOf({ blocks: then }) }];
+    const settings = { settings: p, logs: [], skips: [], moves: [], gatesPending: false, today };
+    const kept = planFor({ ...settings, snapshots }).weeks;
+    const shown = dayOf(kept, day.date);
+    assert.ok(shown.frozen, name);
+    assert.deepEqual(shown.blocks[bi].items, then[bi].items, `${name}: the saved lines`);
+    assert.ok(!dayOf(planFor({ ...settings, today: day.date, snapshots }).weeks, day.date).frozen, `${name}: the day itself is still the live plan`);
+    // Everything that was shown was done: full marks with the snapshot, a line short without it
+    const done = logPlan(kept, w.start, addDays(w.start, 6));
+    assert.equal(acct(kept, today, done, { horizon: w.start }).score, 100, name);
+    const without = acct(planFor(settings).weeks, today, done, { horizon: w.start });
+    assert.ok(without.sets.done < without.sets.planned, `${name}: the live template would call it short`);
+    // A swap made on that day still shows on the saved lines
+    const from = parseLine(then[bi].items[0])?.exercise.key;
+    if (from) {
+      const swapped = planFor({ ...settings, snapshots, swaps: [{ planDate: day.blocks[bi].planDate ?? day.date, from, to: "goblet-squat" }], exercise: lookup }).weeks;
+      if (from !== "goblet-squat") assert.equal(dayOf(swapped, day.date).blocks[bi].swaps?.[0]?.to, "goblet-squat", name);
+    }
+  }
+  // What comes back from the database is checked, not trusted
+  assert.equal(cleanBlocks([{ kind: "nope", title: "x", items: [] }]), null);
+  assert.equal(cleanBlocks([{ kind: "legs", title: "x", items: [1] }]), null);
+  assert.equal(cleanBlocks("x"), null);
+  assert.deepEqual(cleanBlocks([{ kind: "legs", title: "Legs", items: ["Goblet squat, 3×10"], light: true, junk: 1, swaps: { 0: {} } }]), [{ kind: "legs", title: "Legs", items: ["Goblet squat, 3×10"], light: true }]);
+});
+
+test("accountability: weeks walked while the gates were pending stay kept after the gates are ticked", () => {
+  const p = PROFILES.shortInjury;
+  const weeks = generatePlan(p);
+  const ret = weeks.find((w) => w.phase === "return")!;
+  const today = addDays(ret.start, 7);
+  // What the plan showed that week with the gates unticked: walks where the run-walks are
+  const shown = adaptPlan([ret], { today: ret.start, gatesPending: true, warnings: [] });
+  assert.ok(shown[0].days.some((d) => d.blocks.some((b) => b.kind === "walk" && /on hold/.test(b.title))));
+  const done = logPlan(shown, ret.start, addDays(ret.start, 6));
+  const pending = acct(weeks, today, done, { horizon: ret.start, gatesPending: true });
+  assert.equal(pending.score, 100);
+  const ticked = acct(weeks, today, done, { horizon: ret.start, gatesPending: false, gatesPassedOn: today });
+  assert.equal(ticked.score, 100, "judged by the gates as they stood that week");
+  assert.ok(!ticked.feed.some((f) => f.kind === "missed"));
+  // Ticked from the start (or before times were kept): the run-walks were due
+  const always = acct(weeks, today, done, { horizon: ret.start, gatesPending: false });
+  assert.ok(always.score! < 100);
 });
 
 test("accountability: bests add up to +3, drops take up to −2", () => {

@@ -19,6 +19,8 @@ export interface ProfileRow {
   half_goal_max_sec: number | null;
   pain_areas: string[];
   gates: Record<string, boolean>;
+  /** When each gate was ticked (migration 0021); a gate ticked before that has no time */
+  gates_at?: Record<string, string> | null;
   /** Show the plan by week and weekday instead of calendar dates */
   hide_dates: boolean;
   weight_unit: Unit;

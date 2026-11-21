@@ -27,6 +27,8 @@ export default function LibraryPanel() {
   const shown = useMemo(() => {
     const words = q.toLowerCase().split(/\s+/).filter(Boolean);
     return exercises.filter((e) => {
+      // Deleted ones stay known (past workouts name them) but aren't in the Library any more
+      if (e.deleted_at) return false;
       const muscles = [...e.primary_muscles, ...e.secondary_muscles].map((m) => MUSCLE.get(m)?.name ?? m).join(" ");
       const hay = `${e.name} ${muscles} ${(e.equipment ?? []).map(equipmentName).join(" ")} ${e.lines.join(" ")}`.toLowerCase();
       if (!words.every((w) => hay.includes(w))) return false;
@@ -43,7 +45,7 @@ export default function LibraryPanel() {
           type="search"
           inputMode="search"
           enterKeyHint="search"
-          placeholder={`Search ${exercises.length} exercises or muscles`}
+          placeholder={`Search ${exercises.filter((e) => !e.deleted_at).length} exercises or muscles`}
           aria-label="Search exercises"
           value={q}
           onChange={(e) => {

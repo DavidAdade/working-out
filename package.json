@@ -11,6 +11,7 @@
     "check-videos": "node --experimental-strip-types --no-warnings scripts/check-videos.ts",
     "sync-exercises": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/sync-exercises.ts",
     "own-runs": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/set-own-runs.ts",
+    "backfill-snapshots": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/backfill-snapshots.ts",
     "seed:test": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/seed-test-user.ts",
     "score-audit": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/score-audit.ts",
     "seed:demo": "node --env-file-if-exists=.env.local --experimental-strip-types --no-warnings scripts/seed-demo.ts"

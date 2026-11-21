@@ -58,6 +58,8 @@ export interface Day {
   fixed: boolean;
   /** The date the plan put this workout on, when the person moved it within the week */
   movedFrom?: ISODate;
+  /** A past day showing the blocks saved when it was logged, not today's templates (see snapshots.ts) */
+  frozen?: boolean;
   /** This day does another day's workout instead (see DayCopy); `replaced` is its own, for comparing and Undo */
   copy?: { from: ISODate; fit: CopyFit; replaced: Block[] };
   /** A workout added on a rest day (a DayCopy whose planDate the plan leaves free): extra work, never a planned day */

@@ -7,6 +7,7 @@ import { generatePlan, isHard, type Day, type DayCopy, type Move, type PlanSetti
 import { painWarnings, type LogLike, type Warning } from "./warnings.ts";
 import { fitness5k, type Fitness, type TestLike } from "./paces.ts";
 import { applySwaps, type ExerciseLookup, type Swap } from "./swaps.ts";
+import { applySnapshots, type DaySnapshot } from "./snapshots.ts";
 
 export interface AdaptInput {
   today: ISODate;
@@ -64,10 +65,13 @@ export function planFor(o: {
   exercise?: ExerciseLookup;
   /** Days doing another day's workout instead (applied before moves and skips) */
   copies?: Iterable<DayCopy>;
+  /** Past days as they were shown when logged: they keep those blocks whatever the templates say now */
+  snapshots?: Iterable<DaySnapshot>;
 }): { weeks: Week[]; fitness: Fitness; warnings: Warning[] } {
   const fitness = fitness5k(o.settings.current5kSec, o.logs, o.today);
   const warnings = painWarnings(o.logs, o.today);
   const adapted = adaptPlan(generatePlan(o.settings, { skips: o.skips, moves: o.moves, copies: o.copies, fitness5kSec: fitness.sec }), { today: o.today, gatesPending: o.gatesPending, warnings });
-  const weeks = o.swaps && o.exercise ? applySwaps(adapted, o.swaps, o.exercise) : adapted;
+  const kept = o.snapshots ? applySnapshots(adapted, o.snapshots, o.today) : adapted;
+  const weeks = o.swaps && o.exercise ? applySwaps(kept, o.swaps, o.exercise) : kept;
   return { weeks, fitness, warnings };
 }

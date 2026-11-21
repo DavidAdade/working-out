@@ -8,6 +8,7 @@ import { weekForDate, type Week } from "@/lib/plan/generate.ts";
 import { parseLine, videoForLine, type Exercise, type Target } from "@/lib/plan/exercises.ts";
 import { asExercise, type ExerciseInfo } from "@/lib/plan/catalog.ts";
 import { itemKey } from "@/lib/plan/swaps.ts";
+import { snapshotOf, type DaySnapshot } from "@/lib/plan/snapshots.ts";
 import type { ExerciseVideo } from "@/lib/plan/videos.ts";
 import type { ItemSwap } from "@/lib/plan/templates.ts";
 import { deleteExercise } from "@/app/actions";
@@ -94,6 +95,7 @@ export function SetsProvider({
   today,
   weeks,
   exercises,
+  snapshots,
   children,
 }: {
   initial: SetRow[];
@@ -101,6 +103,8 @@ export function SetsProvider({
   today: string;
   weeks: Week[];
   exercises: ExerciseInfo[];
+  /** Days whose workout is already saved as shown (lib/plan/snapshots.ts) */
+  snapshots?: DaySnapshot[];
   children: React.ReactNode;
 }) {
   const { send, notify, onRejected, queue } = useDock();
@@ -191,6 +195,22 @@ export function SetsProvider({
     [notify, queue.length],
   );
 
+  // The day's workout as shown goes with a set when it isn't saved yet, or has changed since (a line swapped
+  // in from a skipped day, a template edited today): from tomorrow that day keeps showing exactly this
+  const sentShape = useRef<Map<string, string> | null>(null);
+  sentShape.current ??= new Map((snapshots ?? []).map((s) => [s.planDate, JSON.stringify(s.blocks)]));
+  const weeksRef = useRef(weeks);
+  weeksRef.current = weeks;
+  const shapeFor = (planDay: string) => {
+    const day = weeksRef.current.flatMap((w) => w.days).find((d) => d.date === planDay);
+    if (!day?.blocks.length) return undefined;
+    const blocks = snapshotOf(day);
+    const json = JSON.stringify(blocks);
+    if (sentShape.current!.get(planDay) === json) return undefined;
+    sentShape.current!.set(planDay, json);
+    return blocks;
+  };
+
   const save = useCallback<SetsCtx["save"]>(
     (row, dayTitle, opts = {}) => {
       const cur = setsRef.current;
@@ -206,6 +226,7 @@ export function SetsProvider({
         dayTitle,
         planDate: opts.planDate ?? null,
         firstOfDay: !cur.some((s) => s.date === row.date),
+        snapshot: shapeFor(opts.planDate ?? row.date),
       };
       const optimistic = rowFromInput(input, unit);
       const k = id(row.date, row.exercise_key, row.set_no);
@@ -1068,6 +1089,7 @@ function ExerciseSheet({ exerciseKey, focus, onClose }: { exerciseKey: string; f
             </button>
           )}
           {item!.owner &&
+            !item!.deleted_at &&
             (confirmDelete ? (
               <button type="button" className="btn-ghost ml-auto border-bad text-bad" onClick={() => void deleteExercise(ex.key).then((r) => r.ok && onClose())}>
                 Delete for good

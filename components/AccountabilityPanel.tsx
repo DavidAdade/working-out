@@ -17,6 +17,7 @@ export interface ScoreInputs {
   skips: AcctSkip[];
   events: ActivityEventRow[];
   gatesPending: boolean;
+  gatesPassedOn?: string | null;
   today: string;
   horizon: string | null;
 }

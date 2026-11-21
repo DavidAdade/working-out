@@ -7,6 +7,7 @@ import { builtinRows, type ExerciseInfo } from "@/lib/plan/catalog.ts";
 import { addDays, mondayOf, safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
 import type { DayCopy, Move } from "@/lib/plan/generate.ts";
 import type { Swap } from "@/lib/plan/swaps.ts";
+import type { DaySnapshot } from "@/lib/plan/snapshots.ts";
 import type { Superset } from "@/lib/plan/supersets.ts";
 import type { WorkoutSession } from "@/lib/plan/workout.ts";
 import type { SavedReview } from "@/components/CoachCard";
@@ -31,6 +32,8 @@ export default async function Home() {
   const workoutsRead = paged((a, b) => supabase.from("workout_sessions").select("plan_date, started_at, ended_at, auto_ended, unlocked_at").order("plan_date", { ascending: false }).range(a, b).returns<WorkoutSession[]>(), 2000);
   const supersetsRead = paged((a, b) => supabase.from("supersets").select("id, keys, off").order("created_at").order("id").range(a, b).returns<Superset[]>());
   const copiesRead = paged((a, b) => supabase.from("day_copies").select("planDate:plan_date, source:source_date").order("plan_date").range(a, b).returns<DayCopy[]>());
+  // Past days as they were shown when logged (migration 0021). The Score looks back 12 weeks; older days follow the live plan
+  const snapshotsRead = paged((a, b) => supabase.from("day_snapshots").select("planDate:plan_date, blocks").gte("plan_date", addDays(new Date().toISOString().slice(0, 10), -130)).order("plan_date").range(a, b).returns<DaySnapshot[]>());
   const reads = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle<ProfileRow>(),
     paged((a, b) => supabase.from("logs").select("*").order("date", { ascending: false }).order("created_at", { ascending: false }).order("id").range(a, b).returns<LogRow[]>(), LOGS_MAX),
@@ -47,7 +50,7 @@ export default async function Home() {
           .returns<SetRow[]>(),
       SETS_MAX,
     ),
-    paged((a, b) => supabase.from("exercises").select("key, name, load, primary_muscles, secondary_muscles, equipment, video_ids, video_query, lines, owner").order("name").order("key").range(a, b).returns<ExerciseInfo[]>()),
+    paged((a, b) => supabase.from("exercises").select("key, name, load, primary_muscles, secondary_muscles, equipment, video_ids, video_query, lines, owner, deleted_at").order("name").order("key").range(a, b).returns<ExerciseInfo[]>()),
     paged((a, b) => supabase.from("exercise_swaps").select("planDate:plan_date, from:from_key, to:to_key").order("plan_date").order("from_key").range(a, b).returns<Swap[]>()),
   ]);
   // A failed read is a hiccup, not a sign-out, and an empty history would invite logging twice: show "Try again"
@@ -62,6 +65,8 @@ export default async function Home() {
   // The same before migration 0012: no copied days
   const copies = await copiesRead;
   if (copies.error && !["42P01", "PGRST205"].includes(copies.error.code)) throw new Error("Couldn't load your data");
+  const snapshots = await snapshotsRead;
+  if (snapshots.error && !["42P01", "PGRST205"].includes(snapshots.error.code)) throw new Error("Couldn't load your data");
   // Built-ins from code fill any gap, e.g. before the first sync has run
   const byKey = new Map(builtinRows().map((e) => [e.key, e]));
   for (const e of exercises ?? []) byKey.set(e.key, e);
@@ -98,6 +103,7 @@ export default async function Home() {
       swaps={swaps ?? []}
       supersets={supersets.data ?? []}
       copies={copies.data ?? []}
+      snapshots={snapshots.data ?? []}
       workouts={workouts.data ?? []}
       exercises={[...byKey.values()].sort((a, b) => a.name.localeCompare(b.name))}
       sets={(sets ?? []).map((s) => ({ ...s, weight: s.weight == null ? null : Number(s.weight), weight_kg: s.weight_kg == null ? null : Number(s.weight_kg) }))}

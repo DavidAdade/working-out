@@ -86,7 +86,7 @@ export function SwapSheet({
   }, [onClose]);
 
   const list = useMemo(() => {
-    const pool = exercises.filter((e) => e.key !== original?.key && e.key !== current?.key && (!gear || (e.equipment ?? []).includes(gear)));
+    const pool = exercises.filter((e) => !e.deleted_at && e.key !== original?.key && e.key !== current?.key && (!gear || (e.equipment ?? []).includes(gear)));
     const inGroup = shownChip === "suggested" || shownChip === "all" ? pool : pool.filter((e) => e.primary_muscles.some((m) => MUSCLE.get(m)?.group === shownChip));
     // Adding: nothing to be like, so by name, or by how well it matches the search
     const like: Pickable = original ?? { key: "", name: "", load: "weight", primary_muscles: [], secondary_muscles: [] };
