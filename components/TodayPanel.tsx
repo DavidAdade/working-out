@@ -20,6 +20,7 @@ import { ScoreLink, type ScoreInputs } from "./AccountabilityPanel";
 import { ClassLines, ClassSheet } from "./ClassSheet";
 import { useGoalsHidden } from "./GoalsHidden";
 import { CopiedLine, CopySheet, copyable, restDates, restDay, useCopy, useMissed } from "./CopySheet";
+import { useDayTitle, useUnits } from "./Units";
 
 interface Props {
   profile: ProfileRow;
@@ -39,6 +40,7 @@ interface Props {
 }
 
 export default function TodayPanel({ profile, settings, weeks, logs, today, fitness, warnings, onLog, onSkip, onMoves, coach, score }: Props) {
+  const titleOf = useDayTitle();
   const day = dayForDate(weeks, today);
   const next = weeks.flatMap((w) => w.days).find((d) => d.date > today && !d.skipped && d.blocks.length);
   const week = weekForDate(weeks, today);
@@ -115,7 +117,7 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
               <div className="label">
                 Today · {dates.day(today)} · {week ? PHASE_NAMES[week.phase] : ""}
               </div>
-              <h2 className="font-display text-2xl font-bold">{dayTitle(day)}</h2>
+              <h2 className="font-display text-2xl font-bold">{titleOf(day)}</h2>
             </div>
             <Chip kind={dayKind(day)} />
           </div>
@@ -151,7 +153,7 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
           <div className="label">Today · {dates.day(today)}</div>
           <h2 className="font-display text-2xl font-bold">{day?.skipped ? "Skipped" : "Rest day"}</h2>
           <p className="text-muted">
-            Walk, stretch, sleep.{next ? ` Next up ${dates.day(next.date)}: ${dayTitle(next)}.` : ""}
+            Walk, stretch, sleep.{next ? ` Next up ${dates.day(next.date)}: ${titleOf(next)}.` : ""}
           </p>
           <div className="flex flex-wrap gap-2">
             {day?.skipped && (
@@ -183,7 +185,7 @@ export default function TodayPanel({ profile, settings, weeks, logs, today, fitn
           {early && next && (
             <div className="border-t border-line pt-2.5">
               <div className="label mb-1">
-                {dates.day(next.date)} · {dayTitle(next)}
+                {dates.day(next.date)} · {titleOf(next)}
               </div>
               <DayBlocks day={next} today={today} logOpen />
             </div>
@@ -227,6 +229,7 @@ function CatchUpCard({
   onSkip: (date: string, skip: boolean) => void;
   onLog: (date: string) => void;
 }) {
+  const titleOf = useDayTitle();
   const m = week.days.find((d) => d.date === missed)!;
   // Where today's own workout ends up
   const to = day ? moves.find((x) => x.from === (day.movedFrom ?? day.date))?.to : undefined;
@@ -234,13 +237,13 @@ function CatchUpCard({
     <article className="card gap-2">
       <div className="label">Missed {dowName(missed)}</div>
       <p>
-        <b>{dayTitle(m)}</b> isn&apos;t logged.
-        {day && to ? <span className="text-muted">{to > today ? ` Doing it today moves today's ${dayTitle(day)} to ${dowName(to)}.` : ` Doing it today takes the place of today's ${dayTitle(day)}.`}</span> : null}
+        <b>{titleOf(m)}</b> isn&apos;t logged.
+        {day && to ? <span className="text-muted">{to > today ? ` Doing it today moves today's ${titleOf(day)} to ${dowName(to)}.` : ` Doing it today takes the place of today's ${titleOf(day)}.`}</span> : null}
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <button
           className="btn"
-          onClick={() => onMoves(week.start, moves, `Moved ${dayTitle(m)} from ${dowName(missed)} to today.${day && to ? ` ${dayTitle(day)} moves to ${dowName(to)}.` : ""}`)}
+          onClick={() => onMoves(week.start, moves, `Moved ${titleOf(m)} from ${dowName(missed)} to today.${day && to ? ` ${titleOf(day)} moves to ${dowName(to)}.` : ""}`)}
         >
           Do it today
         </button>
@@ -325,6 +328,7 @@ function CheckInCard({ areas, today }: { areas: string[]; today: string }) {
 
 /** New bests this week; on Monday, last week's as a short recap. */
 function WinsCard({ logs, today }: { logs: LogRow[]; today: string }) {
+  const { show } = useUnits();
   const { sets, nameOf } = useSets();
   const monday = mondayOf(today);
   const recap = today === monday;
@@ -339,7 +343,7 @@ function WinsCard({ logs, today }: { logs: LogRow[]; today: string }) {
         {list.slice(0, 6).map((w) => (
           <li key={w.date + w.text} className="flex items-baseline gap-2 text-[0.95rem]">
             <span aria-hidden className="text-good">▲</span>
-            {w.text}
+            {show(w.text)}
           </li>
         ))}
       </ul>

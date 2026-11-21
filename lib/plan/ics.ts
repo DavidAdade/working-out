@@ -4,6 +4,7 @@
 import { addDays, type ISODate } from "./dates.ts";
 import { dayTitle, type Week } from "./generate.ts";
 import { itemLine } from "./swaps.ts";
+import { showIn, type DistUnit } from "./format.ts";
 
 const esc = (s: string) => s.replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
 const ymd = (d: ISODate) => d.replace(/-/g, "");
@@ -22,7 +23,7 @@ function fold(line: string): string {
   return out.join("\r\n");
 }
 
-export function planToIcs(weeks: Week[], { name, uidSeed, now = new Date() }: { name: string; uidSeed: string; now?: Date }): string {
+export function planToIcs(weeks: Week[], { name, uidSeed, now = new Date(), unit = "km" }: { name: string; uidSeed: string; now?: Date; unit?: DistUnit }): string {
   const stamp = now.toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
   const lines = [
     "BEGIN:VCALENDAR",
@@ -44,8 +45,8 @@ export function planToIcs(weeks: Week[], { name, uidSeed, now = new Date() }: { 
         `DTSTAMP:${stamp}`,
         `DTSTART;VALUE=DATE:${ymd(d.date)}`,
         `DTEND;VALUE=DATE:${ymd(addDays(d.date, 1))}`,
-        `SUMMARY:${esc(`${w.label} · ${dayTitle(d)}`)}`,
-        `DESCRIPTION:${esc(desc)}`,
+        `SUMMARY:${esc(showIn(`${w.label} · ${dayTitle(d)}`, unit))}`,
+        `DESCRIPTION:${esc(showIn(desc, unit))}`,
         "TRANSP:TRANSPARENT",
         "END:VEVENT",
       );

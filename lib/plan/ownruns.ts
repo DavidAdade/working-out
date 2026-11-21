@@ -17,6 +17,7 @@
 //     2 sets (light) for all lifting in the last 3 days, and for legs from a week before to 4 days after.
 
 import { addDays, daysBetween, type ISODate } from "./dates.ts";
+import { KM_PER_MI, type DistUnit } from "./format.ts";
 import { ABS, LEGS, UPPER, light, type Block } from "./templates.ts";
 
 export interface OwnRun {
@@ -59,7 +60,16 @@ export function cleanOwnRuns(raw: unknown): OwnRun[] {
 }
 
 /** One run per line, "2026-11-16, 5, Easy Run" (add "hard" or "race" at the end), for Settings. */
-export function parseOwnRuns(text: string): { runs: OwnRun[]; bad: string[] } {
+/** "5", "5 km", "3.1 mi", "3 miles": the distance in km. A bare number is in the person's own unit. Miles land on the nearest 100 m. */
+function readKm(v: string | undefined, unit: DistUnit): number {
+  const m = /^(\d+(?:[.,]\d+)?)\s*(km|k|mi|miles?)?$/i.exec(v ?? "");
+  if (!m) return NaN;
+  const n = Number(m[1].replace(",", "."));
+  const miles = m[2] ? /^mi/i.test(m[2]) : unit === "mi";
+  return miles ? Math.round(n * KM_PER_MI * 10) / 10 : n;
+}
+
+export function parseOwnRuns(text: string, unit: DistUnit = "km"): { runs: OwnRun[]; bad: string[] } {
   const bad: string[] = [];
   const rows: Partial<OwnRun>[] = [];
   for (const line of text.split("\n").map((l) => l.trim()).filter(Boolean)) {
@@ -67,17 +77,17 @@ export function parseOwnRuns(text: string): { runs: OwnRun[]; bad: string[] } {
     const flags = rest.filter((x) => /^(hard|easy|race)$/i.test(x)).map((x) => x.toLowerCase());
     const title = rest.filter((x) => !/^(hard|easy|race)$/i.test(x)).join(", ");
     // A date that doesn't exist (30 February) would silently drop the run
-    if (!ISO.test(date ?? "") || Number.isNaN(Date.parse(date)) || new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date || !(Number(km?.replace(/\s*km$/i, "")) > 0)) {
+    if (!ISO.test(date ?? "") || Number.isNaN(Date.parse(date)) || new Date(`${date}T00:00:00Z`).toISOString().slice(0, 10) !== date || !(readKm(km, unit) > 0)) {
       bad.push(line);
       continue;
     }
-    rows.push({ date, km: Number(km.replace(/\s*km$/i, "")), title, ...(flags.includes("race") ? { race: true } : {}), ...(flags.includes("hard") ? { hard: true } : flags.includes("easy") ? { hard: false } : {}) });
+    rows.push({ date, km: readKm(km, unit), title, ...(flags.includes("race") ? { race: true } : {}), ...(flags.includes("hard") ? { hard: true } : flags.includes("easy") ? { hard: false } : {}) });
   }
   return { runs: cleanOwnRuns(rows), bad };
 }
 
-export const formatOwnRuns = (runs: OwnRun[]) =>
-  runs.map((r) => [r.date, r.km, r.title, ...(r.race ? ["race"] : r.hard === true ? ["hard"] : r.hard === false ? ["easy"] : [])].join(", ")).join("\n");
+export const formatOwnRuns = (runs: OwnRun[], unit: DistUnit = "km") =>
+  runs.map((r) => [r.date, unit === "mi" ? `${Number((r.km / KM_PER_MI).toFixed(2))} mi` : r.km, r.title, ...(r.race ? ["race"] : r.hard === true ? ["hard"] : r.hard === false ? ["easy"] : [])].join(", ")).join("\n");
 
 export interface OwnDay {
   date: ISODate;

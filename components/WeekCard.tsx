@@ -7,6 +7,7 @@ import DayCard, { RestRow, type OnMoves } from "./DayCard";
 import { restDates, useCopy } from "./CopySheet";
 import { useDates } from "./DateLabels";
 import { planDayOf, useSets } from "./Sets";
+import { useUnits } from "./Units";
 
 /** Dates with a session or sets logged against them (sets done early count for the plan day). */
 export const loggedDates = (logs: LogRow[], sets: SetRow[]) => new Set([...logs.filter(countsForDay).map((l) => l.date), ...sets.map(planDayOf)]);
@@ -38,6 +39,7 @@ export default function WeekCard({
   const done = active.filter((d) => logged.has(d.date)).length;
   const km = weekLongRunKm(week);
   const dates = useDates();
+  const units = useUnits();
   const moved = week.days.filter((d) => d.movedFrom);
   // Putting the week back would hand logged sets to a different workout
   const canReset = moved.length > 0 && moved.every((d) => !logged.has(d.date) && !logged.has(d.movedFrom!));
@@ -54,7 +56,7 @@ export default function WeekCard({
             {week.cutback ? " · cutback" : ""}
           </b>
           <span className="block text-[0.82rem] font-medium text-ink/80">{dates.range(week.start)}</span>
-          <span className="block text-[0.82rem] text-muted">{[km ? `Long run ${km} km` : null, `${active.length} days`].filter(Boolean).join(" · ")}</span>
+          <span className="block text-[0.82rem] text-muted">{[km ? `Long run ${units.dist(km)}` : null, `${active.length} days`].filter(Boolean).join(" · ")}</span>
         </span>
         {past.length ? (
           <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${done >= past.length ? "bg-good/15 text-good" : "bg-sunk"}`}>

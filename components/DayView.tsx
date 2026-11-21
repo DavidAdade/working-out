@@ -16,6 +16,7 @@ import { SwapSheet, useSwap } from "./SwapSheet";
 import { groupColor, SupersetSheet, useSuperset, type SheetRow } from "./Superset";
 import { useWorkout, WorkoutBar } from "./Workout";
 import { takeGoto, useGotoListener, type Goto } from "./RestTimer";
+import { useUnits } from "./Units";
 
 const CHIP: Record<BlockKind, { label: string; cls: string }> = {
   run: { label: "Run", cls: "bg-accent text-on-accent" },
@@ -35,13 +36,14 @@ export function Chip({ kind, label }: { kind: BlockKind; label?: string }) {
 
 /** Runs, walks and gate checks: a title and one line of instructions. */
 function SimpleBlock({ block }: { block: Block }) {
+  const { show } = useUnits();
   return (
     <div className="flex flex-col gap-0.5">
       <div className="flex flex-wrap items-center gap-1.5 font-semibold">
-        {block.title} <Chip kind={block.kind} />
+        {show(block.title)} <Chip kind={block.kind} />
       </div>
-      <p className="text-[0.92rem] text-muted">{block.items.join(" · ")}</p>
-      {block.note && <p className="text-xs text-muted">{block.note}</p>}
+      <p className="text-[0.92rem] text-muted">{show(block.items.join(" · "))}</p>
+      {block.note && <p className="text-xs text-muted">{show(block.note)}</p>}
     </div>
   );
 }

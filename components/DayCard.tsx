@@ -7,6 +7,7 @@ import type { BlockKind } from "@/lib/plan/templates.ts";
 import { Chip, DayBlocks } from "./DayView";
 import { useDates } from "./DateLabels";
 import { CopiedLine, CopySheet, copyable, restDay, useCopy } from "./CopySheet";
+import { useDayTitle, useUnits } from "./Units";
 
 /** Saves a week's moves; `note` is shown once it's saved, with an Undo */
 export type OnMoves = (week: ISODate, moves: Move[], note?: string) => void;
@@ -51,6 +52,7 @@ export default function DayCard({
   /** On the Today tab, today's workout is already shown above, so this card just points to it */
   todayAbove?: boolean;
 }) {
+  const titleOf = useDayTitle();
   const dates = useDates();
   const isToday = day.date === today;
   const done = logged.has(day.date);
@@ -75,7 +77,7 @@ export default function DayCard({
           {!dates.hide && <span className="text-xs text-muted">{fmtShort(day.date)}</span>}
         </span>
         <span className="flex min-w-0 flex-col gap-1">
-          <span className={`truncate font-semibold ${day.skipped ? "line-through" : ""}`}>{dayTitle(day)}</span>
+          <span className={`truncate font-semibold ${day.skipped ? "line-through" : ""}`}>{titleOf(day)}</span>
           <span className="flex flex-wrap gap-1">
             {kinds.map((k) => (
               <Chip key={k} kind={k} />
@@ -141,6 +143,7 @@ export default function DayCard({
 
 /** Pick a day this week. An empty day takes the workout; a day with one swaps with it. */
 export function MoveSheet({ week, day, today, logged, onClose, onPick }: { week: Week; day: Day; today: ISODate; logged: Set<ISODate>; onClose: () => void; onPick: (moves: Move[], to: ISODate) => void }) {
+  const titleOf = useDayTitle();
   const dates = useDates();
   const closeRef = useRef<HTMLButtonElement>(null);
   const targets = moveTargets(week, day.date, today, logged);
@@ -162,14 +165,14 @@ export function MoveSheet({ week, day, today, logged, onClose, onPick }: { week:
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={`Move ${dayTitle(day)}`}
+        aria-label={`Move ${titleOf(day)}`}
         onClick={(e) => e.stopPropagation()}
         className="flex max-h-[85dvh] w-full max-w-[520px] flex-col gap-3 overflow-y-auto rounded-t-2xl border border-line bg-surface p-4 pb-[max(16px,env(safe-area-inset-bottom,0px))] sm:rounded-2xl"
       >
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="label">Move to another day</div>
-            <h3 className="truncate font-display text-xl font-bold">{dayTitle(day)}</h3>
+            <h3 className="truncate font-display text-xl font-bold">{titleOf(day)}</h3>
           </div>
           <button ref={closeRef} className="btn-ghost" onClick={onClose}>
             Cancel
@@ -189,7 +192,7 @@ export function MoveSheet({ week, day, today, logged, onClose, onPick }: { week:
                     <b>{dowName(date)}</b>
                     {!dates.hide && <span className="text-xs text-muted">{fmtShort(date)}</span>}
                   </span>
-                  <span className="truncate text-sm text-muted">{self ? "Now" : there ? (there.skipped ? "Skipped" : dayTitle(there)) : "Rest"}</span>
+                  <span className="truncate text-sm text-muted">{self ? "Now" : there ? (there.skipped ? "Skipped" : titleOf(there)) : "Rest"}</span>
                   {moves && <span className="text-sm font-semibold text-accent-ink">{there ? "Swap" : "Move here"}</span>}
                 </button>
               </li>

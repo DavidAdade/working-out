@@ -37,6 +37,8 @@ import { GoalsToggle, useGoalsHidden } from "./GoalsHidden";
 import type { DayCopy } from "@/lib/plan/generate.ts";
 import { goalOf, MODE_NAMES, runMode } from "@/lib/plan/shape.ts";
 import { CUTBACK_EVERY } from "@/lib/plan/generate.ts";
+import { UnitsProvider, useUnits } from "./Units";
+import { distUnit } from "@/lib/plan/format.ts";
 
 type Tab = "today" | "plan" | "log" | "score" | "progress" | "library";
 const TABS: { id: Tab; label: string }[] = [
@@ -345,6 +347,7 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
   };
 
   return (
+    <UnitsProvider unit={distUnit(profile.distance_unit)}>
     <DateLabelsProvider hide={profile.hide_dates} weeks={weeks}>
       <VideoProvider>
         <WorkoutProvider initial={workouts}>
@@ -399,6 +402,7 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
         </WorkoutProvider>
       </VideoProvider>
     </DateLabelsProvider>
+    </UnitsProvider>
   );
 }
 
@@ -438,6 +442,7 @@ function PlanHeader({ settings, thisWeek, today }: { settings: PlanSettings; thi
 
 function GoalHeader({ settings, goal: g, fitness, thisWeek, daysToTT }: { settings: PlanSettings; goal: NonNullable<ReturnType<typeof goalOf>>; fitness: number; thisWeek: Week | undefined; daysToTT: number }) {
   const dates = useDates();
+  const units = useUnits();
   const goal = g.goal5kSec;
   const tenK = predict(goal, 5, 10, 1.06);
   // Hidden for screenshots (GoalsHidden.tsx)
@@ -482,7 +487,7 @@ function GoalHeader({ settings, goal: g, fitness, thisWeek, daysToTT }: { settin
       </div>
       <dl className="grid grid-cols-3 gap-2 border-t-2 border-dashed border-line pt-3">
         <Stat label="Now" value={duration(fitness)} />
-        <Stat label="Goal pace" value={`${pace(goalPace(goal))}/km`} />
+        <Stat label="Goal pace" value={units.pace(goalPace(goal))} />
         <Stat label="10K" value={`~${duration(Math.round(tenK / 30) * 30)}`} />
       </dl>
       {settings.raceDate && (

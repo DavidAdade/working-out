@@ -9,6 +9,7 @@ import type { ActivityEventRow, LogRow } from "@/lib/types";
 import { useSets } from "./Sets";
 import { useDates } from "./DateLabels";
 import Pager, { usePage } from "./Pager";
+import { useUnits } from "./Units";
 
 /** Everything the score needs besides the sets, which come live from the set logger */
 export interface ScoreInputs {
@@ -71,6 +72,7 @@ export default function AccountabilityPanel({ inputs, onLog, onToday }: { inputs
   const r = useAccountability(inputs);
   const { openHistory, unit } = useSets();
   const dates = useDates();
+  const { show } = useUnits();
   const [week, setWeek] = useState<string | null>(null);
   const [page, setPage] = useState(0);
 
@@ -181,7 +183,7 @@ export default function AccountabilityPanel({ inputs, onLog, onToday }: { inputs
                       {KIND_GLYPH[f.kind]}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block break-words text-sm">{f.title}</span>
+                      <span className="block break-words text-sm">{show(f.title)}</span>
                       {f.detail && <span className="block text-xs text-muted">{f.detail}</span>}
                     </span>
                     <span className={`flex-none whitespace-nowrap font-mono text-xs ${f.tone === "good" ? "text-good" : "text-muted"}`}>{delta(f)}</span>

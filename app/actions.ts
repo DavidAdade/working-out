@@ -94,7 +94,7 @@ export async function saveSettings(_: unknown, form: FormData): Promise<ActionRe
   const dur = (k: string) => parseDuration(str(k));
   const fail = (error: string): ActionResult => ({ ok: false, error, values: Object.fromEntries([...form].filter((e): e is [string, string] => typeof e[1] === "string")) });
   const injury = form.get("returning_from_injury") === "on";
-  const ownRuns = parseOwnRuns(String(form.get("own_runs") ?? ""));
+  const ownRuns = parseOwnRuns(String(form.get("own_runs") ?? ""), form.get("distance_unit") === "mi" ? "mi" : "km");
   const mode = runMode(form.get("run_mode"));
   const program = mode === "program";
   const picked = form.getAll("train_days").map(Number);
@@ -112,6 +112,7 @@ export async function saveSettings(_: unknown, form: FormData): Promise<ActionRe
     returning_from_injury: injury,
     hide_dates: form.get("hide_dates") === "on",
     weight_unit: form.get("weight_unit") === "lb" ? "lb" : "kg",
+    distance_unit: form.get("distance_unit") === "mi" ? "mi" : "km",
     time_trial_date: str("time_trial_date"),
     race_date: str("race_date"),
     race_name: str("race_name"),
@@ -137,13 +138,13 @@ export async function saveSettings(_: unknown, form: FormData): Promise<ActionRe
   if (!isTimeZone(update.timezone)) return fail("Pick a time zone from the list.");
   if (!program) {
     // No running goal: the 5K program's own settings stay as they were, for whenever it's switched back on
-    const { run_mode, train_days, display_name, timezone, rest_timer, rest_seconds, start_date, hide_dates, weight_unit, pain_areas } = update;
-    const { error } = await supabase.from("profiles").update({ run_mode, train_days, display_name, timezone, rest_timer, rest_seconds, start_date, hide_dates, weight_unit, pain_areas }).eq("id", user.id);
+    const { run_mode, train_days, display_name, timezone, rest_timer, rest_seconds, start_date, hide_dates, weight_unit, distance_unit, pain_areas } = update;
+    const { error } = await supabase.from("profiles").update({ run_mode, train_days, display_name, timezone, rest_timer, rest_seconds, start_date, hide_dates, weight_unit, distance_unit, pain_areas }).eq("id", user.id);
     if (error) return fail("Couldn't save settings. Try again.");
     revalidatePath("/");
     redirect("/");
   }
-  if (ownRuns.bad.length) return fail(`Couldn't read this run: "${ownRuns.bad[0].slice(0, 60)}". Write each as: 2026-11-16, 5, Easy Run`);
+  if (ownRuns.bad.length) return fail(`Couldn't read this run: "${ownRuns.bad[0].slice(0, 60)}". Write each as: 2026-11-16, 5, Easy Run (or "3 mi")`);
   if (ownRuns.runs.length > 400) return fail("That's more than 400 runs. Keep the list to the coming months.");
   if (!update.start_date || !update.time_trial_date) return fail("Add a start date and a time trial date.");
   // The plan's weeks run Monday to Sunday: any other day would quietly start on the Monday before it

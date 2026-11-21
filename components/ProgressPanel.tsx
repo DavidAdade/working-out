@@ -16,6 +16,7 @@ import { useMemo, useState } from "react";
 import Pager, { usePage } from "./Pager";
 import { GoalsToggle, useGoalsHidden } from "./GoalsHidden";
 import { goalOf } from "@/lib/plan/shape.ts";
+import { useUnits } from "./Units";
 
 const AREA_COLORS = ["rgb(var(--area1))", "rgb(var(--area2))", "rgb(var(--area3))"];
 /** Weeks shown on the weekly charts */
@@ -24,6 +25,7 @@ const WEEKS = 12;
 const WORKOUT = /tempo|interval|repeat|fartlek|race|progress|strides|hill|\d\s*[×x]\s*\d/i;
 
 export default function ProgressPanel({ logs, settings, painAreas, today }: { logs: LogRow[]; settings: PlanSettings; painAreas: string[]; today: string }) {
+  const units = useUnits();
   const { short: fmtShort } = useDates();
   const { sets, nameOf } = useSets();
   const trend = painTrend(logs, painAreas, today);
@@ -87,7 +89,8 @@ export default function ProgressPanel({ logs, settings, painAreas, today }: { lo
     .filter((l) => l.kind === "run" && (l.km ?? 0) >= 2 && l.duration_sec)
     .filter((l) => /easy|long/i.test(l.title ?? "") || (!WORKOUT.test(l.title ?? "") && l.duration_sec! / l.km! >= threshold * 1.08))
     .slice(-20);
-  const easyPaces = easy.map((l) => l.duration_sec! / l.km! / 60);
+  // Minutes per km, or per mile for someone who reads miles
+  const easyPaces = easy.map((l) => l.duration_sec! / units.fromKm(l.km!) / 60);
 
   const painLogs = asc.filter((l) => !l.auto && Object.keys(l.pain ?? {}).length > 0).slice(-24);
 
@@ -125,7 +128,7 @@ export default function ProgressPanel({ logs, settings, painAreas, today }: { lo
         />
         <p className="text-sm">
           {gap == null
-            ? "The dashed line is the 5K time you need week by week to reach the goal. Log a Test with 5 km to see where you are against it."
+            ? `The dashed line is the 5K time you need week by week to reach the goal. Log a Test with ${units.dist(5)} to see where you are against it.`
             : gap <= 0
               ? `Your last test was ${gap === 0 ? "right on" : `${duration(-gap)} ahead of`} the pace needed (dashed line).`
               : `Your last test was ${duration(gap)} behind the pace needed (dashed line).`}
@@ -161,7 +164,7 @@ export default function ProgressPanel({ logs, settings, painAreas, today }: { lo
           <>
             <LoadChart
               bands={[
-                { label: "Running, km", color: "rgb(var(--accent))", values: load.km },
+                { label: `Running, ${units.unit}`, color: "rgb(var(--accent))", values: load.km.map((v) => +units.fromKm(v).toFixed(1)) },
                 { label: "Lifting, sets", color: "rgb(var(--area2))", values: load.lifted },
               ]}
               labels={load.weeks.map(fmtShort)}

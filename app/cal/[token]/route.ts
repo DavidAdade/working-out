@@ -8,6 +8,7 @@ import { applySwaps } from "@/lib/plan/swaps.ts";
 import type { Load } from "@/lib/plan/exercises.ts";
 import { profileToSettings, type ProfileRow } from "@/lib/types";
 import { planUntil } from "@/lib/plan/adapt.ts";
+import { distUnit } from "@/lib/plan/format.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -28,7 +29,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
     swaps.map((s) => ({ planDate: s.date, from: s.from, to: s.to })),
     (key) => named.get(key),
   );
-  const ics = planToIcs(weeks, { name: "WorkoutFlex", uidSeed: createHash("sha256").update(token).digest("hex").slice(0, 12) });
+  const ics = planToIcs(weeks, { name: "WorkoutFlex", uidSeed: createHash("sha256").update(token).digest("hex").slice(0, 12), unit: distUnit(feed.profile.distance_unit) });
   return new Response(ics, {
     headers: { "Content-Type": "text/calendar; charset=utf-8", "Cache-Control": "private, max-age=900", "Content-Disposition": 'inline; filename="workoutflex.ics"' },
   });

@@ -11,6 +11,7 @@ import { Chip } from "./DayView";
 import { useDates } from "./DateLabels";
 import { fmtSet, useSets } from "./Sets";
 import { snapshotOf } from "@/lib/plan/snapshots.ts";
+import { useDayTitle, useUnits } from "./Units";
 
 interface Props {
   weeks: Week[];
@@ -21,6 +22,8 @@ interface Props {
 }
 
 export default function LogPanel({ weeks, logs, today, painAreas, initialDate }: Props) {
+  const titleOf = useDayTitle();
+  const units = useUnits();
   const [date, setDate] = useState(initialDate);
   const dates = useDates();
   const { send } = useDock();
@@ -45,7 +48,10 @@ export default function LogPanel({ weeks, logs, today, painAreas, initialDate }:
     // Check the easy mistakes here, so they show even with no signal
     if (get("time").trim() && parseDuration(get("time")) == null) return setState({ ok: false, text: "Time should look like 34:10 or 1:02:30." });
     if (get("km").trim() && !Number.isFinite(Number(get("km").replace(",", ".")))) return setState({ ok: false, text: "Distance should be a number, like 5 or 7.5." });
-    const input: LogInput = { id: crypto.randomUUID(), date: get("date"), kind: get("kind") as LogKind, title: get("title"), km: get("km"), time: get("time"), rpe: get("rpe"), pain, notes: get("notes") };
+    // Typed in the person's unit, saved in km
+    const typed = Number(get("km").replace(",", "."));
+    const km = get("km").trim() ? String(Number(units.toKm(typed).toFixed(2))) : "";
+    const input: LogInput = { id: crypto.randomUUID(), date: get("date"), kind: get("kind") as LogKind, title: get("title"), km, time: get("time"), rpe: get("rpe"), pain, notes: get("notes") };
     // A run, test or walk for a planned day keeps that day as it's shown now (lib/plan/snapshots.ts)
     const logged = ["run", "test", "walk"].includes(input.kind) && input.date <= today ? dayForDate(weeks, input.date) : undefined;
     if (logged?.blocks.length && !logged.skipped) input.snapshot = snapshotOf(logged);
@@ -69,7 +75,7 @@ export default function LogPanel({ weeks, logs, today, painAreas, initialDate }:
                 {!pastDays.some((d) => d.date === date) && <option value={date}>{date === today ? "Today" : dates.day(date)}</option>}
                 {pastDays.map((d) => (
                   <option key={d.date} value={d.date}>
-                    {d.date === today ? "Today" : dates.day(d.date)} · {dayTitle(d)}
+                    {d.date === today ? "Today" : dates.day(d.date)} · {titleOf(d)}
                   </option>
                 ))}
               </select>
@@ -87,9 +93,9 @@ export default function LogPanel({ weeks, logs, today, painAreas, initialDate }:
             </select>
           </Field>
           <Field label="Workout" id="title" wide>
-            <input id="title" name="title" defaultValue={planned && !planned.skipped ? dayTitle(planned) : ""} placeholder="Easy 30 min" className="input" />
+            <input id="title" name="title" defaultValue={planned && !planned.skipped ? titleOf(planned) : ""} placeholder="Easy 30 min" className="input" />
           </Field>
-          <Field label="Distance (km)" id="km">
+          <Field label={`Distance (${units.unit})`} id="km">
             <input id="km" name="km" inputMode="decimal" placeholder="5.0" className="input" />
           </Field>
           <Field label="Time (34:10 or 34.10)" id="time">
@@ -166,7 +172,8 @@ function Entry({ log, painAreas }: { log: LogRow; painAreas: string[] }) {
   const [editing, setEditing] = useState(false);
   const [pending, startTransition] = useTransition();
   const { notify } = useDock();
-  const p = log.duration_sec && log.km ? `${pace(log.duration_sec / log.km)}/km` : null;
+  const units = useUnits();
+  const p = log.duration_sec && log.km ? units.pace(log.duration_sec / log.km) : null;
   const kind = log.kind === "strength" ? "legs" : log.kind === "check" ? "gate" : log.kind === "class" ? "mobility" : log.kind;
   const dates = useDates();
   // Imported runs arrive without the things only you know
@@ -180,7 +187,7 @@ function Entry({ log, painAreas }: { log: LogRow; painAreas: string[] }) {
           {log.queued && <span className="rounded bg-warn/15 px-1.5 py-px text-xs font-semibold text-warn">Waiting to sync</span>}
         </div>
         <div className="text-sm text-muted">
-          {[dates.day(log.date), log.km != null ? `${log.km} km` : null, log.duration_sec ? duration(log.duration_sec) : null, p, log.avg_hr ? `${log.avg_hr} bpm` : null, log.rpe ? `effort ${log.rpe}` : null].filter(Boolean).join(" · ")}
+          {[dates.day(log.date), log.km != null ? units.dist(log.km) : null, log.duration_sec ? duration(log.duration_sec) : null, p, log.avg_hr ? `${log.avg_hr} bpm` : null, log.rpe ? `effort ${log.rpe}` : null].filter(Boolean).join(" · ")}
         </div>
         {Object.keys(log.pain ?? {}).length > 0 && (
           <div className="mt-1 flex flex-wrap gap-1.5 text-xs">

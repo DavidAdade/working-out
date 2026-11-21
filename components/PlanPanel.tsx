@@ -8,6 +8,7 @@ import WeekCard from "./WeekCard";
 import type { OnMoves } from "./DayCard";
 import Pager, { usePage } from "./Pager";
 import { useDates } from "./DateLabels";
+import { useUnits } from "./Units";
 
 const PHASE_COLOR: Record<Phase, string> = {
   recovery: "bg-muted",
@@ -28,6 +29,7 @@ export default function PlanPanel({ weeks, logs, today, onSkip, onMoves }: { wee
   const phases = [...new Set(weeks.map((w) => w.phase))];
   const last = weeks[weeks.length - 1];
   const dates = useDates();
+  const { show } = useUnits();
   const PAGE = 6;
   const [page, setPage] = useState(() => Math.max(0, Math.floor(weeks.findIndex((w) => w === current) / PAGE)));
   const { pages, current: cur, shown } = usePage(weeks, PAGE, page);
@@ -73,7 +75,7 @@ export default function PlanPanel({ weeks, logs, today, onSkip, onMoves }: { wee
               {sample.days.map((d) => (
                 <li key={d.date} className="grid grid-cols-[2.75rem_1fr] gap-2 py-1.5">
                   <b>{dowName(d.date)}</b>
-                  <span className="text-muted">{d.blocks.map((b) => b.title).join(" · ")}</span>
+                  <span className="text-muted">{show(d.blocks.map((b) => b.title).join(" · "))}</span>
                 </li>
               ))}
             </ul>

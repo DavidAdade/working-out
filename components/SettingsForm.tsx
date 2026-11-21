@@ -14,7 +14,7 @@ const MODE_HELP: Record<RunMode, string> = {
 };
 const DAY_LETTERS = ["M", "T", "W", "T", "F", "S", "S"];
 const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-import { duration } from "@/lib/plan/format.ts";
+import { distUnit, duration } from "@/lib/plan/format.ts";
 import { REST_CHOICES, type ProfileRow } from "@/lib/types";
 import RestPush from "./RestPush";
 import { GoalsToggle, useGoalsHidden } from "./GoalsHidden";
@@ -161,6 +161,15 @@ export default function SettingsForm({
             <option value="lb">lb</option>
           </select>
         </div>
+        <div className={`min-w-0 flex-col gap-1 ${mode === "none" ? "hidden" : "flex"}`}>
+          <label className="label" htmlFor="distance_unit">
+            Distances in
+          </label>
+          <select id="distance_unit" name="distance_unit" defaultValue={val("distance_unit", distUnit(profile.distance_unit))} className="input">
+            <option value="km">kilometres</option>
+            <option value="mi">miles</option>
+          </select>
+        </div>
 
         <label className="flex items-start gap-2.5 sm:col-span-2">
           <input type="checkbox" name="hide_dates" defaultChecked={on("hide_dates", profile.hide_dates)} className="mt-1 h-5 w-5 accent-[rgb(var(--accent))]" />
@@ -216,7 +225,7 @@ export default function SettingsForm({
             id="own_runs"
             name="own_runs"
             rows={6}
-            defaultValue={val("own_runs", formatOwnRuns(profile.own_runs ?? []))}
+            defaultValue={val("own_runs", formatOwnRuns(profile.own_runs ?? [], distUnit(profile.distance_unit)))}
             placeholder={"2026-11-16, 5, Easy Run\n2026-11-18, 6, Long Run\n2026-11-21, 5, 400m Repeats, hard"}
             className="input h-auto whitespace-pre font-mono"
             autoCapitalize="off"
@@ -224,7 +233,7 @@ export default function SettingsForm({
             spellCheck={false}
           />
           <span className="text-xs text-muted">
-            One run per line: date, km, name. Add &quot;hard&quot; for intervals or tempo, &quot;race&quot; for a race. In the weeks these cover, they are your running days and the lifting is placed around them: abs
+            One run per line: date, distance, name (a bare number is in your unit; &quot;5 km&quot; or &quot;3 mi&quot; also work). Add &quot;hard&quot; for intervals or tempo, &quot;race&quot; for a race. In the weeks these cover, they are your running days and the lifting is placed around them: abs
             after a run of 5.5 km or more, legs never the day before a run, upper body twice a week on days of its own. They take over from the day you first save the list; earlier days stay as they were.
           </span>
         </div>

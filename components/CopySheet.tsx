@@ -16,6 +16,7 @@ import type { BlockKind } from "@/lib/plan/templates.ts";
 import { Chip, PreviewBlocks } from "./DayView";
 import { useDates } from "./DateLabels";
 import { useSets } from "./Sets";
+import { useDayTitle, useUnits } from "./Units";
 
 /* ---------- saving a copy: provided by the Dashboard, which owns the plan ---------- */
 export interface CopyApi {
@@ -75,12 +76,13 @@ interface Candidate {
 
 /** "Copied from W7 Wed" on a copied day, with Undo while nothing is logged. */
 export function CopiedLine({ day, logged }: { day: Day; logged: Set<ISODate> }) {
+  const titleOf = useDayTitle();
   const api = useCopy();
   const dates = useDates();
   const { sets } = useSets();
   if (!day.copy || !api) return null;
   const { from, fit, replaced } = day.copy;
-  const own = dayTitle({ ...day, blocks: replaced });
+  const own = titleOf({ ...day, blocks: replaced });
   // A missed day of the week before, repeated here: a make-up, not extra work
   const src = makeUpSource(api.weeks, day);
   const makeUp = !!src && doneShare(src, sets, api.logs) < MAKEUP_MAX;
@@ -108,6 +110,7 @@ export function CopiedLine({ day, logged }: { day: Day; logged: Set<ISODate> }) 
 
 /** Pick any other day of the program, see its workout, then use it here. */
 export function CopySheet({ day, today, logged, onClose, makeUp = false }: { day: Day; today: ISODate; logged: Set<ISODate>; onClose: () => void; /** A rest day: only the workouts missed before it */ makeUp?: boolean }) {
+  const titleOf = useDayTitle();
   const api = useCopy();
   const missedList = useMissed(day.date);
   const dates = useDates();
@@ -159,7 +162,7 @@ export function CopySheet({ day, today, logged, onClose, makeUp = false }: { day
   useEffect(() => closeRef.current?.focus({ preventScroll: true }), [picked]);
 
   if (!api || !weeks) return null;
-  const title = dayTitle(day);
+  const title = titleOf(day);
 
   const row = (c: Candidate, withWeek: boolean, group = withWeek ? "top" : "all") => (
     <li key={`${group}-${c.source}`}>
@@ -173,7 +176,7 @@ export function CopySheet({ day, today, logged, onClose, makeUp = false }: { day
           {!dates.hide && <span className="text-xs text-muted">{fmtShort(c.day.date)}</span>}
         </span>
         <span className="flex min-w-0 flex-col gap-1">
-          <span className="truncate text-sm font-semibold">{dayTitle({ ...c.day, blocks: ownBlocks(c.day) })}</span>
+          <span className="truncate text-sm font-semibold">{titleOf({ ...c.day, blocks: ownBlocks(c.day) })}</span>
           {c.why ? (
             <span className="text-xs text-muted">{c.why}</span>
           ) : (
@@ -194,7 +197,7 @@ export function CopySheet({ day, today, logged, onClose, makeUp = false }: { day
   );
 
   const confirm = (c: Candidate) => {
-    const name = dayTitle({ ...c.day, blocks: ownBlocks(c.day) });
+    const name = titleOf({ ...c.day, blocks: ownBlocks(c.day) });
     const on = day.date === today ? "today" : dowName(day.date);
     const cost = c.fit.match ? "" : ` It counts as ${Math.round(c.fit.credit * 100)}% in your Score.`;
     api.copy(planDate, c.source, missed.includes(c) ? `Making up ${where(weeks, c.source)}'s ${name} on ${on}.` : adding ? `Added ${where(weeks, c.source)}'s ${name} on ${on}.` : `Doing ${where(weeks, c.source)}'s ${name} on ${on} instead.${cost}`);
@@ -294,6 +297,7 @@ function Preview({
   onBack: () => void;
   onUse: () => void;
 }) {
+  const titleOf = useDayTitle();
   const blocks = ownBlocks(c.day);
   const warning = adding ? null : fitWarning(c.fit, orig, c.cand);
   const note = copyNote(weeks, planDate, c.source);
@@ -304,7 +308,7 @@ function Preview({
           <div className="label">
             {where(weeks, c.source)} · {PHASE_NAMES[c.week.phase]}
           </div>
-          <h3 className="font-display text-xl font-bold">{dayTitle({ ...c.day, blocks })}</h3>
+          <h3 className="font-display text-xl font-bold">{titleOf({ ...c.day, blocks })}</h3>
         </div>
         {!adding && (
           <span className={`mt-1 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${c.fit.match ? "bg-good/15 text-good" : "bg-warn/15 text-warn"}`}>{fitBadge(c.fit, c.cand)}</span>

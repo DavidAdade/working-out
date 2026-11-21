@@ -31,3 +31,38 @@ export function predict(timeSec: number, fromKm: number, toKm: number, exponent 
 }
 
 export const HALF_KM = 21.0975;
+
+/* ---------- distance units ---------- */
+// The plan is built, stored and scored in kilometres, and its text is read back by the engine (runCredit,
+// intensity.ts, isHard), so nothing upstream changes for miles. A person who chose miles sees every distance and
+// pace converted where it's shown, and what they type is converted back before it's saved.
+
+export type DistUnit = "km" | "mi";
+export const KM_PER_MI = 1.609344;
+export const distUnit = (v: unknown): DistUnit => (v === "mi" ? "mi" : "km");
+const trim = (n: number, digits = 1) => String(Number(n.toFixed(digits)));
+
+/** A distance held in km, as a number in the person's unit */
+export const fromKm = (km: number, unit: DistUnit) => (unit === "mi" ? km / KM_PER_MI : km);
+/** A distance typed in the person's unit, in km */
+export const toKm = (n: number, unit: DistUnit) => (unit === "mi" ? n * KM_PER_MI : n);
+/** "5 km" or "3.1 mi" */
+export const fmtDist = (km: number, unit: DistUnit) => `${trim(fromKm(km, unit))} ${unit}`;
+/** Seconds per km → "6:05/km" or "9:47/mi" */
+export const paceFor = (secPerKm: number, unit: DistUnit) => `${pace(unit === "mi" ? secPerKm * KM_PER_MI : secPerKm)}/${unit}`;
+
+/**
+ * Plan text as the person reads it: every "N km" and "m:ss/km" (alone or as a range) in miles when that's their
+ * unit. Track reps in metres ("8 × 400 m") and race names ("5K", "10K") stay as they are.
+ */
+export function showIn(text: string, unit: DistUnit): string {
+  if (unit === "km" || !text) return text;
+  const perMi = (t: string) => {
+    const [m, s] = t.split(":").map(Number);
+    return pace((m * 60 + s) * KM_PER_MI);
+  };
+  return text
+    .replace(/(\d+:\d\d)([–-])(\d+:\d\d)\/km/g, (_, a: string, dash: string, b: string) => `${perMi(a)}${dash}${perMi(b)}/mi`)
+    .replace(/(\d+:\d\d)\/km/g, (_, a: string) => `${perMi(a)}/mi`)
+    .replace(/(\d+(?:\.\d+)?)(\s?)km\b/g, (_, n: string, sp: string) => `${trim(Number(n) / KM_PER_MI)}${sp || " "}mi`);
+}

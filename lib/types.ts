@@ -1,6 +1,7 @@
 import type { PlanSettings } from "@/lib/plan/generate.ts";
 import { cleanOwnRuns, type OwnRun } from "./plan/ownruns.ts";
 import { cleanDays, runMode, type RunMode } from "./plan/shape.ts";
+import type { DistUnit } from "./plan/format.ts";
 
 export interface ProfileRow {
   /** When the account was made */
@@ -28,6 +29,8 @@ export interface ProfileRow {
   /** Show the plan by week and weekday instead of calendar dates */
   hide_dates: boolean;
   weight_unit: Unit;
+  /** Distances and paces shown in km or miles (migration 0023); stored in km either way */
+  distance_unit?: DistUnit | null;
   /** Start a rest countdown when a set is ticked */
   rest_timer: boolean;
   /** Rest length in seconds; null = by exercise. Absent until migration 0009 is applied. */

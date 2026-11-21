@@ -26,6 +26,7 @@ import { countsForDay } from "../types.ts";
 import { accountability, classU, doneShare, missedDays, runCredit, type AcctLog, type AcctSet, type AccountabilityInput } from "./accountability.ts";
 import { cleanBlocks, snapshotOf } from "./snapshots.ts";
 import { cleanDays, DEFAULT_DAYS } from "./shape.ts";
+import { fmtDist, fromKm, paceFor, showIn, toKm } from "./format.ts";
 
 const david: PlanSettings = {
   startDate: "2026-11-16",
@@ -403,6 +404,30 @@ test("5K program on chosen days: the same sessions in the same order, time trial
   }
   // The plan's own days saved as chosen days change nothing
   assert.deepEqual(generatePlan({ ...base, trainDays: [0, 1, 2, 3, 4] }), generatePlan(base));
+});
+
+test("miles: plan text reads in miles, the engine stays in km, every profile", () => {
+  assert.equal(showIn("Long run 8 km", "mi"), "Long run 5 mi");
+  assert.equal(showIn("Easy the whole way, about 6:30–7:00/km", "mi"), "Easy the whole way, about 10:28–11:16/mi");
+  assert.equal(showIn("Go out at 5:58/km, hold it", "mi"), "Go out at 9:36/mi, hold it");
+  assert.equal(showIn("8 × 400 m at 5K pace · 5K TIME TRIAL · 10K test", "mi"), "8 × 400 m at 5K pace · 5K TIME TRIAL · 10K test", "track reps and race names stay");
+  assert.equal(showIn("Long run 8 km at 6:30/km", "km"), "Long run 8 km at 6:30/km");
+  assert.equal(fmtDist(5, "mi"), "3.1 mi");
+  assert.equal(paceFor(360, "mi"), "9:39/mi");
+  assert.ok(Math.abs(toKm(fromKm(7.5, "mi"), "mi") - 7.5) < 1e-9);
+  // A 5K logged as 3.1 miles is still read as a 5K test
+  assert.ok(Math.abs(toKm(3.1, "mi") - 5) <= 0.3 && Math.abs(toKm(6.2, "mi") - 10) <= 0.5);
+  for (const [name, p] of Object.entries({ ...PROFILES, ...OPEN_PROFILES })) {
+    for (const b of generatePlan(p).flatMap((w) => w.days.flatMap((d) => d.blocks))) {
+      const text = showIn([b.title, ...b.items, b.note ?? ""].join(" | "), "mi");
+      assert.ok(!/\d\s?km\b|\/km/.test(text), `${name}: ${text}`);
+    }
+  }
+  // The own-runs list in miles: typed either way, saved in km, and shown back as typed
+  const runs = parseOwnRuns("2026-11-16, 3.1 mi, Easy Run\n2026-11-18, 5, Long Run\n2026-11-20, 8 km, Tempo", "mi").runs;
+  assert.deepEqual(runs.map((r) => r.km), [5, 8, 8]);
+  assert.deepEqual(parseOwnRuns(formatOwnRuns(OWN_RUNS, "mi"), "mi").runs, OWN_RUNS, "round trip");
+  assert.deepEqual(parseOwnRuns("2026-11-16, 5, Easy Run").runs[0].km, 5);
 });
 
 test("never more than one hard session or test a week", () => {
