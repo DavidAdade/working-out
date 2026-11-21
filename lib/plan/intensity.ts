@@ -36,6 +36,28 @@ const WU = 20;
 const LOAD = { weight: 1, bodyweight: 0.8, time: 0.6 };
 const RUNNING = new Set<Block["kind"]>(["run", "test", "walk", "gate"]);
 
+/**
+ * About how long a run or test takes, start to finish: by distance at an easy 7 min/km, by the minutes in its
+ * title, or for a hard session its warm-up and cool-down plus the work and the recoveries between.
+ */
+export function plannedMinutes(b: Block): number {
+  const t = b.title.toLowerCase();
+  const txt = b.items.join(" ").toLowerCase();
+  const km = b.km ?? b.dist;
+  if (km) return km * MIN_PER_KM;
+  if (b.kind === "test") return WU + (/10k/.test(t) ? 10 : /5k/.test(t) ? 5 : 21.1) * 6;
+  const rw = /^run-walk (\d+)/.exec(t);
+  if (rw) return +rw[1];
+  if (!isHard(b)) return Number(/(\d+) min/.exec(t)?.[1] ?? 20);
+  let work = 0;
+  let m: RegExpExecArray | null;
+  if ((m = /(\d+) × (\d+) m\b/.exec(txt))) work = (+m[1] * +m[2] * 5) / 1000;
+  else if ((m = /(\d+) × ([\d.]+) km/.exec(txt))) work = +m[1] * +m[2] * 5;
+  else if ((m = /(\d+) × (\d+) min/.exec(txt))) work = +m[1] * +m[2];
+  else if ((m = /(\d+) min steady/.exec(txt))) work = +m[1];
+  return WU + work * 1.5;
+}
+
 function runLoad(b: Block): number {
   const t = b.title.toLowerCase();
   const txt = b.items.join(" ").toLowerCase();

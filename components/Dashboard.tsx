@@ -451,7 +451,7 @@ function GoalHeader({ settings, fitness, thisWeek, daysToTT }: { settings: PlanS
       </dl>
       {settings.raceDate && (
         <p className="-mt-1 text-sm text-muted">
-          Then {settings.raceName || "the half"} · {dates.hide ? dates.long(settings.raceDate) : fmtShort(settings.raceDate)}
+          Then {settings.raceName || "the race"} · {dates.hide ? dates.long(settings.raceDate) : fmtShort(settings.raceDate)}
         </p>
       )}
     </header>

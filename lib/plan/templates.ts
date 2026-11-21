@@ -58,7 +58,7 @@ export const LEGS = {
     note: "No heavy leg work or hamstring loading until stairs are pain-free.",
   }),
   A_condo: legs({
-    title: "Legs: protect (condo)",
+    title: "Legs: protect (home)",
     items: ["DB calf raises, 3×15", "Glute bridge with DB on hips, 3×12", "Bird dog, 3×8 each side"],
     note: "Rail on stairs, sore leg steps down first.",
   }),
@@ -75,7 +75,7 @@ export const LEGS = {
     note: "Hamstring work stays light. Stop any set that pushes back-of-knee pain above 2/10.",
   }),
   B_condo: legs({
-    title: "Legs: rebuild (condo)",
+    title: "Legs: rebuild (home)",
     items: [
       "Slow step-downs, 4-second lower, 3×8 each",
       "DB Romanian deadlift, light, 3×8",
@@ -98,7 +98,7 @@ export const LEGS = {
     note: "Leave 2 reps in reserve. Never the day before a hard run.",
   }),
   C_condo: legs({
-    title: "Legs: knee-focused (condo)",
+    title: "Legs: stability (home)",
     items: [
       "Single-leg DB Romanian deadlift, 3×8 each",
       "Slow step-downs, 3×10 each",
@@ -134,7 +134,7 @@ export const UPPER = {
     items: ["Lat pulldown or assisted pull-ups, 3×8–10", "Seated cable row, 3×10", "Face pulls, 3×15", "Cable or DB curl, 3×12"],
   }),
   push: upper({
-    title: "Upper: push (condo)",
+    title: "Upper: push (home)",
     items: [
       "DB floor or bench press, 3×8–10",
       "Push-ups, 3 sets, stop 2 reps short of failure",
@@ -145,7 +145,7 @@ export const UPPER = {
     note: "Lift after the run, or later in the day.",
   }),
   backArms: upper({
-    title: "Upper: back + arms (condo)",
+    title: "Upper: back + arms (home)",
     items: ["One-arm DB row, 3×10 each", "Rear-delt fly, 3×15", "Hammer curls, 3×12", "DB skull crushers or close-grip push-ups, 3×12"],
   }),
   // Push and pull in one session, for weeks with two upper days (ownruns.ts)
@@ -168,7 +168,7 @@ export const UPPER = {
     note: "Supersets: one set of each in the pair, then rest. Leave 1–2 reps in reserve on the presses and pulls.",
   }),
   fullB: upper({
-    title: "Upper B: shoulders + arms (condo)",
+    title: "Upper B: shoulders + arms (home)",
     items: [
       "DB floor or bench press, 4×8–10",
       "One-arm DB row, 4×10 each",
@@ -187,8 +187,8 @@ export const UPPER = {
 /* ---------- core ---------- */
 export const ABS = {
   gym: abs({ title: "Abs (gym)", items: ["Hanging knee raises, 3×10–12", "Cable crunch, 3×12", "Pallof press, 3×10 each side"] }),
-  condoA: abs({ title: "Abs (condo)", items: ["Dead bug, 3×10", "Reverse crunch, 3×12", "Plank, 3×40s"] }),
-  condoB: abs({ title: "Abs (condo)", items: ["Side plank, 3×30s each side", "Russian twist with DB, 3×12 each side", "Hollow hold, 3×25s"] }),
+  condoA: abs({ title: "Abs (home)", items: ["Dead bug, 3×10", "Reverse crunch, 3×12", "Plank, 3×40s"] }),
+  condoB: abs({ title: "Abs (home)", items: ["Side plank, 3×30s each side", "Russian twist with DB, 3×12 each side", "Hollow hold, 3×25s"] }),
 } as const;
 
 export const LIGHT_NOTE = "Light week: 2 sets each, nothing to failure.";

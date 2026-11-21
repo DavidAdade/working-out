@@ -1372,7 +1372,7 @@ test("accountability: no number until 3 planned days have passed", () => {
   }
 });
 
-test("accountability: the worked example scores 78", () => {
+test("accountability: the worked example scores 79", () => {
   const p = PROFILES.september;
   const w1 = "2027-05-31"; // build week, then another
   const w2 = addDays(w1, 7);
@@ -1406,16 +1406,16 @@ test("accountability: the worked example scores 78", () => {
   };
   const weeks = generatePlan(p, { skips: [tue1] });
   const r = acct(weeks, today, fixture(weeks), { horizon: w1, skips: [{ date: tue1, createdAt: `${w1}T07:00:00Z` }] });
-  assert.equal(r.parts.a, 77.4);
-  assert.equal(r.parts.e, 1); // 0.745 from W2, plus W1's curls at (64 − 50) / 30 of their worth
+  assert.equal(r.parts.a, 78.1);
+  assert.equal(r.parts.e, 1); // 0.745 from W2, plus W1's curls at (65 − 50) / 30 of their worth
   assert.equal(r.parts.p, 0.5);
   assert.equal(r.parts.d, 0.5);
-  assert.equal(r.score, 78);
+  assert.equal(r.score, 79);
   assert.equal(r.band, "steady");
-  assert.equal(r.weeks[1].pct, 64);
-  assert.equal(r.weeks[0].pct, 96);
+  assert.equal(r.weeks[1].pct, 65);
+  assert.equal(r.weeks[0].pct, 97);
   assert.deepEqual(r.weeks[1].days.map((c) => c.glyph), ["done", "skipped", "partial", "missed", "done", "rest", "rest"]);
-  assert.ok(r.feed.some((f) => f.kind === "set_extra" && f.key === "curl" && f.detail === "Week at 64%: counts in part, in full from 80%"), "W1 is under 80%");
+  assert.ok(r.feed.some((f) => f.kind === "set_extra" && f.key === "curl" && f.detail === "Week at 65%: counts in part, in full from 80%"), "W1 is under 80%");
   assert.ok(r.feed.some((f) => f.kind === "exercise_extra" && f.delta === "+3 sets"));
   assert.ok(r.feed.some((f) => f.kind === "weight_down" && f.key === "rdl"));
   assert.ok(r.feed.some((f) => f.kind === "weight_same" && f.tone === "good"));
@@ -1423,7 +1423,7 @@ test("accountability: the worked example scores 78", () => {
   const thu = addDays(w1, 3);
   const both = generatePlan(p, { skips: [tue1, thu] });
   const r2 = acct(both, today, fixture(both), { horizon: w1, skips: [{ date: tue1, createdAt: `${w1}T07:00:00Z` }, { date: thu, createdAt: `${thu}T21:00:00Z` }] });
-  assert.equal(r2.parts.a, 83.2);
+  assert.equal(r2.parts.a, 83.7);
 });
 
 test("accountability: the same history scores the same from any profile's start", () => {
@@ -1920,8 +1920,8 @@ test("own runs: the lifting goes around them, and the weeks outside are untouche
   assert.deepEqual(titles("2026-11-17"), ["Upper A: chest + back (gym)"]);
   assert.deepEqual(titles("2026-11-19"), ["Legs: strength (gym)"], "legs have the day to themselves");
   assert.deepEqual(titles("2026-11-20"), [], "rest before the hard run");
-  assert.deepEqual(titles("2026-11-22"), ["Upper B: shoulders + arms (condo)"]);
-  assert.deepEqual(titles("2026-12-04"), ["Upper B: shoulders + arms (condo)"], "Friday when the weekend is two easy runs");
+  assert.deepEqual(titles("2026-11-22"), ["Upper B: shoulders + arms (home)"]);
+  assert.deepEqual(titles("2026-12-04"), ["Upper B: shoulders + arms (home)"], "Friday when the weekend is two easy runs");
   assert.deepEqual(titles("2026-12-31"), ["Legs: strength (gym) (light)"], "legs ease off a week out");
   // Depth: each upper session is 8 exercises in 4 supersets, and a week gives chest and back 10+ direct sets
   for (const d of ["2026-11-17", "2026-11-22"]) {
@@ -1930,7 +1930,7 @@ test("own runs: the lifting goes around them, and the weeks outside are untouche
     assert.equal(dayGroups(daySlots(day), daySupersets(day, [])).length, 4, d);
   }
   assert.deepEqual(titles("2027-01-05"), [], "rest the day before the race");
-  assert.deepEqual(titles("2027-01-13"), ["5.5km Long Run", "Abs (condo)"], "exactly 5.5 km counts as long");
+  assert.deepEqual(titles("2027-01-13"), ["5.5km Long Run", "Abs (home)"], "exactly 5.5 km counts as long");
   // Hard and long are what the list says, not what the title looks like
   assert.equal(isHard(dayForDate(weeks, "2026-11-16")!.blocks[0]), false);
   assert.equal(isHard(dayForDate(weeks, "2026-11-21")!.blocks[0]), true);

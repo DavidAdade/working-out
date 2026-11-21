@@ -11,7 +11,7 @@ import { useDock } from "./Dock";
 import { peekGoto, useGotoListener, type Goto } from "./RestTimer";
 import { planDayOf, useSets } from "./Sets";
 import { PainSlider } from "./LogPanel";
-import { GATES, type LogRow, type ProfileRow } from "@/lib/types";
+import { GATES, gatesFor, tracksKnee, type LogRow, type ProfileRow } from "@/lib/types";
 import { Chip, DayBlocks } from "./DayView";
 import { useDates } from "./DateLabels";
 import WeekCard, { loggedDates } from "./WeekCard";
@@ -382,9 +382,9 @@ function GatesCard({ profile, settings, today }: { profile: ProfileRow; settings
             {all ? "" : " if all three pass"}
           </h3>
         </div>
-        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${all ? "bg-good/15 text-good" : "bg-warn/15 text-warn"}`}>{all ? "All clear" : `${passed} of 3`}</span>
+        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${all ? "bg-good/15 text-good" : "bg-warn/15 text-warn"}`}>{all ? "All clear" : `${passed} of ${GATES.length}`}</span>
       </div>
-      {GATES.map((gate) => (
+      {gatesFor(profile.pain_areas).map((gate) => (
         <label key={gate.key} className="flex min-h-11 items-start gap-2.5 border-t border-line py-2 first-of-type:border-t-0">
           <input
             type="checkbox"
@@ -424,7 +424,7 @@ function GatesCard({ profile, settings, today }: { profile: ProfileRow; settings
         </select>
       </div>
       <p className="text-sm text-muted">
-        Not passing by the weekend before? Move the start back a week. The plan re-dates itself and the time trial stays put. See a physio if stairs still hurt after about a week, or with clicking, locking, swelling or giving way.
+        Not passing by the weekend before? Move the start back a week. The plan re-dates itself and the time trial stays put. See a physio if {tracksKnee(profile.pain_areas) ? "stairs still hurt" : "everyday movement still hurts"} after about a week, or with clicking, locking, swelling or giving way.
       </p>
     </article>
   );

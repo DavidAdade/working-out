@@ -2,7 +2,8 @@
 // day-by-day reasons. Nothing is stored: it compares the plan as shown (planFor, swaps applied) with the logs.
 //
 // Units per plan block: a strength line = its target sets (2 on light or folded blocks), a line without a
-// target = 1, "Optional" lines = 0, a run = 20, a long run or test = 30, a walk or gate check = 6.
+// target = 1, "Optional" lines = 0, a walk or gate check = 6, a run = its planned minutes / 2 (runUnits), never
+// under 20, or 30 for the long run and tests: missing a two-hour run costs more than missing a short one.
 // Score = clamp(A + E + P − D, 0, 100):
 //   A  adherence, recent days weigh more (half-life 14 days)        doing the plan = 100
 //   E  extra work, up to +8, only when the plan isn't easing off (a 3/10 "hold" still counts; in recovery and
@@ -26,6 +27,7 @@ import { dayTitle, isHard, makeUpCandidates, planDateOf, MAKEUP_DAYS, type Day, 
 import { exerciseByKey, parseLine } from "./exercises.ts";
 import { itemKey } from "./swaps.ts";
 import { painWarnings } from "./warnings.ts";
+import { plannedMinutes } from "./intensity.ts";
 import { bestOn, compareSession, sessions, type SetLike } from "./progress.ts";
 import type { Block } from "./templates.ts";
 
@@ -219,6 +221,10 @@ const D_MAX = 2;
 const RUN_U = 20;
 const LONG_U = 30;
 const WALK_U = 6;
+/** Minutes of running to a unit: a set with its rest is about two minutes, so an hour's run is worth 30 sets */
+const RUN_MIN_PER_U = 2;
+/** A run's units: its planned length, never less than a run (or, for the long run and tests, a long run) is worth */
+export const runUnits = (b: Block) => Math.max(b.km || b.kind === "test" ? LONG_U : RUN_U, Math.round(plannedMinutes(b) / RUN_MIN_PER_U));
 /** The most extra work one day can add: half the day's own plan (10 at least), or a lifting day's worth on a day off */
 const EXTRA_MIN = 10;
 const EXTRA_DAY_OFF = 30;
@@ -351,7 +357,7 @@ function blockLines(b: Block, sized: boolean, name: (k: string) => string): Line
 }
 
 const blockUnits = (b: Block, name: (k: string) => string) =>
-  isRun(b) ? (b.km || b.kind === "test" ? LONG_U : RUN_U) : isWalk(b) ? WALK_U : blockLines(b, true, name).reduce((t, l) => t + l.u, 0);
+  isRun(b) ? runUnits(b) : isWalk(b) ? WALK_U : blockLines(b, true, name).reduce((t, l) => t + l.u, 0);
 
 /* ---------- making up a missed day ---------- */
 
@@ -370,7 +376,7 @@ export function doneShare(day: Pick<Day, "date" | "blocks">, sets: AcctSet[], lo
   let u = lines.reduce((t, l) => t + l.u, 0);
   let c = lines.reduce((t, l) => t + l.c, 0);
   for (const [i, b] of day.blocks.filter(isRun).entries()) {
-    const bu = b.km || b.kind === "test" ? LONG_U : RUN_U;
+    const bu = runUnits(b);
     u += bu;
     c += runCredit(b, bu, i === 0 ? runs : []).c;
   }
@@ -543,7 +549,7 @@ export function accountability(input: AccountabilityInput): Accountability {
     // The day's runs go to its first run block until it has what it asks for; any run after that is extra
     let spare: AcctLog[] = [];
     for (const [i, b] of runBlocks.entries()) {
-      const u = b.km || b.kind === "test" ? LONG_U : RUN_U;
+      const u = runUnits(b);
       const taken: AcctLog[] = [];
       if (i === 0)
         for (const l of runs) {

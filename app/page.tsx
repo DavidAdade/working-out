@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { checkUser } from "@/lib/supabase/user";
+import { paged } from "@/lib/supabase/paged";
 import { profileToSettings, type ActivityEventRow, type LogRow, type ProfileRow, type SetRow, type SkipRow } from "@/lib/types";
 import { builtinRows, type ExerciseInfo } from "@/lib/plan/catalog.ts";
 import { addDays, mondayOf, safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
@@ -15,8 +16,8 @@ import Dashboard from "@/components/Dashboard";
 
 export const dynamic = "force-dynamic";
 
-const SETS_PAGE = 1000;
 const SETS_MAX = 5000;
+const LOGS_MAX = 5000;
 
 export default async function Home() {
   const supabase = await createClient();
@@ -25,41 +26,29 @@ export default async function Home() {
   if (transient) throw new Error("Couldn't reach the server");
   if (!user) redirect("/login");
 
-  // Read alongside the rest; awaited below because it may fail on its own (see there)
-  const workoutsRead = supabase
-    .from("workout_sessions")
-    .select("plan_date, started_at, ended_at, auto_ended, unlocked_at")
-    .order("plan_date", { ascending: false })
-    .limit(400)
-    .returns<WorkoutSession[]>()
-    .then((r) => r);
-  const supersetsRead = supabase.from("supersets").select("id, keys, off").order("created_at").returns<Superset[]>().then((r) => r);
-  const copiesRead = supabase.from("day_copies").select("planDate:plan_date, source:source_date").returns<DayCopy[]>().then((r) => r);
-  // The API returns at most 1,000 rows a request (max_rows), so the set history is read a page at a time
-  const setsRead = async () => {
-    const rows: SetRow[] = [];
-    for (let from = 0; from < SETS_MAX; from += SETS_PAGE) {
-      const r = await supabase
-        .from("set_logs")
-        .select("id, date, exercise_key, set_no, weight, unit, weight_kg, reps, duration_sec, light_week, plan_date")
-        .order("date", { ascending: false })
-        .order("id")
-        .range(from, from + SETS_PAGE - 1)
-        .returns<SetRow[]>();
-      if (r.error) return { data: null, error: r.error };
-      rows.push(...r.data);
-      if (r.data.length < SETS_PAGE) break;
-    }
-    return { data: rows, error: null };
-  };
+  // Read alongside the rest; awaited below because each may fail on its own (see there). Everything that grows
+  // with use is read a page at a time (lib/supabase/paged.ts), in a fixed order
+  const workoutsRead = paged((a, b) => supabase.from("workout_sessions").select("plan_date, started_at, ended_at, auto_ended, unlocked_at").order("plan_date", { ascending: false }).range(a, b).returns<WorkoutSession[]>(), 2000);
+  const supersetsRead = paged((a, b) => supabase.from("supersets").select("id, keys, off").order("created_at").order("id").range(a, b).returns<Superset[]>());
+  const copiesRead = paged((a, b) => supabase.from("day_copies").select("planDate:plan_date, source:source_date").order("plan_date").range(a, b).returns<DayCopy[]>());
   const reads = await Promise.all([
     supabase.from("profiles").select("*").eq("id", user.id).maybeSingle<ProfileRow>(),
-    supabase.from("logs").select("*").order("date", { ascending: false }).order("created_at", { ascending: false }).limit(1000).returns<LogRow[]>(),
-    supabase.from("day_overrides").select("date, created_at").eq("status", "skipped").returns<SkipRow[]>(),
-    supabase.from("day_moves").select("from:from_date, to:to_date").returns<Move[]>(),
-    setsRead(),
-    supabase.from("exercises").select("key, name, load, primary_muscles, secondary_muscles, equipment, video_ids, video_query, lines, owner").order("name").returns<ExerciseInfo[]>(),
-    supabase.from("exercise_swaps").select("planDate:plan_date, from:from_key, to:to_key").returns<Swap[]>(),
+    paged((a, b) => supabase.from("logs").select("*").order("date", { ascending: false }).order("created_at", { ascending: false }).order("id").range(a, b).returns<LogRow[]>(), LOGS_MAX),
+    paged((a, b) => supabase.from("day_overrides").select("date, created_at").eq("status", "skipped").order("date").range(a, b).returns<SkipRow[]>()),
+    paged((a, b) => supabase.from("day_moves").select("from:from_date, to:to_date").order("to_date").range(a, b).returns<Move[]>()),
+    paged(
+      (a, b) =>
+        supabase
+          .from("set_logs")
+          .select("id, date, exercise_key, set_no, weight, unit, weight_kg, reps, duration_sec, light_week, plan_date")
+          .order("date", { ascending: false })
+          .order("id")
+          .range(a, b)
+          .returns<SetRow[]>(),
+      SETS_MAX,
+    ),
+    paged((a, b) => supabase.from("exercises").select("key, name, load, primary_muscles, secondary_muscles, equipment, video_ids, video_query, lines, owner").order("name").order("key").range(a, b).returns<ExerciseInfo[]>()),
+    paged((a, b) => supabase.from("exercise_swaps").select("planDate:plan_date, from:from_key, to:to_key").order("plan_date").order("from_key").range(a, b).returns<Swap[]>()),
   ]);
   // A failed read is a hiccup, not a sign-out, and an empty history would invite logging twice: show "Try again"
   if (reads.some((r) => r.error)) throw new Error("Couldn't load your data");
@@ -93,7 +82,7 @@ export default async function Home() {
     supabase.from("activity_events").select("kind, date, payload, created_at").gte("date", addDays(today, -84)).order("date", { ascending: false }).limit(1000).returns<ActivityEventRow[]>(),
   ]);
   // History is capped above: before the oldest row of a full read, the Score tab can't tell a miss from a gap
-  const capped = [logs?.length === 1000 ? logs.at(-1)?.date : null, sets?.length === SETS_MAX ? sets.at(-1)?.date : null].filter((d): d is string => !!d).sort().at(-1) ?? null;
+  const capped = [logs?.length === LOGS_MAX ? logs.at(-1)?.date : null, sets?.length === SETS_MAX ? sets.at(-1)?.date : null].filter((d): d is string => !!d).sort().at(-1) ?? null;
   // Days before the person was using the app are never misses, whatever date their plan starts on (joining
   // mid-week, or a start set in the past): the first thing they logged, or the day the account was made
   const firstUse = [logs?.at(-1)?.date, sets?.at(-1)?.date].filter((d): d is string => !!d).sort()[0] ?? (profile.created_at ? todayIn(safeTimeZone(profile.timezone), new Date(profile.created_at)) : null);

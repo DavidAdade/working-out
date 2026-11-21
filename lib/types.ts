@@ -113,11 +113,21 @@ export function profileToSettings(p: ProfileRow): PlanSettings | null {
     halfGoalMaxSec: p.half_goal_max_sec,
     ownRuns: cleanOwnRuns(p.own_runs),
     ownRunsFrom: p.own_runs_from ?? null,
+    painAreas: p.pain_areas,
   };
 }
 
+/** The three checks before running starts again. The keys are what's saved; the wording follows what the person tracks */
 export const GATES = [
   { key: "stairs", title: "Down stairs pain-free", detail: "Every step, no rail needed." },
   { key: "bend", title: "Full knee bend pain-free", detail: "Heel toward glute, no pinch behind the knee." },
   { key: "hop", title: "Hop test passes both legs", detail: "10 easy hops on each leg, no foot or knee pain." },
 ] as const;
+const GATES_ANY: { key: (typeof GATES)[number]["key"]; title: string; detail: string }[] = [
+  { key: "stairs", title: "Everyday movement is pain-free", detail: "Walking, stairs and getting up from a chair, with no limp." },
+  { key: "bend", title: "Full range of movement, pain-free", detail: "The injured area moves as far as the other side does." },
+  { key: "hop", title: "Impact test passes", detail: "10 easy hops on each leg, or a brisk 10 min walk, with no pain during or after." },
+];
+/** Knee tests for someone tracking a knee; the same three checks in plain terms for anything else */
+export const tracksKnee = (painAreas: string[] | null | undefined) => !!painAreas?.some((a) => /knee/i.test(a));
+export const gatesFor = (painAreas: string[] | null | undefined): readonly { key: (typeof GATES)[number]["key"]; title: string; detail: string }[] => (tracksKnee(painAreas) ? GATES : GATES_ANY);

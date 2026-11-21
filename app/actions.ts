@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { createHash } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
+import { paged } from "@/lib/supabase/paged";
 import { checkUser } from "@/lib/supabase/user";
 import { duration, parseDuration } from "@/lib/plan/format.ts";
 import { addDays, daysBetween, isMonday, isTimeZone, mondayOf, safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
@@ -637,14 +638,14 @@ export async function weeklyReview(refresh = false): Promise<ReviewResult> {
 
   const from = addDays(today, -60);
   const [{ data: logs }, { data: sets }, { data: skips }, { data: moves }, { data: exercises }, { data: swaps }, { data: copies }] = await Promise.all([
-    supabase.from("logs").select("*").gte("date", from).order("date", { ascending: false }).returns<LogRow[]>(),
-    supabase.from("set_logs").select("id, date, exercise_key, set_no, weight, unit, weight_kg, reps, duration_sec, light_week, plan_date").gte("date", from).order("date", { ascending: false }).returns<SetRow[]>(),
-    supabase.from("day_overrides").select("date").eq("status", "skipped").returns<{ date: string }[]>(),
-    supabase.from("day_moves").select("from:from_date, to:to_date").returns<Move[]>(),
-    supabase.from("exercises").select("key, name, load").returns<{ key: string; name: string; load: Load }[]>(),
+    paged((a, b) => supabase.from("logs").select("*").gte("date", from).order("date", { ascending: false }).order("id").range(a, b).returns<LogRow[]>()),
+    paged((a, b) => supabase.from("set_logs").select("id, date, exercise_key, set_no, weight, unit, weight_kg, reps, duration_sec, light_week, plan_date").gte("date", from).order("date", { ascending: false }).order("id").range(a, b).returns<SetRow[]>()),
+    paged((a, b) => supabase.from("day_overrides").select("date").eq("status", "skipped").order("date").range(a, b).returns<{ date: string }[]>()),
+    paged((a, b) => supabase.from("day_moves").select("from:from_date, to:to_date").order("to_date").range(a, b).returns<Move[]>()),
+    paged((a, b) => supabase.from("exercises").select("key, name, load").order("key").range(a, b).returns<{ key: string; name: string; load: Load }[]>()),
     supabase.from("exercise_swaps").select("planDate:plan_date, from:from_key, to:to_key").gte("plan_date", addDays(today, -21)).returns<Swap[]>(),
     // Missing before migration 0012: no copies
-    supabase.from("day_copies").select("planDate:plan_date, source:source_date").returns<DayCopy[]>(),
+    paged((a, b) => supabase.from("day_copies").select("planDate:plan_date, source:source_date").order("plan_date").range(a, b).returns<DayCopy[]>()),
   ]);
   const cleanLogs = (logs ?? []).map((l) => ({ ...l, km: l.km == null ? null : Number(l.km) }));
   const cleanSets = (sets ?? []).map((s) => ({ ...s, weight_kg: s.weight_kg == null ? null : Number(s.weight_kg) }));

@@ -146,7 +146,7 @@ export default function SettingsForm({
           {!firstRun && <GoalsToggle hidden={hideGoals} onChange={setGoalsHidden} />}
         </div>
         <div className={hideGoals ? "hidden" : "contents"}>
-          <Field label="Race name" name="race_name" defaultValue={val("race_name", profile.race_name ?? "")} placeholder="Toronto Marathon: half" />
+          <Field label="Race name" name="race_name" defaultValue={val("race_name", profile.race_name ?? "")} placeholder="City half marathon" />
           <Field label="Race date" name="race_date" type="date" defaultValue={val("race_date", profile.race_date ?? "")} />
           <Field label="Half goal, fastest" name="half_goal_min" defaultValue={val("half_goal_min", t(profile.half_goal_min_sec))} placeholder="2:30:00" />
           <Field label="Half goal, slowest" name="half_goal_max" defaultValue={val("half_goal_max", t(profile.half_goal_max_sec))} placeholder="2:45:00" />
@@ -173,7 +173,7 @@ export default function SettingsForm({
           </span>
         </div>
 
-        <Field label="Areas to track pain (up to 3, comma-separated)" name="pain_areas" defaultValue={val("pain_areas", firstRun ? "" : profile.pain_areas.join(", "))} placeholder="knee, foot, heel" hint={firstRun ? "Leave empty if nothing hurts. Each area gets a quick morning check-in." : undefined} wide />
+        <Field label="Areas to track pain (up to 3, comma-separated)" name="pain_areas" defaultValue={val("pain_areas", firstRun ? "" : profile.pain_areas.join(", "))} placeholder="knee, shoulder, lower back" hint={firstRun ? "Leave empty if nothing hurts. Each area gets a quick morning check-in." : undefined} wide />
 
         {state && !state.ok && (
           <p role="alert" className="text-sm text-bad sm:col-span-2">

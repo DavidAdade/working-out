@@ -44,6 +44,8 @@ export interface PlanSettings {
    * way, and what was logged in it, isn't rewritten); null takes the whole list.
    */
   ownRunsFrom?: ISODate | null;
+  /** What the person tracks pain for: knee-specific tests and notes show only when a knee is among them */
+  painAreas?: string[] | null;
 }
 
 export interface Day {
@@ -129,8 +131,15 @@ function weekIndex(start: ISODate, date: ISODate): number {
 const run = (title: string, items: string[], extra: Partial<Block> = {}): Block => ({ kind: "run", title, items, ...extra });
 const test = (title: string, items: string[], note?: string): Block => ({ kind: "test", title, items, note });
 
+/** Recovery-week notes written for a knee, and how they read for any other injury */
+const PLAIN_NOTE: Record<string, string> = {
+  "No heavy leg work or hamstring loading until stairs are pain-free.": "No heavy leg work until everyday movement is pain-free.",
+  "Hamstring work stays light. Stop any set that pushes back-of-knee pain above 2/10.": "Keep it light. Stop any set that pushes pain above 2/10.",
+};
+
 export function generatePlan(s: PlanSettings, opts: GenerateOptions = {}): Week[] {
   const skips = new Set(opts.skips ?? []);
+  const knee = !!s.painAreas?.some((a) => /knee/i.test(a));
   const start = mondayOf(s.startDate);
   const ttWeekStart = mondayOf(s.timeTrialDate);
   const ttIdx = weekIndex(start, ttWeekStart);
@@ -162,10 +171,17 @@ export function generatePlan(s: PlanSettings, opts: GenerateOptions = {}): Week[
         mk(ws, 2, [{ kind: "walk", title: "Walk or incline treadmill", items: ["30–40 min, flat or 2–5% incline if pain-free"] }, UPPER.push, ABS.condoA]),
         mk(ws, 3, [LEGS.A_condo, UPPER.backArms, ABS.condoB]),
         mk(ws, 4, [
-          { kind: "gate", title: "Gate check + walk", items: ["Go down a flight of stairs", "Full knee bend", "10 easy hops on each leg", "30 min flat walk"], note: "Tick the gates on the Today tab when all three are pain-free." },
+          {
+            kind: "gate",
+            title: "Gate check + walk",
+            items: knee ? ["Go down a flight of stairs", "Full knee bend", "10 easy hops on each leg", "30 min flat walk"] : ["Walk, take stairs and stand up from a chair", "Move the injured area through its full range", "10 easy hops on each leg, or a brisk 10 min walk", "30 min flat walk"],
+            note: "Tick the gates on the Today tab when all three are pain-free.",
+          },
         ]),
       ];
-      if (k === 1) days[0].alerts.push("If stairs still hurt this week, book a physio appointment.");
+      // Notes written for a knee read plainly for any other injury
+      if (!knee) for (const d of days) d.blocks = d.blocks.map((b) => (b.note && PLAIN_NOTE[b.note] ? { ...b, note: PLAIN_NOTE[b.note] } : b));
+      if (k === 1) days[0].alerts.push(knee ? "If stairs still hurt this week, book a physio appointment." : "If everyday movement still hurts this week, book a physio appointment.");
       weeks.push({ label: `R${k + 1}`, index: null, start: ws, phase: "recovery", cutback: false, days, notes: [] });
     }
   }
@@ -308,12 +324,12 @@ export function generatePlan(s: PlanSettings, opts: GenerateOptions = {}): Week[
       const raceItems = [
         s.halfGoalMinSec && s.halfGoalMaxSec ? `Target ${fmtH(s.halfGoalMinSec)}–${fmtH(s.halfGoalMaxSec)}` : "Run your own race",
         halfMin && halfMax ? `Start around ${pace(halfMax - 10)}/km, settle at ${pace((halfMin + halfMax) / 2)}/km after 5 km` : "Start easy, settle after 5 km",
-        "Watch the knees on any downhill sections",
+        ...(knee ? ["Watch the knees on any downhill sections"] : []),
       ];
       // A race before Sunday takes its day, and nothing is planned after it that week
       const raceDay = addDays(ws, off);
       days.splice(0, days.length, ...days.filter((d) => d.date < raceDay));
-      days.push({ date: raceDay, blocks: [test(s.raceName || "Half marathon", raceItems)], skipped: false, skippable: false, fixed: true, alerts: [] });
+      days.push({ date: raceDay, blocks: [test(s.raceName || "Race", raceItems)], skipped: false, skippable: false, fixed: true, alerts: [] });
     }
     const notes = phase === "tt" && s.raceDate && !raceUsable ? [`${s.raceName || "The race"} is less than ${MIN_RACE_GAP_WEEKS} weeks after the time trial, so it isn't in the plan. Move one of the dates in Settings.`] : [];
     weeks.push({ label: `W${i}`, index: i, start: ws, phase, cutback: cut, days, notes });
