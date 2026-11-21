@@ -7,6 +7,7 @@ import { planToIcs } from "@/lib/plan/ics.ts";
 import { applySwaps } from "@/lib/plan/swaps.ts";
 import type { Load } from "@/lib/plan/exercises.ts";
 import { profileToSettings, type ProfileRow } from "@/lib/types";
+import { planUntil } from "@/lib/plan/adapt.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -19,11 +20,11 @@ export async function GET(_: Request, { params }: { params: Promise<{ token: str
   const settings = feed ? profileToSettings(feed.profile) : null;
   if (!feed || !settings) return new Response("Not found", { status: 404 });
   const today = todayIn(safeTimeZone(feed.profile.timezone));
-  const fitness = fitness5k(settings.current5kSec, feed.tests.map((t) => ({ ...t, km: t.km == null ? null : Number(t.km) })), today);
+  const fitness = fitness5k(settings.current5kSec ?? 0, feed.tests.map((t) => ({ ...t, km: t.km == null ? null : Number(t.km) })), today);
   const swaps = feed.swaps ?? [];
   const named = new Map(swaps.map((s) => [s.to, { name: s.name, load: s.load }]));
   const weeks = applySwaps(
-    generatePlan(settings, { skips: feed.skips, moves: feed.moves ?? [], copies: feed.copies ?? [], fitness5kSec: fitness.sec }),
+    generatePlan(settings, { skips: feed.skips, moves: feed.moves ?? [], copies: feed.copies ?? [], fitness5kSec: fitness.sec || undefined, until: planUntil(today) }),
     swaps.map((s) => ({ planDate: s.date, from: s.from, to: s.to })),
     (key) => named.get(key),
   );

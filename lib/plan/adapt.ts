@@ -50,6 +50,10 @@ export function adaptPlan(weeks: Week[], { today, gatesPending, warnings }: Adap
   return weeks.map((w) => (w.days.some((d) => d.date >= today && d.date < end) ? { ...w, days: w.days.map((d) => change(d, w)) } : w));
 }
 
+/** How far ahead a plan with no end is built: far enough to plan and move days, short enough to stay light */
+export const OPEN_WEEKS_AHEAD = 8;
+export const planUntil = (today: ISODate) => addDays(today, 7 * OPEN_WEEKS_AHEAD);
+
 /**
  * The plan as the app shows it: paces from the latest test, moves and skips folded in, pain and gates applied
  * to the coming week, then exercise swaps (which need `exercise` to name custom exercises).
@@ -68,9 +72,10 @@ export function planFor(o: {
   /** Past days as they were shown when logged: they keep those blocks whatever the templates say now */
   snapshots?: Iterable<DaySnapshot>;
 }): { weeks: Week[]; fitness: Fitness; warnings: Warning[] } {
-  const fitness = fitness5k(o.settings.current5kSec, o.logs, o.today);
+  // Without a 5K goal there are no paces to set, only whatever tests the person happens to log
+  const fitness = fitness5k(o.settings.current5kSec ?? 0, o.logs, o.today);
   const warnings = painWarnings(o.logs, o.today);
-  const adapted = adaptPlan(generatePlan(o.settings, { skips: o.skips, moves: o.moves, copies: o.copies, fitness5kSec: fitness.sec }), { today: o.today, gatesPending: o.gatesPending, warnings });
+  const adapted = adaptPlan(generatePlan(o.settings, { skips: o.skips, moves: o.moves, copies: o.copies, fitness5kSec: fitness.sec || undefined, until: planUntil(o.today) }), { today: o.today, gatesPending: o.gatesPending, warnings });
   const kept = o.snapshots ? applySnapshots(adapted, o.snapshots, o.today) : adapted;
   const weeks = o.swaps && o.exercise ? applySwaps(kept, o.swaps, o.exercise) : kept;
   return { weeks, fitness, warnings };

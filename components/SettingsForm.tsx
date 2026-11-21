@@ -5,6 +5,15 @@ import { formatOwnRuns } from "@/lib/plan/ownruns.ts";
 import { useActionState, useEffect, useState } from "react";
 import { saveSettings, setPassword, signOut, type ActionResult } from "@/app/actions";
 import { addDays, mondayOf, todayIn } from "@/lib/plan/dates.ts";
+import { DEFAULT_DAYS, MAX_TRAIN_DAYS, MIN_TRAIN_DAYS, MODE_NAMES, PROGRAM_MIN_DAYS, RUN_MODES, runMode, type RunMode } from "@/lib/plan/shape.ts";
+
+const MODE_HELP: Record<RunMode, string> = {
+  program: "Runs with paces and tests, building to a 5K time trial on a date you set, with the lifting around them.",
+  easy: "The lifting plan with two or three easy runs a week. No paces, no tests, no end date.",
+  none: "The lifting plan on its own. No end date.",
+};
+const DAY_LETTERS = ["M", "T", "W", "T", "F", "S", "S"];
+const DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 import { duration } from "@/lib/plan/format.ts";
 import { REST_CHOICES, type ProfileRow } from "@/lib/types";
 import RestPush from "./RestPush";
@@ -29,6 +38,14 @@ export default function SettingsForm({
 }) {
   const [state, action, pending] = useActionState<ActionResult | null, FormData>(saveSettings, null);
   const [injury, setInjury] = useState(profile.returning_from_injury);
+  // Whether the person runs, and the days they train. The 5K program's own fields only show (and are only
+  // required) for it; they stay in the form either way, so switching back finds them as they were
+  const [mode, setMode] = useState<RunMode>(runMode(profile.run_mode));
+  const program = mode === "program";
+  const [days, setDays] = useState<number[] | null>(profile.train_days ?? null);
+  const picked = days ?? DEFAULT_DAYS[mode];
+  const minDays = program ? PROGRAM_MIN_DAYS : MIN_TRAIN_DAYS;
+  const daysOk = picked.length >= minDays && picked.length <= MAX_TRAIN_DAYS;
   // Goal times and the race can be hidden for screenshots (GoalsHidden.tsx); never while setting up
   const [goalsHidden, setGoalsHidden] = useGoalsHidden();
   const hideGoals = goalsHidden && !firstRun;
@@ -59,7 +76,7 @@ export default function SettingsForm({
           </Link>
         )}
       </div>
-      {firstRun && <p className="text-muted">Your plan is built from these dates and times. You can change them any time.</p>}
+      {firstRun && <p className="text-muted">Your plan is built from these answers. You can change them any time.</p>}
 
       <form action={action} className="card grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="Your name" name="display_name" defaultValue={val("display_name", profile.display_name ?? "")} />
@@ -75,17 +92,54 @@ export default function SettingsForm({
             ))}
           </select>
         </div>
+        <fieldset className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">
+          <legend className="label mb-1">Do you run?</legend>
+          {RUN_MODES.map((m) => (
+            <label key={m} className={`flex min-h-11 items-start gap-2.5 rounded-lg border px-3 py-2 ${mode === m ? "border-accent bg-sunk" : "border-line"}`}>
+              <input type="radio" name="run_mode" value={m} checked={mode === m} onChange={() => setMode(m)} className="mt-1 h-5 w-5 flex-none accent-[rgb(var(--accent))]" />
+              <span>
+                <b>{MODE_NAMES[m]}</b>
+                <br />
+                <span className="text-sm text-muted">{MODE_HELP[m]}</span>
+              </span>
+            </label>
+          ))}
+        </fieldset>
+
+        <fieldset className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">
+          <legend className="label mb-1">Training days</legend>
+          <div className="grid grid-cols-7 gap-1">
+            {DAY_LETTERS.map((d, i) => {
+              const on = picked.includes(i);
+              return (
+                <label key={i} className={`flex h-11 cursor-pointer items-center justify-center rounded-lg border text-sm font-semibold ${on ? "border-ink bg-ink text-bg" : "border-line bg-surface text-muted"}`}>
+                  <input type="checkbox" name="train_days" value={i} checked={on} onChange={() => setDays(on ? picked.filter((x) => x !== i) : [...picked, i].sort((a, b) => a - b))} className="sr-only" aria-label={DAY_NAMES[i]} />
+                  <span aria-hidden>{d}</span>
+                </label>
+              );
+            })}
+          </div>
+          <span className={`text-xs ${daysOk ? "text-muted" : "text-bad"}`}>
+            {daysOk
+              ? `${picked.length} days a week. ${picked.length <= 3 ? "Sessions are combined, so each one is longer." : picked.length === 6 ? "One rest day a week." : "The week's sessions are spread over them."}`
+              : `Pick ${minDays} to ${MAX_TRAIN_DAYS} days${program ? ": the 5K program has three runs and two leg days" : ""}.`}
+          </span>
+        </fieldset>
+
+        <div className={program ? "contents" : "hidden"}>
         <div className="flex items-center justify-between gap-2 sm:col-span-2">
           <span className="label">{hideGoals ? "Your 5K times: hidden" : "Your 5K times"}</span>
           {!firstRun && <GoalsToggle hidden={hideGoals} onChange={setGoalsHidden} />}
         </div>
         {/* Hidden fields stay in the form, so saving keeps them */}
         <div className={hideGoals ? "hidden" : "contents"}>
-          <Field label="Current 5K" name="current_5k" defaultValue={val("current_5k", t(profile.current_5k_sec))} placeholder="35:00" required />
-          <Field label="Goal 5K" name="goal_5k" defaultValue={val("goal_5k", t(profile.goal_5k_sec))} placeholder="29:59" required />
+          <Field label="Current 5K" name="current_5k" defaultValue={val("current_5k", t(profile.current_5k_sec))} placeholder="35:00" required={program} />
+          <Field label="Goal 5K" name="goal_5k" defaultValue={val("goal_5k", t(profile.goal_5k_sec))} placeholder="29:59" required={program} />
         </div>
-        <Field key={here?.monday ?? "saved"} label="Running starts (a Monday)" name="start_date" type="date" defaultValue={val("start_date", profile.start_date ?? here?.monday ?? "")} required />
-        <Field label="5K time trial date" name="time_trial_date" type="date" defaultValue={val("time_trial_date", profile.time_trial_date ?? "")} required />
+        </div>
+        <Field key={here?.monday ?? "saved"} label={program ? "Running starts (a Monday)" : "Plan starts (a Monday)"} name="start_date" type="date" defaultValue={val("start_date", profile.start_date ?? here?.monday ?? "")} required />
+        <div className={program ? "contents" : "hidden"}>
+        <Field label="5K time trial date" name="time_trial_date" type="date" defaultValue={val("time_trial_date", profile.time_trial_date ?? "")} required={program} hint="A Friday, Saturday or Sunday." />
 
         <label className="flex items-start gap-2.5 sm:col-span-2">
           <input type="checkbox" name="returning_from_injury" checked={injury} onChange={(e) => setInjury(e.target.checked)} className="mt-1 h-5 w-5 accent-[rgb(var(--accent))]" />
@@ -96,6 +150,7 @@ export default function SettingsForm({
           </span>
         </label>
         {injury && <Field label="Strength-only phase starts" name="recovery_start" type="date" defaultValue={val("recovery_start", profile.recovery_start ?? "")} />}
+        </div>
 
         <div className="flex min-w-0 flex-col gap-1">
           <label className="label" htmlFor="weight_unit">
@@ -141,6 +196,7 @@ export default function SettingsForm({
         </div>
         {vapidKey && <RestPush userId={profile.id} vapidKey={vapidKey} />}
 
+        <div className={program ? "contents" : "hidden"}>
         <div className="mt-2 flex items-center justify-between gap-2 sm:col-span-2">
           <span className="label">{hideGoals ? "Half marathon: hidden" : "Optional half marathon, at least 3 weeks after the time trial"}</span>
           {!firstRun && <GoalsToggle hidden={hideGoals} onChange={setGoalsHidden} />}
@@ -173,6 +229,8 @@ export default function SettingsForm({
           </span>
         </div>
 
+        </div>
+
         <Field label="Areas to track pain (up to 3, comma-separated)" name="pain_areas" defaultValue={val("pain_areas", firstRun ? "" : profile.pain_areas.join(", "))} placeholder="knee, shoulder, lower back" hint={firstRun ? "Leave empty if nothing hurts. Each area gets a quick morning check-in." : undefined} wide />
 
         {state && !state.ok && (
@@ -182,7 +240,7 @@ export default function SettingsForm({
         )}
         <div className="sm:col-span-2">
           <button className="btn" disabled={pending}>
-            {pending ? "Saving…" : firstRun ? "Build my plan" : "Save and re-date plan"}
+            {pending ? "Saving…" : firstRun ? "Build my plan" : program ? "Save and re-date plan" : "Save"}
           </button>
         </div>
       </form>

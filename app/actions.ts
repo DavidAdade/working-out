@@ -8,10 +8,11 @@ import { createHash } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { paged } from "@/lib/supabase/paged";
 import { cleanBlocks } from "@/lib/plan/snapshots.ts";
+import { cleanDays, goalOf, runMode, DEFAULT_DAYS, MAX_TRAIN_DAYS, MIN_TRAIN_DAYS, PROGRAM_MIN_DAYS } from "@/lib/plan/shape.ts";
 import { checkUser } from "@/lib/supabase/user";
 import { duration, parseDuration } from "@/lib/plan/format.ts";
 import { addDays, daysBetween, isMonday, isTimeZone, mondayOf, safeTimeZone, todayIn } from "@/lib/plan/dates.ts";
-import { planFor } from "@/lib/plan/adapt.ts";
+import { planFor, planUntil } from "@/lib/plan/adapt.ts";
 import { builtinRows } from "@/lib/plan/catalog.ts";
 import { isEquipment } from "@/lib/plan/equipment.ts";
 import { aiEnabled, generateReview, type Review } from "@/lib/coach/review";
@@ -94,7 +95,14 @@ export async function saveSettings(_: unknown, form: FormData): Promise<ActionRe
   const fail = (error: string): ActionResult => ({ ok: false, error, values: Object.fromEntries([...form].filter((e): e is [string, string] => typeof e[1] === "string")) });
   const injury = form.get("returning_from_injury") === "on";
   const ownRuns = parseOwnRuns(String(form.get("own_runs") ?? ""));
+  const mode = runMode(form.get("run_mode"));
+  const program = mode === "program";
+  const picked = form.getAll("train_days").map(Number);
+  const trainDays = cleanDays(picked, mode);
   const update = {
+    run_mode: mode,
+    // The plan's own days are saved as none chosen, so a later change to them reaches the person
+    train_days: trainDays && trainDays.join() !== DEFAULT_DAYS[mode].join() ? trainDays : null,
     display_name: str("display_name"),
     timezone: str("timezone") ?? "America/Toronto",
     rest_timer: form.get("rest_timer") === "on",
@@ -122,6 +130,19 @@ export async function saveSettings(_: unknown, form: FormData): Promise<ActionRe
   const { data: before } = await supabase.from("profiles").select("own_runs, own_runs_from").eq("id", user.id).maybeSingle<{ own_runs: unknown[] | null; own_runs_from: string | null }>();
   const hadRuns = Array.isArray(before?.own_runs) && before.own_runs.length > 0;
   const own_runs_from = !ownRuns.runs.length ? null : hadRuns ? before?.own_runs_from ?? null : todayIn(safeTimeZone(update.timezone));
+  if (!trainDays) return fail(program ? `The 5K program needs ${PROGRAM_MIN_DAYS} to ${MAX_TRAIN_DAYS} training days: three runs and two leg days don't fit in fewer.` : `Pick ${MIN_TRAIN_DAYS} to ${MAX_TRAIN_DAYS} training days.`);
+  if (!update.start_date) return fail("Add a start date.");
+  // The plan's weeks run Monday to Sunday: any other day would quietly start on the Monday before it
+  if (/^\d{4}-\d{2}-\d{2}$/.test(update.start_date) && !isMonday(update.start_date)) return fail(`The plan starts on a Monday. The nearest are ${mondayOf(update.start_date)} and ${addDays(mondayOf(update.start_date), 7)}.`);
+  if (!isTimeZone(update.timezone)) return fail("Pick a time zone from the list.");
+  if (!program) {
+    // No running goal: the 5K program's own settings stay as they were, for whenever it's switched back on
+    const { run_mode, train_days, display_name, timezone, rest_timer, rest_seconds, start_date, hide_dates, weight_unit, pain_areas } = update;
+    const { error } = await supabase.from("profiles").update({ run_mode, train_days, display_name, timezone, rest_timer, rest_seconds, start_date, hide_dates, weight_unit, pain_areas }).eq("id", user.id);
+    if (error) return fail("Couldn't save settings. Try again.");
+    revalidatePath("/");
+    redirect("/");
+  }
   if (ownRuns.bad.length) return fail(`Couldn't read this run: "${ownRuns.bad[0].slice(0, 60)}". Write each as: 2026-11-16, 5, Easy Run`);
   if (ownRuns.runs.length > 400) return fail("That's more than 400 runs. Keep the list to the coming months.");
   if (!update.start_date || !update.time_trial_date) return fail("Add a start date and a time trial date.");
@@ -288,7 +309,7 @@ export async function setDayCopy(planDate: string, source: string | null): Promi
     if (moves.error || sets.error || logs.error || (copies.error && !MISSING_TABLE.includes(copies.error.code))) return { ok: false, error: "Couldn't swap that day. Try again." };
     if (session.data) return { ok: false, error: "That workout has started, so it stays as it is." };
     // The sheet's rules, on the plan as shown: moves place the day, other copies are what a source day holds
-    const weeks = generatePlan(settings, { moves: moves.data ?? [], copies: (copies.data ?? []).filter((c) => c.planDate !== planDate) });
+    const weeks = generatePlan(settings, { moves: moves.data ?? [], copies: (copies.data ?? []).filter((c) => c.planDate !== planDate), until: planUntil(todayIn(safeTimeZone(profile.timezone))) });
     const logged = new Set([...(sets.data ?? []).map((s) => s.plan_date ?? s.date), ...(logs.data ?? []).filter(countsForDay).map((l) => l.date)]);
     const why = canCopy(weeks, planDate, source, todayIn(safeTimeZone(profile.timezone)), logged);
     if (why) return { ok: false, error: why };
@@ -694,7 +715,7 @@ export async function weeklyReview(refresh = false): Promise<ReviewResult> {
 
   let review: Review;
   try {
-    review = await generateReview({ name: profile.display_name, weeks, logs: cleanLogs, sets: cleanSets, names, warnings, fitness: duration(fitness.sec), goal: duration(settings.goal5kSec), today });
+    review = await generateReview({ name: profile.display_name, weeks, logs: cleanLogs, sets: cleanSets, names, warnings, fitness: goalOf(settings) ? duration(fitness.sec) : null, goal: settings.goal5kSec && goalOf(settings) ? duration(settings.goal5kSec) : null, mode: runMode(settings.runMode), today });
   } catch (e) {
     console.error("weeklyReview", e instanceof Error ? e.message : e);
     return { ok: false, error: "Couldn't reach the coach just now. Try again later." };

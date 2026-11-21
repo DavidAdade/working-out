@@ -1,5 +1,6 @@
 import type { PlanSettings } from "@/lib/plan/generate.ts";
 import { cleanOwnRuns, type OwnRun } from "./plan/ownruns.ts";
+import { cleanDays, runMode, type RunMode } from "./plan/shape.ts";
 
 export interface ProfileRow {
   /** When the account was made */
@@ -18,6 +19,9 @@ export interface ProfileRow {
   half_goal_min_sec: number | null;
   half_goal_max_sec: number | null;
   pain_areas: string[];
+  /** Whether the person runs and toward what, and the weekdays they train (migration 0022, lib/plan/shape.ts) */
+  run_mode?: RunMode | null;
+  train_days?: number[] | null;
   gates: Record<string, boolean>;
   /** When each gate was ticked (migration 0021); a gate ticked before that has no time */
   gates_at?: Record<string, string> | null;
@@ -101,11 +105,17 @@ export interface ActivityEventRow {
 
 /** A profile is ready once the required plan fields are filled in. */
 export function profileToSettings(p: ProfileRow): PlanSettings | null {
-  if (!p.start_date || !p.time_trial_date || !p.current_5k_sec || !p.goal_5k_sec) return null;
+  const mode = runMode(p.run_mode);
+  if (!p.start_date) return null;
+  // Lifting only, or lifting with easy runs: a start date and the days are all the plan needs
+  if (mode !== "program") return { startDate: p.start_date, returningFromInjury: false, runMode: mode, trainDays: cleanDays(p.train_days, mode), painAreas: p.pain_areas };
+  if (!p.time_trial_date || !p.current_5k_sec || !p.goal_5k_sec) return null;
   return {
     startDate: p.start_date,
     recoveryStart: p.recovery_start,
     returningFromInjury: p.returning_from_injury,
+    runMode: mode,
+    trainDays: cleanDays(p.train_days, mode),
     timeTrialDate: p.time_trial_date,
     raceDate: p.race_date,
     raceName: p.race_name,

@@ -78,7 +78,23 @@ export function onTrack(o: {
   const c = consistency(o.weeks, o.activeDates, today);
   const pain = painTrend(o.logs, o.painAreas, today);
   const nextTest = o.weeks.flatMap((w) => w.days).find((d) => d.date >= today && !d.skipped && d.blocks.some((b) => b.kind === "test"));
-  const ttResult = o.logs.filter((l) => l.kind === "test" && l.date >= s.timeTrialDate && l.km && Math.abs(l.km - 5) <= 0.3 && l.duration_sec).sort((a, b) => a.duration_sec! - b.duration_sec!)[0];
+  // No 5K goal (lifting only, or lifting with easy runs): the week, and how steadily it's being kept
+  if (!s.timeTrialDate || !s.current5kSec || !s.goal5kSec) {
+    const week = o.weeks.find((w) => w.start <= today && today < addDays(w.start, 7));
+    if (today < s.startDate) {
+      const n = daysBetween(today, s.startDate);
+      headline = `Your plan starts in ${n} day${n === 1 ? "" : "s"}`;
+    } else headline = week?.index ? `Week ${week.index}${week.cutback ? ": lighter week" : ""}` : "Your plan";
+    if (c) {
+      const pct = Math.round((c.done / c.planned) * 100);
+      if (!o.scoreShown) lines.push(`${c.done}/${c.planned} sessions in 4 weeks (${pct}%)`);
+      if (pct < 60 && status === "good") status = "hold";
+    } else if (today >= s.startDate) lines.push("Log your first sessions and this fills in");
+    if (pain.length) lines.push(`Pain this week: ${pain.join(", ")}`);
+    return { status, headline, lines };
+  }
+  const goal = { tt: s.timeTrialDate, now: s.current5kSec, sec: s.goal5kSec };
+  const ttResult = o.logs.filter((l) => l.kind === "test" && l.date >= goal.tt && l.km && Math.abs(l.km - 5) <= 0.3 && l.duration_sec).sort((a, b) => a.duration_sec! - b.duration_sec!)[0];
 
   if (today < s.startDate) {
     const n = daysBetween(today, s.startDate);
@@ -88,21 +104,21 @@ export function onTrack(o: {
       if (n <= 7 && o.gatesPassed < o.gatesTotal) status = status === "stop" ? "stop" : "hold";
     }
   } else if (ttResult) {
-    const under = ttResult.duration_sec! <= s.goal5kSec;
+    const under = ttResult.duration_sec! <= goal.sec;
     headline = under ? `Time trial ${duration(ttResult.duration_sec!)}: goal reached` : `Time trial ${duration(ttResult.duration_sec!)}`;
-    if (!under) lines.push(`${duration(ttResult.duration_sec! - s.goal5kSec)} off ${duration(s.goal5kSec)}`);
+    if (!under) lines.push(`${duration(ttResult.duration_sec! - goal.sec)} off ${duration(goal.sec)}`);
   } else if (o.fitness.source !== "settings" && o.fitness.date && o.fitness.date >= s.startDate) {
     // Straight line from the starting 5K to the goal at the time trial
-    const span = Math.max(1, daysBetween(s.startDate, s.timeTrialDate));
+    const span = Math.max(1, daysBetween(s.startDate, goal.tt));
     const at = Math.min(span, Math.max(0, daysBetween(s.startDate, o.fitness.date)));
-    const target = Math.round(s.current5kSec + ((s.goal5kSec - s.current5kSec) * at) / span);
+    const target = Math.round(goal.now + ((goal.sec - goal.now) * at) / span);
     const delta = o.fitness.sec - target;
     predicted = { sec: o.fitness.sec, target };
     headline = `Predicted 5K ${duration(o.fitness.sec)}`;
-    lines.push(delta <= 0 ? `${duration(-delta)} ahead of the line to ${duration(s.goal5kSec)}` : `${duration(delta)} behind the line to ${duration(s.goal5kSec)}`);
+    lines.push(delta <= 0 ? `${duration(-delta)} ahead of the line to ${duration(goal.sec)}` : `${duration(delta)} behind the line to ${duration(goal.sec)}`);
     if (delta > 30 && status === "good") status = "hold";
   } else {
-    const n = daysBetween(today, s.timeTrialDate);
+    const n = daysBetween(today, goal.tt);
     headline = n >= 0 ? `${n} days to the time trial` : "Time trial done";
     if (nextTest) lines.push(`First test ${daysBetween(today, nextTest.date) === 0 ? "today" : `in ${daysBetween(today, nextTest.date)} days`} sets your prediction`);
   }

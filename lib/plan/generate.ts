@@ -4,8 +4,9 @@ import { goalPace, trainingPaces } from "./paces.ts";
 import { ABS, LEGS, UPPER, light, type Block } from "./templates.ts";
 import { compareDays, dayIntensity, type CopyFit } from "./intensity.ts";
 import { cleanOwnRuns, ownWeeks, type OwnRun } from "./ownruns.ts";
+import { cleanDays, DEFAULT_DAYS, openWeek, runMode, type RunMode } from "./shape.ts";
 
-export type Phase = "recovery" | "return" | "base" | "build" | "sharpen" | "tt" | "half" | "taper" | "race" | "own";
+export type Phase = "recovery" | "return" | "base" | "build" | "sharpen" | "tt" | "half" | "taper" | "race" | "own" | "steady";
 
 export const PHASE_NAMES: Record<Phase, string> = {
   recovery: "Recovery strength",
@@ -18,6 +19,7 @@ export const PHASE_NAMES: Record<Phase, string> = {
   taper: "Taper",
   race: "Race week",
   own: "Your running plan",
+  steady: "Training",
 };
 
 export interface PlanSettings {
@@ -26,12 +28,17 @@ export interface PlanSettings {
   /** Monday the pre-run strength phase begins; only used when returningFromInjury */
   recoveryStart?: ISODate | null;
   returningFromInjury: boolean;
-  timeTrialDate: ISODate;
+  /** Whether the person runs, and toward what (shape.ts). Only "program" has a time trial, 5K times and an end */
+  runMode?: RunMode;
+  /** The weekdays the person trains (0 = Monday), or null for the plan's own */
+  trainDays?: number[] | null;
+  /** The 5K program only */
+  timeTrialDate?: ISODate;
   /** Optional half marathon after the time trial */
   raceDate?: ISODate | null;
   raceName?: string | null;
-  current5kSec: number;
-  goal5kSec: number;
+  current5kSec?: number;
+  goal5kSec?: number;
   halfGoalMinSec?: number | null;
   halfGoalMaxSec?: number | null;
   /**
@@ -84,6 +91,8 @@ export interface GenerateOptions {
   fitness5kSec?: number;
   /** Workouts the person moved to another day of the same week */
   moves?: Iterable<Move>;
+  /** A plan with no end (run modes "easy" and "none") is built up to the week holding this date */
+  until?: ISODate;
   /** Days that do another day's workout instead */
   copies?: Iterable<DayCopy>;
 }
@@ -142,8 +151,14 @@ const PLAIN_NOTE: Record<string, string> = {
 export function generatePlan(s: PlanSettings, opts: GenerateOptions = {}): Week[] {
   const skips = new Set(opts.skips ?? []);
   const knee = !!s.painAreas?.some((a) => /knee/i.test(a));
+  const mode = runMode(s.runMode);
+  const chosen = cleanDays(s.trainDays, mode);
+  if (mode !== "program") return finish(openPlan(mode, chosen ?? DEFAULT_DAYS[mode]));
+  const timeTrialDate = s.timeTrialDate!;
+  const current5kSec = s.current5kSec!;
+  const goal5kSec = s.goal5kSec!;
   const start = mondayOf(s.startDate);
-  const ttWeekStart = mondayOf(s.timeTrialDate);
+  const ttWeekStart = mondayOf(timeTrialDate);
   const ttIdx = weekIndex(start, ttWeekStart);
   // A race needs a taper week of its own after the time trial week, or it would swallow the time trial
   const raceUsable = !!s.raceDate && weekIndex(start, mondayOf(s.raceDate)) >= ttIdx + MIN_RACE_GAP_WEEKS;
@@ -151,9 +166,9 @@ export function generatePlan(s: PlanSettings, opts: GenerateOptions = {}): Week[
   const lastIdx = raceWeekStart ? weekIndex(start, raceWeekStart) : ttIdx;
 
   // paces (sec/km) come from current fitness: the latest test when there is one, otherwise the profile
-  const fitSec = opts.fitness5kSec ?? s.current5kSec;
+  const fitSec = opts.fitness5kSec ?? current5kSec;
   const P = trainingPaces(fitSec);
-  const gp = goalPace(s.goal5kSec);
+  const gp = goalPace(goal5kSec);
   const easyRange = `${pace(P.easy[0])}–${pace(P.easy[1])}/km`;
   const paceNote = `Paces from your 5K of ${duration(fitSec)}. Log a test to update them.`;
   const tenKPace = predict(fitSec, 5, 10) / 10;
@@ -301,7 +316,7 @@ export function generatePlan(s: PlanSettings, opts: GenerateOptions = {}): Week[
     } else if (phase === "tt")
       fri = test(
         "5K TIME TRIAL",
-        ["15 min warm-up with 4 strides", `Go out at ${pace(gp)}/km (first km no faster than ${pace(gp - 5)}), hold it, push the last kilometre`, `Target: ${duration(s.goal5kSec)} or faster`],
+        ["15 min warm-up with 4 strides", `Go out at ${pace(gp)}/km (first km no faster than ${pace(gp - 5)}), hold it, push the last kilometre`, `Target: ${duration(goal5kSec)} or faster`],
         "This is the goal day.",
       );
     else if (phase === "half") {
@@ -310,17 +325,29 @@ export function generatePlan(s: PlanSettings, opts: GenerateOptions = {}): Week[
     } else if (phase === "taper") fri = run("Long run 10 km", ["Easy pace", "Last chance to test race-day shoes and fuel"], { km: 10 });
     else fri = run("Shakeout 15 min", ["Very easy", "4 strides"]);
 
-    const days: Day[] = [
-      mk(ws, 0, [U(stage === "L" ? LEGS.L_gym : stage === "B" ? LEGS.B_gym : LEGS.C_gym), U(UPPER.pull), U(ABS.gym)]),
-      mk(ws, 1, [tue]),
-      mk(ws, 2, [wed, U(UPPER.push), U(ABS.condoA)]),
-      mk(ws, 3, [U(stage === "L" ? LEGS.L_condo : stage === "B" ? LEGS.B_condo : LEGS.C_condo), U(UPPER.backArms), U(ABS.condoB)]),
-      // The time trial is run on its own date when that's a Friday, Saturday or Sunday (a Saturday parkrun);
-      // earlier in the week it stays on the Friday, after the week's easy runs
-      mk(ws, phase === "tt" ? Math.max(4, Math.min(6, daysBetween(ws, s.timeTrialDate))) : 4, [fri]),
-    ];
-    if (phase === "tt" || phase === "race") days[3].blocks = [days[3].blocks[0]]; // nothing heavy late in a goal week
-    if (phase === "tt") days[4].fixed = true;
+    // The week's five sessions, on the plan's own days (Monday to Friday) or in the same order on the chosen ones
+    const liftA = [U(stage === "L" ? LEGS.L_gym : stage === "B" ? LEGS.B_gym : LEGS.C_gym), U(UPPER.pull), U(ABS.gym)];
+    const liftB = [U(stage === "L" ? LEGS.L_condo : stage === "B" ? LEGS.B_condo : LEGS.C_condo), U(UPPER.backArms), U(ABS.condoB)];
+    const quality = [wed, U(UPPER.push), U(ABS.condoA)];
+    const D = chosen ?? DEFAULT_DAYS.program;
+    // Nothing heavy late in a goal week: the second lifting day keeps its legs (and its run) only
+    const late = (bs: Block[]) => (phase === "tt" || phase === "race" ? bs.filter((b) => b.kind !== "upper" && b.kind !== "abs") : bs);
+    const weekPlan: Block[][] =
+      D.length === 4
+        ? // Four days: the easy run goes before the second lifting session
+          [liftA, quality, late([tue, ...liftB]), [fri]]
+        : [liftA, [tue], quality, late(liftB), [fri], ...(D.length === 6 ? [[U(LEGS.L_condo)]] : [])];
+    const longAt = D.length === 4 ? 3 : 4;
+    // The time trial is run on its own date when that's a Friday, Saturday or Sunday (a Saturday parkrun);
+    // earlier in the week it stays on the Friday, after the week's easy runs
+    const ttOff = Math.max(4, Math.min(6, daysBetween(ws, timeTrialDate)));
+    let days: Day[] = weekPlan.map((bs, k) => mk(ws, phase === "tt" && k === longAt ? ttOff : D[k], bs));
+    if (phase === "tt") {
+      const tt = days[longAt];
+      tt.fixed = true;
+      // Chosen days that fall on or after the time trial have nothing that week
+      days = days.filter((d) => d === tt || d.date < tt.date);
+    }
     if (phase === "race" && s.raceDate) {
       const off = daysBetween(ws, s.raceDate);
       const raceItems = [
@@ -362,15 +389,35 @@ export function generatePlan(s: PlanSettings, opts: GenerateOptions = {}): Week[
     }
   }
 
-  // Copies first, on the template, so moves, skips and folds treat a copied day like any other
-  applyCopies(weeks, opts.copies ?? []);
-  const moves = new Map([...(opts.moves ?? [])].map((m) => [m.from, m.to]));
-  for (const w of weeks) {
-    // Moves first, so skips and folding see the days where the person does them
-    applyMoves(w, moves);
-    applySkips(w, skips);
+  return finish(weeks);
+
+  /** What the person changed, laid over the weeks as planned */
+  function finish(weeks: Week[]): Week[] {
+    // Copies first, on the template, so moves, skips and folds treat a copied day like any other
+    applyCopies(weeks, opts.copies ?? []);
+    const moves = new Map([...(opts.moves ?? [])].map((m) => [m.from, m.to]));
+    for (const w of weeks) {
+      // Moves first, so skips and folding see the days where the person does them
+      applyMoves(w, moves);
+      applySkips(w, skips);
+    }
+    return weeks;
   }
-  return weeks;
+
+  /** A plan with no goal and no end: the same week on the chosen days, every fourth one lighter. */
+  function openPlan(mode: "easy" | "none", days: number[]): Week[] {
+    const start = mondayOf(s.startDate);
+    const until = opts.until ?? addDays(start, 7 * (OPEN_WEEKS - 1));
+    const out: Week[] = [];
+    for (let i = 1, ws = start; ws <= until; i++, ws = addDays(ws, 7)) {
+      const cut = i % CUTBACK_EVERY === 0;
+      const min = cut ? 25 : 30;
+      const easyRun = (longer: boolean) => run(`Easy ${min + (longer ? 10 : 0)} min`, ["Conversational: you can talk in full sentences", "Flat or gently rolling"]);
+      const laid = openWeek(days, mode, easyRun).map((d) => mk(ws, d.offset, d.blocks.map((b) => (cut && b.kind !== "run" ? light(b) : b))));
+      out.push({ label: `W${i}`, index: i, start: ws, phase: "steady", cutback: cut, days: laid, notes: [] });
+    }
+    return out;
+  }
 
   function mk(ws: ISODate, offset: number, blocks: Block[]): Day {
     const date = addDays(ws, offset);
@@ -615,8 +662,22 @@ export function copyNote(weeks: Week[], planDate: ISODate, source: ISODate): str
   return other ? `${dayTitle(other)} is already this week's hard session. Two in one week: keep one easy if your legs feel heavy.` : null;
 }
 
-/** Order in which skipped upper-body work looks for a new home. */
-const FOLD_ORDER = [1, 4, 3, 2]; // Mon, Thu, Wed, Tue (weekday numbers)
+/** An open plan built without a window (tests, scripts) runs this many weeks */
+const OPEN_WEEKS = 12;
+/** Every fourth week of an open plan is a lighter one */
+export const CUTBACK_EVERY = 4;
+
+/**
+ * Where skipped upper-body work looks for a new home: lifting-only days first, then days that also have a run,
+ * then run-only days, each in week order. Never the long run's or a test's day. On the plan's own days that is
+ * Monday, Thursday, Wednesday, Tuesday.
+ */
+const foldRank = (d: Day): number | null => {
+  if (d.blocks.some((b) => b.kind === "test" || (b.kind === "run" && b.km))) return null;
+  const lifts = d.blocks.some((b) => b.kind === "legs" || b.kind === "upper");
+  const runs = d.blocks.some((b) => b.kind === "run" || b.kind === "walk" || b.kind === "gate");
+  return lifts && !runs ? 0 : lifts ? 1 : 2;
+};
 
 function applySkips(w: Week, skips: Set<ISODate>) {
   const skipped = w.days.filter((d) => d.skippable && skips.has(d.date));
@@ -632,8 +693,10 @@ function applySkips(w: Week, skips: Set<ISODate>) {
     if (hadTest) w.notes.push(`${name}'s test was skipped. Do it on the next easy-run day instead.`);
 
     for (const b of d.blocks.filter((x) => x.carry)) {
-      const target = FOLD_ORDER.map((wd) => open.find((o) => weekday(o.date) === wd))
-        .find((o): o is Day => !!o && !o.blocks.some((x) => x.kind === "test"));
+      const target = open
+        .map((o) => ({ o, rank: foldRank(o) }))
+        .filter((x): x is { o: Day; rank: number } => x.rank != null)
+        .sort((x, y) => x.rank - y.rank || (x.o.date < y.o.date ? -1 : 1))[0]?.o;
       if (!target) {
         w.notes.push(`${b.title} from ${name} was dropped this week.`);
         continue;

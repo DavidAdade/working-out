@@ -35,6 +35,8 @@ import { WorkoutProvider } from "./Workout";
 import { CopyProvider, type CopyApi } from "./CopySheet";
 import { GoalsToggle, useGoalsHidden } from "./GoalsHidden";
 import type { DayCopy } from "@/lib/plan/generate.ts";
+import { goalOf, MODE_NAMES, runMode } from "@/lib/plan/shape.ts";
+import { CUTBACK_EVERY } from "@/lib/plan/generate.ts";
 
 type Tab = "today" | "plan" | "log" | "score" | "progress" | "library";
 const TABS: { id: Tab; label: string }[] = [
@@ -246,7 +248,7 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
     window.scrollTo({ top: 0 });
   };
   const thisWeek = weekForDate(weeks, today);
-  const daysToTT = daysBetween(today, settings.timeTrialDate);
+  const goal = goalOf(settings);
 
   const onSkip = (date: string, skip: boolean) =>
     startTransition(async () => {
@@ -350,7 +352,7 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
           <SwapProvider value={swapApi}>
           <SupersetProvider value={supersetApi}>
           <CopyProvider value={copyApi}>
-          <GoalHeader settings={settings} fitness={fitness.sec} thisWeek={thisWeek} daysToTT={daysToTT} />
+          {goal ? <GoalHeader settings={settings} goal={goal} fitness={fitness.sec} thisWeek={thisWeek} daysToTT={daysBetween(today, goal.timeTrialDate)} /> : <PlanHeader settings={settings} thisWeek={thisWeek} today={today} />}
 
           <nav className="sticky top-[env(safe-area-inset-top,0px)] z-10 grid grid-cols-6 gap-1 bg-bg py-1.5" role="tablist">
             {TABS.map((t) => (
@@ -400,26 +402,52 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
   );
 }
 
-function GoalHeader({ settings, fitness, thisWeek, daysToTT }: { settings: PlanSettings; fitness: number; thisWeek: Week | undefined; daysToTT: number }) {
+const SettingsLink = () => (
+  <Link href="/settings" aria-label="Settings" className="-mr-3 flex h-11 w-11 flex-none items-center justify-center rounded-lg text-muted active:bg-sunk">
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+    </svg>
+  </Link>
+);
+
+/** The header for a plan with no 5K goal: where the person is in it, not a countdown */
+function PlanHeader({ settings, thisWeek, today }: { settings: PlanSettings; thisWeek: Week | undefined; today: string }) {
+  const before = today < settings.startDate;
+  const toStart = daysBetween(today, settings.startDate);
+  const toLight = thisWeek?.index ? (CUTBACK_EVERY - (thisWeek.index % CUTBACK_EVERY)) % CUTBACK_EVERY : null;
+  const days = thisWeek?.days.filter((d) => !d.skipped && !d.added && d.blocks.length).length ?? 0;
+  return (
+    <header className="flex flex-col gap-3 rounded-md border border-line bg-surface px-[22px] pb-[18px] pt-4" aria-label="Your plan">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 pt-1.5">
+          <div className="label">{MODE_NAMES[runMode(settings.runMode)]}</div>
+          <div className="font-display text-[clamp(2.6rem,11vw,3.6rem)] font-bold leading-[0.95] text-accent">{before ? `Starts in ${toStart} day${toStart === 1 ? "" : "s"}` : thisWeek?.index ? `Week ${thisWeek.index}` : "Your plan"}</div>
+        </div>
+        <SettingsLink />
+      </div>
+      {!before && thisWeek && (
+        <dl className="grid grid-cols-2 gap-2 border-t-2 border-dashed border-line pt-3">
+          <Stat label="This week" value={`${days} day${days === 1 ? "" : "s"}${thisWeek.cutback ? " · lighter" : ""}`} />
+          <Stat label="Lighter week" value={toLight === 0 ? "This week" : toLight === 1 ? "Next week" : `In ${toLight} weeks`} />
+        </dl>
+      )}
+    </header>
+  );
+}
+
+function GoalHeader({ settings, goal: g, fitness, thisWeek, daysToTT }: { settings: PlanSettings; goal: NonNullable<ReturnType<typeof goalOf>>; fitness: number; thisWeek: Week | undefined; daysToTT: number }) {
   const dates = useDates();
-  const goal = settings.goal5kSec;
+  const goal = g.goal5kSec;
   const tenK = predict(goal, 5, 10, 1.06);
   // Hidden for screenshots (GoalsHidden.tsx)
   const [hidden, hide] = useGoalsHidden();
-  const settingsLink = (
-    <Link href="/settings" aria-label="Settings" className="-mr-3 flex h-11 w-11 flex-none items-center justify-center rounded-lg text-muted active:bg-sunk">
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-        <circle cx="12" cy="12" r="3" />
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-      </svg>
-    </Link>
-  );
   if (hidden)
     return (
       <header className="flex items-center justify-between gap-2 rounded-md border border-line bg-surface pl-2 pr-[22px]" aria-label="Goal">
         <span className="label min-w-0 flex-1 px-2">Goals hidden</span>
         <GoalsToggle hidden onChange={hide} />
-        {settingsLink}
+        <SettingsLink />
       </header>
     );
   return (
@@ -430,11 +458,11 @@ function GoalHeader({ settings, fitness, thisWeek, daysToTT }: { settings: PlanS
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 pt-1.5">
           <div className="label">5K time trial</div>
-          <div className="text-sm font-semibold">{dates.long(settings.timeTrialDate)}</div>
+          <div className="text-sm font-semibold">{dates.long(g.timeTrialDate)}</div>
         </div>
         <div className="flex flex-none items-center">
           <GoalsToggle hidden={false} onChange={hide} />
-          {settingsLink}
+          <SettingsLink />
         </div>
       </div>
       <div className="flex items-end justify-between gap-4">

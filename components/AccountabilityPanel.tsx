@@ -65,7 +65,7 @@ const KIND_GLYPH: Record<FeedKind, string> = {
 };
 
 const PAGE = 15;
-const PHASE_SHORT: Record<Phase, string> = { recovery: "Recovery", return: "Return", base: "Base", build: "Build", sharpen: "Sharpen", tt: "Trial", half: "Half", taper: "Taper", race: "Race", own: "Your runs" };
+const PHASE_SHORT: Record<Phase, string> = { recovery: "Recovery", return: "Return", base: "Base", build: "Build", sharpen: "Sharpen", tt: "Trial", half: "Half", taper: "Taper", race: "Race", own: "Your runs", steady: "Training" };
 
 export default function AccountabilityPanel({ inputs, onLog, onToday }: { inputs: ScoreInputs; onLog: (date: string) => void; onToday: () => void }) {
   const r = useAccountability(inputs);

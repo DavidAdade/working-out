@@ -7,6 +7,7 @@ import { addDays, dowName, type ISODate } from "../plan/dates.ts";
 import { PHASE_NAMES, type Week } from "../plan/generate.ts";
 import { duration } from "../plan/format.ts";
 import { sessions } from "../plan/progress.ts";
+import { MODE_NAMES, type RunMode } from "../plan/shape.ts";
 import { swapsShown } from "../plan/swaps.ts";
 import type { Warning } from "../plan/warnings.ts";
 import type { LogRow, SetRow } from "../types.ts";
@@ -31,17 +32,23 @@ const schema = z.object({
 });
 export type Review = z.infer<typeof schema>;
 
-const SYSTEM = `You are a careful running and strength coach reviewing one week of training for a person following a fixed plan toward a 5K time trial (and maybe a half marathon). Many are coming back from injury.
+/** Who the coach is talking to: someone on the 5K program, someone lifting with easy runs, or someone who only lifts */
+const WHO: Record<RunMode, string> = {
+  program: "You are a careful running and strength coach reviewing one week of training for a person following a fixed plan toward a 5K time trial (and maybe a race after it). Many are coming back from injury.",
+  easy: "You are a careful strength coach reviewing one week of training for a person following a fixed lifting plan with a few easy runs. They have no race or time goal: never mention paces, tests or a time trial.",
+  none: "You are a careful strength coach reviewing one week of training for a person following a fixed lifting plan. They don't run: never suggest running, paces or tests.",
+};
+const system = (mode: RunMode) => `${WHO[mode]}
 
 Rules you never break:
 - Never add training: no extra runs, longer runs, faster paces or more sets than the plan shows.
-- Never move or remove the 5K time trial, the race, or a scheduled test. Suggest "easier" or "note" for those days instead.
+- Never move or remove a time trial, a race, or a scheduled test. Suggest "easier" or "note" for those days instead.
 - Pain 3/10 means hold volume. 4/10 or more means swap the next hard run for an easy one or a walk. 4+ on two runs in a row, or swelling, locking, giving way or night pain means stop running and see a physio. Say so plainly.
 - You do not diagnose. You may suggest seeing a physio.
 - "skip" only for a day where resting clearly helps (pain, missed sleep, illness signs in notes). Prefer fewer suggestions; none is fine when things are on track.
 - Write like a coach texting an athlete: short, specific, kind. No headings, no emojis.`;
 
-export function context(o: { name: string | null; weeks: Week[]; logs: LogRow[]; sets: SetRow[]; names: Map<string, string>; warnings: Warning[]; fitness: string; goal: string; today: ISODate }): string {
+export function context(o: { name: string | null; weeks: Week[]; logs: LogRow[]; sets: SetRow[]; names: Map<string, string>; warnings: Warning[]; fitness: string | null; goal: string | null; mode?: RunMode; today: ISODate }): string {
   const from = addDays(o.today, -21);
   const recent = o.logs.filter((l) => l.date >= from && l.date <= o.today && !l.auto);
   const runs = recent.map((l) =>
@@ -63,7 +70,7 @@ export function context(o: { name: string | null; weeks: Week[]; logs: LogRow[];
     .filter((s) => s.date >= addDays(o.today, -7) && s.date < addDays(o.today, 7))
     .map((s) => `swapped ${o.names.get(s.from) ?? s.from} → ${s.name} (${dowName(s.date)} ${s.date})`);
   return [
-    `Today: ${o.today} (${dowName(o.today)}). Athlete: ${o.name ?? "runner"}. Current 5K fitness ${o.fitness}, goal ${o.goal}.`,
+    `Today: ${o.today} (${dowName(o.today)}). Athlete: ${o.name ?? "athlete"}.${o.fitness && o.goal ? ` Current 5K fitness ${o.fitness}, goal ${o.goal}.` : ` Plan: ${MODE_NAMES[o.mode ?? "none"].toLowerCase()}, no time goal.`}`,
     o.warnings.length ? `App warnings now: ${o.warnings.map((w) => w.message).join(" ")}` : "No pain warnings right now.",
     `Last 7 days planned vs done:\n${past.map((x) => `${line(x)} → ${loggedDates.has(x.d.date) ? "done" : x.d.skipped ? "skipped" : "nothing logged"}`).join("\n") || "none"}`,
     `Sessions and check-ins, last 3 weeks:\n${runs.join("\n") || "none"}`,
@@ -76,7 +83,7 @@ export function context(o: { name: string | null; weeks: Week[]; logs: LogRow[];
 export async function generateReview(o: Parameters<typeof context>[0], model: LanguageModel = REVIEW_MODEL): Promise<Review> {
   const { output } = await generateText({
     model,
-    system: SYSTEM,
+    system: system(o.mode ?? "program"),
     prompt: context(o),
     output: Output.object({ schema }),
     maxOutputTokens: 900,

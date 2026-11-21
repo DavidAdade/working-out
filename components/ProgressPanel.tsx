@@ -15,6 +15,7 @@ import { bestsByWeek, fiveKEquivalent, mondaysBetween, paceNeeded, strengthIndex
 import { useMemo, useState } from "react";
 import Pager, { usePage } from "./Pager";
 import { GoalsToggle, useGoalsHidden } from "./GoalsHidden";
+import { goalOf } from "@/lib/plan/shape.ts";
 
 const AREA_COLORS = ["rgb(var(--area1))", "rgb(var(--area2))", "rgb(var(--area3))"];
 /** Weeks shown on the weekly charts */
@@ -28,18 +29,21 @@ export default function ProgressPanel({ logs, settings, painAreas, today }: { lo
   const trend = painTrend(logs, painAreas, today);
   const recent = wins(logs, sets, nameOf, addDays(today, -27), today);
   const asc = useMemo(() => [...logs].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)), [logs]);
-  const goal = settings.goal5kSec;
+  // The 5K card is for the 5K program; without a goal the numbers below are never shown
+  const g = goalOf(settings);
+  const goal = g?.goal5kSec ?? 0;
+  const startSec = g?.current5kSec ?? 0;
   const [goalsHidden, hideGoals] = useGoalsHidden();
 
   /* ---------- 5K: tests against the pace of improvement the goal needs ---------- */
   const tests = asc.map((l) => ({ l, sec: fiveKEquivalent(l) })).filter((t): t is { l: LogRow; sec: number } => t.sec != null);
   const t10 = tests.filter((t) => Math.abs((t.l.km ?? 0) - 10) <= 0.5);
   const best5 = tests.length ? Math.min(...tests.map((t) => t.sec)) : null;
-  const course = { start: mondayOf(settings.startDate), target: mondayOf(settings.timeTrialDate), startSec: settings.current5kSec, goalSec: goal };
+  const course = { start: mondayOf(settings.startDate), target: mondayOf(g?.timeTrialDate ?? settings.startDate), startSec, goalSec: goal };
   const courseWeeks = mondaysBetween(course.start, course.target > today ? course.target : today);
   const tested = courseWeeks.map((w, i) => {
     const inWeek = tests.filter((t) => mondayOf(t.l.date) === w).map((t) => t.sec);
-    return inWeek.length ? Math.min(...inWeek) : i === 0 ? settings.current5kSec : null;
+    return inWeek.length ? Math.min(...inWeek) : i === 0 ? startSec : null;
   });
   const needed = courseWeeks.map((w) => (w <= course.target ? paceNeeded(course, w) : null));
   const lastTest = tests.filter((t) => t.l.date >= course.start).at(-1);
@@ -78,7 +82,7 @@ export default function ProgressPanel({ logs, settings, painAreas, today }: { lo
   const bestCounts = bestWeeks.map((w) => bests.get(w) ?? 0);
 
   /* ---------- easy pace: by title, or any steady run clearly slower than threshold pace ---------- */
-  const threshold = trainingPaces(fitness5k(settings.current5kSec, logs, today).sec).threshold;
+  const threshold = trainingPaces(fitness5k(startSec, logs, today).sec).threshold;
   const easy = asc
     .filter((l) => l.kind === "run" && (l.km ?? 0) >= 2 && l.duration_sec)
     .filter((l) => /easy|long/i.test(l.title ?? "") || (!WORKOUT.test(l.title ?? "") && l.duration_sec! / l.km! >= threshold * 1.08))
@@ -89,7 +93,7 @@ export default function ProgressPanel({ logs, settings, painAreas, today }: { lo
 
   return (
     <section className="flex flex-col gap-3.5">
-      {goalsHidden ? (
+      {!g ? null : goalsHidden ? (
         <article className="card flex-row items-center justify-between gap-2 py-1">
           <span className="label">5K goal hidden</span>
           <GoalsToggle hidden onChange={hideGoals} />
@@ -99,7 +103,7 @@ export default function ProgressPanel({ logs, settings, painAreas, today }: { lo
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
             <div className="label">5K: on course for the goal?</div>
-            <h3 className="font-display text-xl font-bold">{best5 ? `Best ${duration(best5)}` : `Start point ${duration(settings.current5kSec)}`}</h3>
+            <h3 className="font-display text-xl font-bold">{best5 ? `Best ${duration(best5)}` : `Start point ${duration(startSec)}`}</h3>
           </div>
           <span className="flex items-center gap-1">
             <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${best5 && best5 < goal ? "bg-good/15 text-good" : "bg-sunk"}`}>Goal {duration(goal % 60 === 0 ? goal - 1 : goal)}</span>

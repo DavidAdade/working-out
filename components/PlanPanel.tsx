@@ -20,6 +20,7 @@ const PHASE_COLOR: Record<Phase, string> = {
   taper: "bg-area3",
   race: "bg-ink",
   own: "bg-accent",
+  steady: "bg-good",
 };
 
 export default function PlanPanel({ weeks, logs, today, onSkip, onMoves }: { weeks: Week[]; logs: LogRow[]; today: string; onSkip: (d: string, s: boolean) => void; onMoves: OnMoves }) {
@@ -32,25 +33,27 @@ export default function PlanPanel({ weeks, logs, today, onSkip, onMoves }: { wee
   const { pages, current: cur, shown } = usePage(weeks, PAGE, page);
   // A typical week to explain the pattern: this one, or the first running week before the plan starts
   const sample = current?.phase !== "recovery" && current ? current : weeks.find((w) => w.phase !== "recovery") ?? current;
-  const range = (ws: Week[]) => `${ws[0].label}–${ws[ws.length - 1].label} of ${weeks.length}`;
+  // A plan with no end shows the weeks so far and the next few: there is no total to count toward
+  const open = weeks.some((w) => w.phase === "steady");
+  const range = (ws: Week[]) => `${ws[0].label}–${ws[ws.length - 1].label}${open ? "" : ` of ${weeks.length}`}`;
 
   return (
     <section className="flex flex-col gap-3.5">
       <article className="card">
         <div>
-          <div className="label">{weeks.length} weeks</div>
+          <div className="label">{open ? (current?.index ? `Week ${current.index}` : "Your plan") : `${weeks.length} weeks`}</div>
           {!dates.hide && (
-            <div className="text-sm font-semibold">
-              {fmtShort(weeks[0].start)} – {fmtShort(addDays(last.start, 6))}
-            </div>
+            <div className="text-sm font-semibold">{open ? `Since ${fmtShort(weeks[0].start)} · a lighter week every fourth` : `${fmtShort(weeks[0].start)} – ${fmtShort(addDays(last.start, 6))}`}</div>
           )}
         </div>
+        {!open && (
         <div className="flex h-2.5 gap-0.5 overflow-hidden rounded">
           {weeks.map((w) => (
             <span key={w.start} title={PHASE_NAMES[w.phase]} className={`h-full flex-1 ${PHASE_COLOR[w.phase]} ${addDays(w.start, 6) < today ? "opacity-35" : ""}`} />
           ))}
         </div>
-        <div className="flex flex-wrap gap-x-3 gap-y-1 text-[0.78rem] text-muted">
+        )}
+        <div className={`flex-wrap gap-x-3 gap-y-1 text-[0.78rem] text-muted ${open ? "hidden" : "flex"}`}>
           {phases.map((p) => (
             <span key={p} className="inline-flex items-center gap-1">
               <i className={`inline-block h-2.5 w-2.5 rounded-sm ${PHASE_COLOR[p]}`} />
@@ -74,7 +77,7 @@ export default function PlanPanel({ weeks, logs, today, onSkip, onMoves }: { wee
                 </li>
               ))}
             </ul>
-            <p className="pt-2 text-xs text-muted">Need a different day? Open a day and move it anywhere in its week. Doing 4 days one week? Skip a day and its upper-body work moves to another lift day.</p>
+            <p className="pt-2 text-xs text-muted">Need a different day? Open a day and move it anywhere in its week. One day fewer some week? Skip a day and its upper-body work moves to another lifting day.</p>
           </details>
         )}
       </article>
