@@ -391,8 +391,8 @@ function DashboardInner({ profile, settings, logs: serverLogs, skips, moves, swa
             />
           )}
           {tab === "plan" && <PlanPanel weeks={weeks} logs={logs} today={today} onSkip={onSkip} onMoves={onMoves} />}
-          {tab === "log" && <LogPanel weeks={weeks} logs={logs} today={today} painAreas={profile.pain_areas} initialDate={logDate ?? today} />}
-          {tab === "score" && <AccountabilityPanel inputs={scoreInputs} onLog={openLog} onToday={() => openTab("today")} />}
+          {tab === "log" && <LogPanel weeks={weeks} logs={logs} today={today} painAreas={profile.pain_areas} initialDate={logDate ?? today} mode={runMode(settings.runMode)} />}
+          {tab === "score" && <AccountabilityPanel inputs={scoreInputs} onLog={openLog} onToday={() => openTab("today")} mode={runMode(settings.runMode)} />}
           {tab === "library" && <LibraryPanel />}
           {tab === "progress" && <ProgressPanel logs={logs} settings={settings} painAreas={profile.pain_areas} today={today} />}
           </CopyProvider>

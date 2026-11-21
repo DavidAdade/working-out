@@ -8,6 +8,7 @@ import { painWarnings, type LogLike, type Warning } from "./warnings.ts";
 import { fitness5k, type Fitness, type TestLike } from "./paces.ts";
 import { applySwaps, type ExerciseLookup, type Swap } from "./swaps.ts";
 import { applySnapshots, type DaySnapshot } from "./snapshots.ts";
+import { runMode } from "./shape.ts";
 
 export interface AdaptInput {
   today: ISODate;
@@ -74,7 +75,7 @@ export function planFor(o: {
 }): { weeks: Week[]; fitness: Fitness; warnings: Warning[] } {
   // Without a 5K goal there are no paces to set, only whatever tests the person happens to log
   const fitness = fitness5k(o.settings.current5kSec ?? 0, o.logs, o.today);
-  const warnings = painWarnings(o.logs, o.today);
+  const warnings = painWarnings(o.logs, o.today, runMode(o.settings.runMode) === "program");
   const adapted = adaptPlan(generatePlan(o.settings, { skips: o.skips, moves: o.moves, copies: o.copies, fitness5kSec: fitness.sec || undefined, until: planUntil(o.today) }), { today: o.today, gatesPending: o.gatesPending, warnings });
   const kept = o.snapshots ? applySnapshots(adapted, o.snapshots, o.today) : adapted;
   const weeks = o.swaps && o.exercise ? applySwaps(kept, o.swaps, o.exercise) : kept;

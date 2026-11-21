@@ -47,7 +47,7 @@ const abs = (t: Template): Block => ({ kind: "abs", ...t });
 /* ---------- legs: A = protect (before gates), B = rebuild, C = strength, L = light ---------- */
 export const LEGS = {
   A_gym: legs({
-    title: "Legs: protect (gym)",
+    title: "Legs: protect A",
     items: [
       "Calf raises, straight knee, 3×15",
       "Calf raises, bent knee, 3×15",
@@ -58,12 +58,12 @@ export const LEGS = {
     note: "No heavy leg work or hamstring loading until stairs are pain-free.",
   }),
   A_condo: legs({
-    title: "Legs: protect (home)",
+    title: "Legs: protect B",
     items: ["DB calf raises, 3×15", "Glute bridge with DB on hips, 3×12", "Bird dog, 3×8 each side"],
     note: "Rail on stairs, sore leg steps down first.",
   }),
   B_gym: legs({
-    title: "Legs: rebuild (gym)",
+    title: "Legs: rebuild A",
     items: [
       "Calf raises, working toward single-leg, 3×10",
       "Glute bridge → single-leg, 3×10",
@@ -75,7 +75,7 @@ export const LEGS = {
     note: "Hamstring work stays light. Stop any set that pushes back-of-knee pain above 2/10.",
   }),
   B_condo: legs({
-    title: "Legs: rebuild (home)",
+    title: "Legs: rebuild B",
     items: [
       "Slow step-downs, 4-second lower, 3×8 each",
       "DB Romanian deadlift, light, 3×8",
@@ -85,7 +85,7 @@ export const LEGS = {
     note: "Light and controlled. This day is for tendons, not fatigue.",
   }),
   C_gym: legs({
-    title: "Legs: strength (gym)",
+    title: "Legs: strength",
     items: [
       "Romanian deadlift, 3×6–8, moderate-heavy",
       "Bulgarian split squat, 3×8 each",
@@ -98,7 +98,7 @@ export const LEGS = {
     note: "Leave 2 reps in reserve. Never the day before a hard run.",
   }),
   C_condo: legs({
-    title: "Legs: stability (home)",
+    title: "Legs: stability",
     items: [
       "Single-leg DB Romanian deadlift, 3×8 each",
       "Slow step-downs, 3×10 each",
@@ -109,7 +109,7 @@ export const LEGS = {
     note: "Moderate effort. Tomorrow is the long run.",
   }),
   L_gym: legs({
-    title: "Legs: light (gym)",
+    title: "Legs: light",
     items: ["Half the usual sets of RDL, split squat and calf raises", "No sets to failure", "10 min mobility: hips, calves, hamstrings"],
     note: "Keep legs fresh for the key run this week.",
   }),
@@ -130,11 +130,11 @@ export const LEGS = {
 /* ---------- upper body ---------- */
 export const UPPER = {
   pull: upper({
-    title: "Upper: pull (gym)",
+    title: "Upper: pull",
     items: ["Lat pulldown or assisted pull-ups, 3×8–10", "Seated cable row, 3×10", "Face pulls, 3×15", "Cable or DB curl, 3×12"],
   }),
   push: upper({
-    title: "Upper: push (home)",
+    title: "Upper: push",
     items: [
       "DB floor or bench press, 3×8–10",
       "Push-ups, 3 sets, stop 2 reps short of failure",
@@ -145,7 +145,7 @@ export const UPPER = {
     note: "Lift after the run, or later in the day.",
   }),
   backArms: upper({
-    title: "Upper: back + arms (home)",
+    title: "Upper: back + arms",
     items: ["One-arm DB row, 3×10 each", "Rear-delt fly, 3×15", "Hammer curls, 3×12", "DB skull crushers or close-grip push-ups, 3×12"],
   }),
   // Push and pull in one session, for weeks with two upper days (ownruns.ts)
@@ -153,7 +153,7 @@ export const UPPER = {
   // twice a week, in pairs that don't compete (push with pull, then small muscles that share a station), so
   // eight exercises fit in under an hour. Chest 11 direct sets a week, back 14, each delt head 7–8, arms 8 each.
   fullA: upper({
-    title: "Upper A: chest + back (gym)",
+    title: "Upper A: chest + back",
     items: [
       "Incline DB press, 4×8–10",
       "Lat pulldown or assisted pull-ups, 4×8–10",
@@ -168,7 +168,7 @@ export const UPPER = {
     note: "Supersets: one set of each in the pair, then rest. Leave 1–2 reps in reserve on the presses and pulls.",
   }),
   fullB: upper({
-    title: "Upper B: shoulders + arms (home)",
+    title: "Upper B: shoulders + arms",
     items: [
       "DB floor or bench press, 4×8–10",
       "One-arm DB row, 4×10 each",
@@ -180,16 +180,23 @@ export const UPPER = {
       "Overhead DB triceps extension, 4×10–12",
     ],
     supersets: [[0, 1], [2, 3], [4, 5], [6, 7]],
-    note: "Dumbbells only. Supersets: one set of each in the pair, then rest.",
+    note: "Supersets: one set of each in the pair, then rest.",
   }),
 } as const;
 
 /* ---------- core ---------- */
 export const ABS = {
-  gym: abs({ title: "Abs (gym)", items: ["Hanging knee raises, 3×10–12", "Cable crunch, 3×12", "Pallof press, 3×10 each side"] }),
-  condoA: abs({ title: "Abs (home)", items: ["Dead bug, 3×10", "Reverse crunch, 3×12", "Plank, 3×40s"] }),
-  condoB: abs({ title: "Abs (home)", items: ["Side plank, 3×30s each side", "Russian twist with DB, 3×12 each side", "Hollow hold, 3×25s"] }),
+  gym: abs({ title: "Abs", items: ["Hanging knee raises, 3×10–12", "Cable crunch, 3×12", "Pallof press, 3×10 each side"] }),
+  condoA: abs({ title: "Abs", items: ["Dead bug, 3×10", "Reverse crunch, 3×12", "Plank, 3×40s"] }),
+  condoB: abs({ title: "Abs", items: ["Side plank, 3×30s each side", "Russian twist with DB, 3×12 each side", "Hollow hold, 3×25s"] }),
 } as const;
+
+/**
+ * Lifting titles once said where the first person trained ("(gym)", "(home)"). Days saved before that was
+ * dropped (day_snapshots) still hold those titles: this reads one as it is named now.
+ */
+export const plainTitle = (t: string) =>
+  t.replace(/^(Legs: (?:protect|rebuild)) \((gym|home|condo)\)/, (_, name: string, place: string) => `${name} ${place === "gym" ? "A" : "B"}`).replace(/ \((?:gym|home|condo)\)/, "");
 
 export const LIGHT_NOTE = "Light week: 2 sets each, nothing to failure.";
 

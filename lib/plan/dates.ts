@@ -52,7 +52,7 @@ export function isTimeZone(tz: string | null | undefined): tz is string {
 }
 
 /** A saved zone that no longer parses falls back instead of breaking every page. */
-export const safeTimeZone = (tz: string | null | undefined) => (isTimeZone(tz) ? tz : "America/Toronto");
+export const safeTimeZone = (tz: string | null | undefined) => (isTimeZone(tz) ? tz : "UTC");
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

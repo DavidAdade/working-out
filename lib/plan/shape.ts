@@ -57,23 +57,32 @@ export function openWeek(days: number[], mode: "easy" | "none", easyRun: (longer
   const runs = mode === "easy";
   const R = runs ? [easyRun(false)] : [];
   const n = days.length;
+  // The templates' notes are written around the 5K program's runs ("Tomorrow is the long run"): here they say
+  // only what holds for any week
+  const note = (b: Block, text?: string): Block => {
+    const { note: _note, ...rest } = b;
+    return text ? { ...rest, note: text } : rest;
+  };
+  const strength = note(LEGS.C_gym, "Leave 2 reps in reserve.");
+  const stability = note(LEGS.C_condo, "Moderate effort.");
+  const push = runs ? UPPER.push : note(UPPER.push);
   const legs: Block[][] =
     n === 3
       ? [
-          [LEGS.C_gym, UPPER.pull, ABS.gym],
-          [...R, LEGS.C_condo, UPPER.backArms, ABS.condoB],
+          [strength, UPPER.pull, ABS.gym],
+          [...R, stability, UPPER.backArms, ABS.condoB],
         ]
-      : [[LEGS.C_gym], [LEGS.C_condo]];
+      : [[strength], [stability]];
   const other: Block[][] =
     n === 3
-      ? [[...R, UPPER.push, ABS.condoA]]
+      ? [[...R, push, ABS.condoA]]
       : n === 4
         ? [
             [...R, UPPER.fullA, ABS.condoA],
             [...R, UPPER.fullB, ABS.condoB],
           ]
         : [
-            [...R, UPPER.push, ABS.condoA],
+            [...R, push, ABS.condoA],
             [...R, UPPER.pull, ABS.gym],
             // With five days the third run is the longer one; with six it gets a day of its own
             n === 5 ? [...(runs ? [easyRun(true)] : []), UPPER.backArms, ABS.condoB] : [UPPER.backArms, ABS.condoB],

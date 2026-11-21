@@ -11,7 +11,7 @@
 
 import type { ISODate } from "./dates.ts";
 import type { Day, Week } from "./generate.ts";
-import type { Block, BlockKind } from "./templates.ts";
+import { plainTitle, type Block, type BlockKind } from "./templates.ts";
 
 export interface DaySnapshot {
   /** The date the workout was shown on */
@@ -35,7 +35,9 @@ export function cleanBlocks(x: unknown): Block[] | null {
     if (!raw || typeof raw !== "object") return null;
     const b = raw as Record<string, unknown>;
     if (!KINDS.has(b.kind as BlockKind) || !str(b.title, 200) || !Array.isArray(b.items) || b.items.length > 40 || !b.items.every((i) => str(i, 300))) return null;
-    const block: Block = { kind: b.kind as BlockKind, title: b.title, items: b.items as string[] };
+    // Lifting titles lose the place they once named, so an old saved day reads like the plan does now
+    const lift = b.kind === "legs" || b.kind === "upper" || b.kind === "abs";
+    const block: Block = { kind: b.kind as BlockKind, title: lift ? plainTitle(b.title) : b.title, items: b.items as string[] };
     if (str(b.note, 600)) block.note = b.note;
     if (num(b.km)) block.km = b.km;
     if (num(b.dist)) block.dist = b.dist;

@@ -104,7 +104,7 @@ export async function saveSettings(_: unknown, form: FormData): Promise<ActionRe
     // The plan's own days are saved as none chosen, so a later change to them reaches the person
     train_days: trainDays && trainDays.join() !== DEFAULT_DAYS[mode].join() ? trainDays : null,
     display_name: str("display_name"),
-    timezone: str("timezone") ?? "America/Toronto",
+    timezone: str("timezone") ?? "UTC",
     rest_timer: form.get("rest_timer") === "on",
     rest_seconds: REST_CHOICES.includes(Number(form.get("rest_seconds"))) ? Number(form.get("rest_seconds")) : null,
     start_date: str("start_date"),

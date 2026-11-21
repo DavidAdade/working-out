@@ -142,10 +142,11 @@ function weekIndex(start: ISODate, date: ISODate): number {
 const run = (title: string, items: string[], extra: Partial<Block> = {}): Block => ({ kind: "run", title, items, ...extra });
 const test = (title: string, items: string[], note?: string): Block => ({ kind: "test", title, items, note });
 
-/** Recovery-week notes written for a knee, and how they read for any other injury */
+/** Notes written for a knee, and how they read for anyone not tracking one */
 const PLAIN_NOTE: Record<string, string> = {
   "No heavy leg work or hamstring loading until stairs are pain-free.": "No heavy leg work until everyday movement is pain-free.",
   "Hamstring work stays light. Stop any set that pushes back-of-knee pain above 2/10.": "Keep it light. Stop any set that pushes pain above 2/10.",
+  "Rail on stairs, sore leg steps down first.": "Light and controlled. Nothing should hurt.",
 };
 
 export function generatePlan(s: PlanSettings, opts: GenerateOptions = {}): Week[] {
@@ -196,8 +197,6 @@ export function generatePlan(s: PlanSettings, opts: GenerateOptions = {}): Week[
           },
         ]),
       ];
-      // Notes written for a knee read plainly for any other injury
-      if (!knee) for (const d of days) d.blocks = d.blocks.map((b) => (b.note && PLAIN_NOTE[b.note] ? { ...b, note: PLAIN_NOTE[b.note] } : b));
       if (k === 1) days[0].alerts.push(knee ? "If stairs still hurt this week, book a physio appointment." : "If everyday movement still hurts this week, book a physio appointment.");
       weeks.push({ label: `R${k + 1}`, index: null, start: ws, phase: "recovery", cutback: false, days, notes: [] });
     }
@@ -393,6 +392,8 @@ export function generatePlan(s: PlanSettings, opts: GenerateOptions = {}): Week[
 
   /** What the person changed, laid over the weeks as planned */
   function finish(weeks: Week[]): Week[] {
+    // Notes written for a knee read plainly for anyone not tracking one, in every week they show
+    if (!knee) for (const w of weeks) for (const d of w.days) d.blocks = d.blocks.map((b) => (b.note && PLAIN_NOTE[b.note] ? { ...b, note: PLAIN_NOTE[b.note] } : b));
     // Copies first, on the template, so moves, skips and folds treat a copied day like any other
     applyCopies(weeks, opts.copies ?? []);
     const moves = new Map([...(opts.moves ?? [])].map((m) => [m.from, m.to]));

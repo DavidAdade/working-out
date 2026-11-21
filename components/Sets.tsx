@@ -1020,7 +1020,7 @@ function ExerciseSheet({ exerciseKey, focus, onClose }: { exerciseKey: string; f
   const closeRef = useRef<HTMLButtonElement>(null);
   const [logging, setLogging] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  // Which plan sessions use it: "Legs: rebuild (gym)", …
+  // Which plan sessions use it: "Legs: strength", …
   const usedIn = useMemo(
     () => [...new Set(weeks.flatMap((w) => w.days.flatMap((d) => d.blocks.filter((b) => b.items.some((_, i) => itemKey(b, i) === exerciseKey)).map((b) => b.title))))],
     [weeks, exerciseKey],

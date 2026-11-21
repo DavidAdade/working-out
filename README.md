@@ -1,7 +1,7 @@
 # WorkoutFlex
 
 A flexible running and strength training plan and log. Each person sets their own goal, and the plan is generated from their profile.
-Each person signs in with a magic link and only ever sees their own plan and logs.
+Each person signs in with their email and password and only ever sees their own plan and logs.
 
 **Stack:** Next.js 15 (App Router, Server Actions) · TypeScript · Tailwind · Supabase (Postgres, Auth, row-level security) · Vercel.
 
@@ -39,43 +39,30 @@ The plan is never stored. It is regenerated from each person's settings, so chan
 
 Open the site in Safari → Share → **Add to Home Screen**. It opens full-screen like an app. Sign in with your email and password.
 
-## Adding a person (e.g. your wife)
+## Adding a person
 
-Authentication → Users → **Add user → Create new user** with her email with a password (tick auto-confirm). She signs in with that, lands on **Set up your plan**, and gets her own plan from her own times and dates. RLS keeps her data and yours separate. Untick "Coming back from an injury" for anyone who doesn't need the gates and run-walk weeks.
+Sign-ups stay off in Supabase. A person gets in one of two ways (see `app/invite-actions.ts`):
 
-## Your settings
+- **Sign-up page with an invite code** (`/signup`): set the code with `npm run invite-setup -- --code '<code>'`. Only its hash is stored.
+- **A one-time link** from "Invite someone" in Settings, shown only to the owner (`npm run invite-setup -- --owner <email>`).
 
-After your first sign-in you'll see the setup form. These are the values from our planning:
+They land on **Set up your plan** and get their own plan from their own answers. RLS keeps everyone's data separate.
 
-| Field | Value |
-| --- | --- |
-| Current 5K / Goal 5K | 35:00 / 29:59 |
-| Running starts | 2026-11-16 (move to 2026-11-30 if the gates aren't passing) |
-| Coming back from injury | ✓, strength-only phase starts 2026-10-19 |
-| Time trial | 2027-03-26 |
-| Race | Toronto Marathon: half, 2027-05-02, goal 2:30:00–2:45:00 |
-| Pain areas | knee, foot, heel |
+## Setting up a plan
 
-Or paste this in the SQL editor after you've signed in once:
+Nothing is pre-filled from anyone else. Each person picks:
 
-```sql
-update public.profiles set
-  start_date = '2026-11-16', recovery_start = '2026-10-19', returning_from_injury = true,
-  time_trial_date = '2027-03-26', race_date = '2027-05-02', race_name = 'Toronto Marathon: half',
-  current_5k_sec = 2100, goal_5k_sec = 1799, half_goal_min_sec = 9000, half_goal_max_sec = 9900,
-  pain_areas = '{knee,foot,heel}'
-where id = (select id from auth.users where email = 'YOUR-EMAIL');
-```
+- **Do you run?** Lifting only, lifting with easy runs, or the 5K program (paces, tests and a time trial on a date they set).
+- **Training days:** 3 to 6 weekdays.
+- **Plan start:** a Monday.
+- **5K program only:** current and goal 5K, time trial date, an optional race, and "Coming back from an injury" for a strength-only phase with gates and run-walk weeks.
+- **Optional:** up to three areas to track pain for, kg or lb, km or miles.
 
 ## Weekly shape
 
-- **Mon (gym):** legs + upper pull + abs
-- **Tue:** easy run
-- **Wed:** quality run, then condo upper push + abs
-- **Thu (condo):** knee-focused legs + back/arms + abs
-- **Fri:** long run, no lifting
+The week is laid out on the days the person chose. Legs twice, as far apart as the days allow, with upper body and abs on the other days; easy runs or the program's runs go around them. Workouts are named for what they train ("Legs: strength", "Upper: pull"), never for where they're done.
 
-On a 4-day week, tap **Skip this day** on any day. Its upper-body work folds into the next free lift day as a 2-set version, and the week shows a note if you skipped the long run or a test.
+Tap **Skip this day** on any day. Its upper-body work folds into the next free lift day as a 2-set version, and the week shows a note if a long run or a test was skipped.
 
 ## Exercise videos
 

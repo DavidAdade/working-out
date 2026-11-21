@@ -15,7 +15,7 @@ import { bestsByWeek, fiveKEquivalent, mondaysBetween, paceNeeded, strengthIndex
 import { useMemo, useState } from "react";
 import Pager, { usePage } from "./Pager";
 import { GoalsToggle, useGoalsHidden } from "./GoalsHidden";
-import { goalOf } from "@/lib/plan/shape.ts";
+import { goalOf, runMode } from "@/lib/plan/shape.ts";
 import { useUnits } from "./Units";
 
 const AREA_COLORS = ["rgb(var(--area1))", "rgb(var(--area2))", "rgb(var(--area3))"];
@@ -185,10 +185,10 @@ export default function ProgressPanel({ logs, settings, painAreas, today }: { lo
         {bestCounts.some(Boolean) ? (
           <>
             <BarChart values={bestCounts} labels={bestWeeks.map(fmtShort)} yFmt={(v) => `${Math.round(v)}`} height={170} />
-            <p className="text-sm text-muted">Heaviest lifts, most reps, longest runs and fastest 5Ks. Fewer as you get fitter is normal; none for a month means it&apos;s time to change something.</p>
+            <p className="text-sm text-muted">{runMode(settings.runMode) === "none" ? "Heaviest lifts and most reps." : "Heaviest lifts, most reps, longest runs and fastest 5Ks."} Fewer as you get fitter is normal; none for a month means it&apos;s time to change something.</p>
           </>
         ) : (
-          <Empty>Bests count from your second session of a lift or run, so there is something to beat.</Empty>
+          <Empty>Bests count from your second session of a lift{runMode(settings.runMode) === "none" ? "" : " or run"}, so there is something to beat.</Empty>
         )}
         {recent.length > 0 && (
           <ul className="flex flex-col gap-1">

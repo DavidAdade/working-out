@@ -24,8 +24,9 @@ const worstArea = (l: LogLike) => Object.entries(l.pain ?? {}).sort((a, b) => b[
 /**
  * Back-off rules: 3/10 = hold volume, 4+/10 = ease off, 4+ on two runs in a row = stop and see a physio.
  * Morning check-ins (kind "check") count like any other session's pain. With `today`, only the last week counts.
+ * `hardRuns` is false for a plan with no hard runs to swap (lifting only, or easy runs), which changes the wording only.
  */
-export function painWarnings(logs: LogLike[], today?: ISODate): Warning[] {
+export function painWarnings(logs: LogLike[], today?: ISODate, hardRuns = true): Warning[] {
   const from = today ? addDays(today, -PAIN_WINDOW_DAYS) : null;
   const sorted = logs
     .filter((l) => !l.auto && (!from || (l.date > from && l.date <= today!)))
@@ -40,7 +41,7 @@ export function painWarnings(logs: LogLike[], today?: ISODate): Warning[] {
   if (!last) return [];
   const w = worst(last);
   const when = last.kind === "check" ? "this morning" : "last session";
-  if (w >= 4) return [{ level: "warn", code: "ease", message: `${cap(worstArea(last))} scored ${w}/10 ${when}. Your next hard run is swapped for an easy one.` }];
+  if (w >= 4) return [{ level: "warn", code: "ease", message: `${cap(worstArea(last))} scored ${w}/10 ${when}. ${hardRuns ? "Your next hard run is swapped for an easy one." : "Keep your next session light and stop anything that hurts."}` }];
   if (w === 3) return [{ level: "warn", code: "hold", message: `${cap(worstArea(last))} at 3/10 ${when}. Hold this week's volume instead of adding more.` }];
   return [];
 }

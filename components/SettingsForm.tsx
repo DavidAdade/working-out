@@ -6,7 +6,7 @@ import { useActionState, useEffect, useState } from "react";
 import { saveSettings, setPassword, signOut, type ActionResult } from "@/app/actions";
 import { inviteUser, type InviteResult } from "@/app/invite-actions";
 import { addDays, mondayOf, todayIn } from "@/lib/plan/dates.ts";
-import { DEFAULT_DAYS, MAX_TRAIN_DAYS, MIN_TRAIN_DAYS, MODE_NAMES, PROGRAM_MIN_DAYS, RUN_MODES, runMode, type RunMode } from "@/lib/plan/shape.ts";
+import { DEFAULT_DAYS, MAX_TRAIN_DAYS, MIN_TRAIN_DAYS, MODE_NAMES, PROGRAM_MIN_DAYS, runMode, type RunMode } from "@/lib/plan/shape.ts";
 
 const MODE_HELP: Record<RunMode, string> = {
   program: "Runs with paces and tests, building to a 5K time trial on a date you set, with the lifting around them.",
@@ -44,7 +44,8 @@ export default function SettingsForm({
   const [injury, setInjury] = useState(profile.returning_from_injury);
   // Whether the person runs, and the days they train. The 5K program's own fields only show (and are only
   // required) for it; they stay in the form either way, so switching back finds them as they were
-  const [mode, setMode] = useState<RunMode>(runMode(profile.run_mode));
+  // Someone setting up starts on lifting only: the 5K program is there to pick, not assumed
+  const [mode, setMode] = useState<RunMode>(firstRun ? "none" : runMode(profile.run_mode));
   const program = mode === "program";
   const [days, setDays] = useState<number[] | null>(profile.train_days ?? null);
   const picked = days ?? DEFAULT_DAYS[mode];
@@ -98,7 +99,7 @@ export default function SettingsForm({
         </div>
         <fieldset className="flex min-w-0 flex-col gap-1.5 sm:col-span-2">
           <legend className="label mb-1">Do you run?</legend>
-          {RUN_MODES.map((m) => (
+          {(["none", "easy", "program"] as const).map((m) => (
             <label key={m} className={`flex min-h-11 items-start gap-2.5 rounded-lg border px-3 py-2 ${mode === m ? "border-accent bg-sunk" : "border-line"}`}>
               <input type="radio" name="run_mode" value={m} checked={mode === m} onChange={() => setMode(m)} className="mt-1 h-5 w-5 flex-none accent-[rgb(var(--accent))]" />
               <span>

@@ -7,6 +7,7 @@ import { deleteLog, updateLog, type LogInput } from "@/app/actions";
 import { useDock } from "./Dock";
 import Pager, { usePage } from "./Pager";
 import type { LogKind, LogRow } from "@/lib/types";
+import type { RunMode } from "@/lib/plan/shape.ts";
 import { Chip } from "./DayView";
 import { useDates } from "./DateLabels";
 import { fmtSet, useSets } from "./Sets";
@@ -19,9 +20,10 @@ interface Props {
   today: string;
   painAreas: string[];
   initialDate: string;
+  mode: RunMode;
 }
 
-export default function LogPanel({ weeks, logs, today, painAreas, initialDate }: Props) {
+export default function LogPanel({ weeks, logs, today, painAreas, initialDate, mode }: Props) {
   const titleOf = useDayTitle();
   const units = useUnits();
   const [date, setDate] = useState(initialDate);
@@ -31,7 +33,7 @@ export default function LogPanel({ weeks, logs, today, painAreas, initialDate }:
   const pastDays = dates.hide ? weeks.flatMap((w) => w.days).filter((d) => d.date <= today && !d.skipped).reverse() : [];
   const planned = dayForDate(weeks, date);
   const plannedKind = planned ? dayKind(planned) : "run";
-  const defaultKind: LogKind = plannedKind === "test" ? "test" : plannedKind === "legs" || plannedKind === "upper" ? "strength" : plannedKind === "walk" || plannedKind === "gate" ? "walk" : "run";
+  const defaultKind: LogKind = plannedKind === "test" ? "test" : plannedKind === "legs" || plannedKind === "upper" ? "strength" : plannedKind === "walk" || plannedKind === "gate" ? "walk" : mode === "none" ? "strength" : "run"; // someone who only lifts starts on Strength
 
   const [state, setState] = useState<{ ok: boolean; text: string } | null>(null);
   const [pending, setPending] = useState(false);
@@ -86,14 +88,14 @@ export default function LogPanel({ weeks, logs, today, painAreas, initialDate }:
           <Field label="Type" id="kind">
             <select id="kind" name="kind" defaultValue={defaultKind} className="input">
               <option value="run">Run</option>
-              <option value="test">Test / time trial</option>
+              {mode !== "none" && <option value="test">{mode === "program" ? "Test / time trial" : "Timed test"}</option>}
               <option value="strength">Strength</option>
               <option value="walk">Walk</option>
               <option value="class">Class (yoga, spin…)</option>
             </select>
           </Field>
           <Field label="Workout" id="title" wide>
-            <input id="title" name="title" defaultValue={planned && !planned.skipped ? titleOf(planned) : ""} placeholder="Easy 30 min" className="input" />
+            <input id="title" name="title" defaultValue={planned && !planned.skipped ? titleOf(planned) : ""} placeholder={mode === "none" ? "Upper body" : "Easy 30 min"} className="input" />
           </Field>
           <Field label={`Distance (${units.unit})`} id="km">
             <input id="km" name="km" inputMode="decimal" placeholder="5.0" className="input" />
@@ -136,7 +138,7 @@ export default function LogPanel({ weeks, logs, today, painAreas, initialDate }:
             <Pager current={history.current} pages={history.pages} label={`${history.from}–${history.to} of ${logs.length}`} onPage={setPage} listId="log-history" />
           </>
         ) : (
-          <div className="rounded-[10px] border border-dashed border-line p-4 text-center text-muted">No sessions yet. Your first one will show here with pace and pain scores.</div>
+          <div className="rounded-[10px] border border-dashed border-line p-4 text-center text-muted">No sessions yet. Your first one will show here.</div>
         )}
       </article>
     </section>

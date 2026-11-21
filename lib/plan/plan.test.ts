@@ -19,7 +19,7 @@ import { planToIcs } from "./ics.ts";
 import { addDays, daysBetween, dowName, mondayOf } from "./dates.ts";
 import { addedKeys, addedTarget, clampEnd, completion, dayExercises, elapsed, finishesDay, heldSeconds, holdPhases, isLocked, nextInRound, READY_SEC, sessionDate, sessionDateFor, sessionState, SWITCH_SEC, withReady, type WorkoutSession } from "./workout.ts";
 import { applyEdit, dayGroups, daySlots, daySupersets, editGroup, templateSupersets, type Superset } from "./supersets.ts";
-import { ABS, LEGS, UPPER } from "./templates.ts";
+import { ABS, LEGS, UPPER, plainTitle } from "./templates.ts";
 import { cleanOwnRuns, formatOwnRuns, LONG_KM, ownHard, ownWeeks, parseOwnRuns, type OwnRun } from "./ownruns.ts";
 import { bestsByWeek, fiveKEquivalent, mondaysBetween, paceNeeded, strengthIndex, strengthSeries } from "./stats.ts";
 import { countsForDay } from "../types.ts";
@@ -2090,12 +2090,12 @@ test("own runs: the lifting goes around them, and the weeks outside are untouche
   }
   const titles = (date: string) => dayForDate(weeks, date)?.blocks.map((b) => b.title + (b.light ? " (light)" : "")) ?? [];
   assert.deepEqual(titles("2026-11-16"), ["5km Easy Run", "Legs: short (after your run)"]);
-  assert.deepEqual(titles("2026-11-17"), ["Upper A: chest + back (gym)"]);
-  assert.deepEqual(titles("2026-11-19"), ["Legs: strength (gym)"], "legs have the day to themselves");
+  assert.deepEqual(titles("2026-11-17"), ["Upper A: chest + back"]);
+  assert.deepEqual(titles("2026-11-19"), ["Legs: strength"], "legs have the day to themselves");
   assert.deepEqual(titles("2026-11-20"), [], "rest before the hard run");
-  assert.deepEqual(titles("2026-11-22"), ["Upper B: shoulders + arms (home)"]);
-  assert.deepEqual(titles("2026-12-04"), ["Upper B: shoulders + arms (home)"], "Friday when the weekend is two easy runs");
-  assert.deepEqual(titles("2026-12-31"), ["Legs: strength (gym) (light)"], "legs ease off a week out");
+  assert.deepEqual(titles("2026-11-22"), ["Upper B: shoulders + arms"]);
+  assert.deepEqual(titles("2026-12-04"), ["Upper B: shoulders + arms"], "Friday when the weekend is two easy runs");
+  assert.deepEqual(titles("2026-12-31"), ["Legs: strength (light)"], "legs ease off a week out");
   // Depth: each upper session is 8 exercises in 4 supersets, and a week gives chest and back 10+ direct sets
   for (const d of ["2026-11-17", "2026-11-22"]) {
     const day = dayForDate(weeks, d)!;
@@ -2103,7 +2103,7 @@ test("own runs: the lifting goes around them, and the weeks outside are untouche
     assert.equal(dayGroups(daySlots(day), daySupersets(day, [])).length, 4, d);
   }
   assert.deepEqual(titles("2027-01-05"), [], "rest the day before the race");
-  assert.deepEqual(titles("2027-01-13"), ["5.5km Long Run", "Abs (home)"], "exactly 5.5 km counts as long");
+  assert.deepEqual(titles("2027-01-13"), ["5.5km Long Run", "Abs"], "exactly 5.5 km counts as long");
   // Hard and long are what the list says, not what the title looks like
   assert.equal(isHard(dayForDate(weeks, "2026-11-16")!.blocks[0]), false);
   assert.equal(isHard(dayForDate(weeks, "2026-11-21")!.blocks[0]), true);
@@ -2152,4 +2152,30 @@ test("own runs: the list is read from Settings text and cleaned", () => {
   assert.deepEqual(cleanOwnRuns([{ date: "2026-11-16", km: "5" }, { date: "nope", km: 5 }, null, 7]), [{ date: "2026-11-16", km: 5, title: "5 km run" }]);
   assert.deepEqual(cleanOwnRuns(undefined), []);
   assert.equal(ownWeeks([], ["2026-11-16"]).get("2026-11-16")!.filter((d) => d.blocks.some((b) => b.kind === "legs")).length, 2, "a week with no runs still lifts");
+});
+
+test("nothing is written for one person: no place in a title, no run in a lifting-only plan, knee wording only for a knee", () => {
+  const blocksOf = (p: PlanSettings) => generatePlan(p, { until: planUntil("2027-06-16") }).flatMap((w) => w.days.flatMap((d) => d.blocks));
+  for (const [name, p] of Object.entries({ ...PROFILES, ...OPEN_PROFILES })) {
+    for (const b of blocksOf(p)) {
+      assert.doesNotMatch(b.title, /gym|home|condo/i, `${name}: ${b.title}`);
+      assert.doesNotMatch(`${b.note ?? ""} ${b.items.join(" ")}`, /condo|at home|the gym|dumbbells only/i, `${name}: ${b.note}`);
+      if (p.runMode === "none") assert.doesNotMatch(`${b.title} ${b.note ?? ""}`, /\brun\b/i, `${name}: ${b.title}: ${b.note}`);
+      if (p.runMode && p.runMode !== "program") assert.doesNotMatch(b.note ?? "", /long run|hard run|key run/i, `${name}: ${b.note}`);
+      // Nobody here but a profile tracking a knee reads about knees, hamstrings or stairs
+      if (!p.painAreas?.some((a) => /knee/i.test(a))) assert.doesNotMatch(b.note ?? "", /knee|hamstring|stairs/i, `${name}: ${b.note}`);
+    }
+  }
+  // Days saved under the old titles read like the plan does now
+  assert.equal(plainTitle("Legs: protect (gym)"), "Legs: protect A");
+  assert.equal(plainTitle("Legs: rebuild (home)"), "Legs: rebuild B");
+  assert.equal(plainTitle("Legs: strength (gym) (light)"), "Legs: strength (light)");
+  assert.equal(plainTitle("Abs (condo)"), "Abs");
+  assert.equal(plainTitle("Upper: pull"), "Upper: pull");
+  assert.equal(cleanBlocks([{ kind: "upper", title: "Upper: push (home)", items: ["Push-ups, 3×10"] }])![0].title, "Upper: push");
+  assert.equal(cleanBlocks([{ kind: "run", title: "Loop (home)", items: ["Easy"] }])![0].title, "Loop (home)", "a run's own name is left alone");
+  // The pain warning only talks about a hard run to someone whose plan has them
+  const sore = [{ date: "2027-06-15", kind: "check", pain: { shoulder: 5 } }];
+  assert.match(painWarnings(sore, "2027-06-16")[0].message, /hard run/);
+  assert.doesNotMatch(painWarnings(sore, "2027-06-16", false)[0].message, /run/);
 });

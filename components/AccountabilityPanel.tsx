@@ -5,6 +5,7 @@ import { accountability, BANDS, GLYPHS, type Glyph, type Accountability, type Ac
 import { addDays } from "@/lib/plan/dates.ts";
 import type { Phase, Week } from "@/lib/plan/generate.ts";
 import { toUnit } from "@/lib/plan/progress.ts";
+import type { RunMode } from "@/lib/plan/shape.ts";
 import type { ActivityEventRow, LogRow } from "@/lib/types";
 import { useSets } from "./Sets";
 import { useDates } from "./DateLabels";
@@ -68,7 +69,7 @@ const KIND_GLYPH: Record<FeedKind, string> = {
 const PAGE = 15;
 const PHASE_SHORT: Record<Phase, string> = { recovery: "Recovery", return: "Return", base: "Base", build: "Build", sharpen: "Sharpen", tt: "Trial", half: "Half", taper: "Taper", race: "Race", own: "Your runs", steady: "Training" };
 
-export default function AccountabilityPanel({ inputs, onLog, onToday }: { inputs: ScoreInputs; onLog: (date: string) => void; onToday: () => void }) {
+export default function AccountabilityPanel({ inputs, onLog, onToday, mode }: { inputs: ScoreInputs; onLog: (date: string) => void; onToday: () => void; mode: RunMode }) {
   const r = useAccountability(inputs);
   const { openHistory, unit } = useSets();
   const dates = useDates();
@@ -108,7 +109,7 @@ export default function AccountabilityPanel({ inputs, onLog, onToday }: { inputs
             See today&apos;s session
           </button>
         </article>
-        <HowScored />
+        <HowScored mode={mode} />
       </section>
     );
   }
@@ -199,7 +200,7 @@ export default function AccountabilityPanel({ inputs, onLog, onToday }: { inputs
         <Pager current={shown.current} pages={shown.pages} label={`${shown.from}–${shown.to} of ${feed.length}`} onPage={setPage} listId="score-feed" />
       </article>
 
-      <HowScored />
+      <HowScored mode={mode} />
     </section>
   );
 }
@@ -292,13 +293,13 @@ function WeekRow({ cells, labels }: { cells: string[]; labels?: string[] }) {
   );
 }
 
-function HowScored() {
+function HowScored({ mode }: { mode: RunMode }) {
   return (
     <details className="card gap-1.5">
       <summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold">How it&apos;s scored</summary>
       <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm text-muted">
         <li>
-          <b className="text-ink">Do the plan, get 100.</b> Every planned set, run and walk counts. Recent days count more.
+          <b className="text-ink">Do the plan, get 100.</b> {mode === "none" ? "Every planned set counts." : "Every planned set, run and walk counts."} Recent days count more.
         </li>
         <li>
           <b className="text-ink">These never cost you:</b> rest days, cutback weeks, moving a day, swapping an exercise, or the plan easing off for pain.
@@ -307,10 +308,10 @@ function HowScored() {
           <b className="text-ink">Skip beats miss.</b> A skipped day counts half; a missed one counts nothing. Yesterday isn&apos;t a miss until today is over.
         </li>
         <li>
-          <b className="text-ink">Extra work: up to +8.</b> Extra sets, added exercises, classes, extra runs and work on days off. Full value in weeks you&apos;re 80% or more done, less below that, none at 50% or under.
+          <b className="text-ink">Extra work: up to +8.</b> Extra sets, added exercises, classes{mode === "none" ? "" : ", extra runs"} and work on days off. Full value in weeks you&apos;re 80% or more done, less below that, none at 50% or under.
         </li>
         <li>
-          <b className="text-ink">When extra doesn&apos;t count:</b> taper, time trial, race and cutback weeks, and after a pain check-in of 4 or more. In recovery and return weeks everything counts except extra running.
+          <b className="text-ink">When extra doesn&apos;t count:</b> {mode === "program" ? "taper, time trial, race and cutback weeks" : "lighter weeks (every fourth)"}, and after a pain check-in of 4 or more.{mode === "program" ? " In recovery and return weeks everything counts except extra running." : ""}
         </li>
         <li>
           <b className="text-ink">Bests and drops.</b> A new best adds a little (up to +3). A lift 5% lighter than last time takes a little off (up to −2).
